@@ -3,18 +3,18 @@
 :root {
   --background: #0a0908;
   --foreground: #f2f4f3;
-  --panel: rgba(20, 15, 14, 0.9);
-  --panel-strong: #15110f;
-  --line: rgba(169, 146, 125, 0.18);
-  --line-strong: rgba(169, 146, 125, 0.34);
-  --muted: #a9927d;
-  --sage: #5e503f;
+  --panel: rgba(16, 16, 18, 0.92);
+  --panel-strong: #141416;
+  --line: rgba(242, 244, 243, 0.08);
+  --line-strong: rgba(242, 244, 243, 0.18);
+  --muted: rgba(242, 244, 243, 0.62);
+  --sage: #25252a;
   --moss: #90323d;
   --moss-strong: #5e0b15;
   --amber: #a9927d;
   --rose: #49111c;
   --sky: #f2f4f3;
-  --shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+  --shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
 }
 
 @theme inline {
@@ -30,10 +30,10 @@
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(144, 50, 61, 0.18), transparent 26%),
-    radial-gradient(circle at right center, rgba(169, 146, 125, 0.14), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(73, 17, 28, 0.22), transparent 28%),
-    linear-gradient(180deg, #120f0e 0%, #0a0908 100%);
+    radial-gradient(circle at top left, rgba(144, 50, 61, 0.14), transparent 24%),
+    radial-gradient(circle at right center, rgba(94, 11, 21, 0.16), transparent 22%),
+    radial-gradient(circle at bottom right, rgba(73, 17, 28, 0.18), transparent 26%),
+    linear-gradient(180deg, #111214 0%, #0a0908 100%);
 }
 
 body {
@@ -55,13 +55,13 @@ select {
 }
 
 ::selection {
-  background: rgba(169, 146, 125, 0.28);
+  background: rgba(144, 50, 61, 0.28);
 }
 
 .grain-panel {
   background:
-    linear-gradient(180deg, rgba(23, 18, 16, 0.92), rgba(15, 12, 11, 0.96)),
-    radial-gradient(circle at top, rgba(169, 146, 125, 0.08), transparent 58%);
+    linear-gradient(180deg, rgba(24, 24, 28, 0.94), rgba(12, 12, 14, 0.98)),
+    radial-gradient(circle at top, rgba(144, 50, 61, 0.08), transparent 60%);
   backdrop-filter: blur(18px);
   box-shadow: var(--shadow);
 }
@@ -84,7 +84,7 @@ select {
 }
 
 .status-dot-yellow {
-  background: var(--amber);
+  background: #a9927d;
 }
 
 .status-dot-red {
@@ -93,5 +93,5 @@ select {
 
 .scroll-soft {
   scrollbar-width: thin;
-  scrollbar-color: rgba(169, 146, 125, 0.24) transparent;
+  scrollbar-color: rgba(242, 244, 243, 0.16) transparent;
 }

@@ -1,870 +1,1026 @@
-# Work Hat CRM V1 PRD
+# Work Hat CRM — Product Requirements Document
+**Version:** 2.1
+**Date:** April 3, 2026
+**Author:** Teddy A
+**Status:** Draft — Active
 
-## Document Status
+---
 
-- Status: Draft V1
-- Last Updated: 2026-04-03
-- Product: Work Hat CRM
-- Working Positioning: AI-first operations CRM for support and BPO teams
+## Document Map
 
-## Executive Summary
+This PRD is one of three planning documents in this repo. They are not redundant — each has a different job.
 
-Work Hat CRM is not a general-purpose CRM. V1 is a conversation-centered support operations product that helps teams manage customer conversations, generate AI-assisted replies, and learn from agent edits so response quality improves over time.
+| Document | Job | Audience |
+|---|---|---|
+| `prd.md` (this file) | Product decisions: what we build, why, for whom, and how it should feel | Teddy, future hires, design partners |
+| `technical-build-spec.md` | Implementation blueprint: stack, data model, API contracts, module structure, milestones | Codex, engineers, technical review |
+| `supabase-schema-migration-plan.md` | Database execution plan: migration phases, enum strategy, indexes, RLS, delete behavior | Codex, database setup |
 
-The product's wedge is not "AI inside a CRM." The wedge is an AI-operated workflow where:
+When there is a conflict between this PRD and the technical spec, the technical spec wins on implementation details. This PRD wins on product decisions, scope, and UX direction.
 
-- conversations are the center of work
-- AI provides drafts, risk signals, and reasoning
-- humans supervise, edit, and approve
-- the system learns from the gap between AI output and agent changes
+---
 
-The initial market is support-heavy SMBs led by founders or operators who want AI assistance but are not ready to fully automate customer communication.
+## Table of Contents
 
-## Problem Statement
+1. [Product Vision](#1-product-vision)
+2. [The Core Problem We Are Solving](#2-the-core-problem-we-are-solving)
+3. [Positioning](#3-positioning)
+4. [Target Customer](#4-target-customer)
+5. [Architecture and Layout Redesign](#5-architecture-and-layout-redesign)
+6. [Module Definitions](#6-module-definitions)
+7. [Core User Flows](#7-core-user-flows)
+8. [AI Experience Design](#8-ai-experience-design)
+9. [Edit Analyzer — The Killer Feature](#9-edit-analyzer--the-killer-feature)
+10. [Design Language](#10-design-language)
+11. [Technical Stack](#11-technical-stack)
+12. [Database Schema](#12-database-schema)
+13. [V1 Scope — What Is In, What Is Out](#13-v1-scope--what-is-in-what-is-out)
+14. [Billing Model](#14-billing-model)
+15. [Build Phases](#15-build-phases)
+16. [Open Decisions](#16-open-decisions)
+17. [Rules We Do Not Break](#17-rules-we-do-not-break)
 
-Support teams today juggle fragmented inboxes, weak customer context, inconsistent response quality, and low visibility into whether AI is actually helping. Existing CRMs are broad, bloated, and optimized around records and pipelines rather than day-to-day support operations.
+---
 
-Teams need one operating surface where they can:
+## 1. Product Vision
 
-- manage inbound customer conversations
-- see the customer and account context next to the thread
-- generate AI-assisted responses grounded in rules and knowledge
-- understand when AI is risky or missing context
-- learn from every human edit instead of treating AI as a black box
+Work Hat CRM is an **AI-first operations CRM for customer support and BPO teams**. It is not a general CRM. It is not a better Bitrix24. It is not a chatbot platform.
 
-## Product Vision
+It is a product that puts conversations at the center, uses AI as the primary operator layer, and keeps humans in the supervisory seat — reviewing, approving, and improving every AI-generated response.
 
-Work Hat CRM should become the operating system for support teams that want to use AI safely and measurably. In V1, the goal is not full automation. The goal is supervised AI assistance with a built-in feedback loop.
+**V1 pitch sentence:**
+> Work Hat helps support teams receive customer conversations, generate AI-assisted replies, and learn from every agent edit — so response quality improves automatically over time.
 
-All outbound customer communication in V1 is human-approved before send.
+---
 
-## Positioning
+## 2. The Core Problem We Are Solving
 
-Primary positioning:
+### 2a. The Customer's Problem
 
-> AI-first CRM for support and operations teams
+Support teams handling moderate-to-high email volume face three compounding problems:
 
-Sharper positioning for go-to-market:
+**Speed.** Writing responses from scratch is slow and mentally draining at scale.
 
-> AI-operated CRM for support teams that improves response quality through agent feedback
+**Quality.** Response quality varies wildly by agent, mood, experience, and time of day.
 
-Operational pitch:
+**Improvement.** There is no structured feedback loop. Bad responses are sent, forgotten, and repeated.
 
-> Manage conversations, generate AI-assisted replies, and turn every agent edit into insight.
+Current tools (Bitrix24, Zendesk, Freshdesk) address throughput but not intelligence. They are pipelines, not operators.
 
-Buyer-oriented pitch for the first market:
+### 2b. The Builder's Problem (Identified in Design Review)
 
-> Give your support team one inbox, AI-assisted replies, and a feedback loop that shows where AI is helping, where it is risky, and how quality improves over time.
+The current skeleton of Work Hat suffers from one critical architectural flaw:
 
-Proof-oriented pitch:
+> **Everything is crammed into one single window. There are no organized modules. The experience is overwhelming and impossible to understand at a glance.**
 
-> Work Hat CRM helps teams measure and improve AI reply quality over time, not just generate drafts.
+This document redefines the product around a modular, focused architecture where each area of the product has its own context and purpose — and agents are never asked to process too much information at once.
 
-## Target Customers
+---
 
-### Ideal First Customer Profile
+## 3. Positioning
 
-- founder-led or operator-led SMBs
-- customer support and CX teams inside SMBs
-- SMBs with 5 to 50 support users
-- organizations handling moderate email volume
-- teams interested in AI assistance but uncomfortable with autonomous AI agents
-- buyers who want fast setup and visible ROI without a long implementation cycle
+| What We Are NOT | What We ARE |
+|---|---|
+| A general CRM | An AI-operated CRM for support teams |
+| A better Bitrix24 | A conversation-intelligence platform |
+| A chatbot / automation tool | An AI copilot with human-in-the-loop |
+| A pipeline manager | A response quality engine |
+
+**The one line that matters:**
+> We are not "CRM with AI." We are "AI-operated support CRM."
+
+---
+
+## 4. Target Customer
+
+### Ideal Customer Profile (V1)
+
+- **Company type:** SMB with a dedicated support or customer ops function
+- **Team size:** 5–20 support agents
+- **Volume:** Moderate-to-high email volume (hundreds to low thousands of threads per month)
+- **Pain:** Agents write responses manually, quality is inconsistent, no way to improve over time
+- **Trust level with AI:** Interested but cautious — they will not let AI send without review
 
 ### Why This Segment
 
-- support work is repetitive and measurable
-- response quality has clear business impact
-- the ROI story is easier to prove
-- founders and operators can often buy faster than layered enterprise teams
-- narrower workflows make the first version easier to implement and sell
+Pain is real and immediate. Workflows are repetitive, so AI can add the most value. They understand reply quality and ROI is provable through faster responses and fewer escalations. They will not demand integrations, mobile apps, or enterprise features on day one.
 
-## Product Goals
+### Who We Are NOT Targeting in V1
 
-### Business Goals
+Enterprise (200+ seat) support orgs, sales-led CRM buyers, teams that want full AI automation without human review, and companies with complex telephony or multi-channel requirements.
 
-- land initial paying design partners quickly
-- prove measurable AI value in real support workflows
-- create a differentiated product category rather than competing as a generic CRM
-- keep setup lightweight enough for an operator-led team to adopt without services-heavy onboarding
+---
 
-### User Goals
+## 5. Architecture and Layout Redesign
 
-- reduce time spent writing replies
-- improve consistency, clarity, and compliance
-- centralize support conversations and customer context
-- help managers understand when AI is helping or hurting
+### Why the Current Approach Fails
 
-### Primary ROI Thesis
+The current implementation puts all panels — thread, AI draft, customer profile, notes, tags — visible simultaneously in a single window. This creates cognitive overload for agents trying to focus on the conversation, no clear visual hierarchy, and a UI that looks like a CRM rather than a focused work tool.
 
-The first ROI claim this product should be designed to prove is measurable AI improvement over time.
+### The Solution: Modular, Context-Aware Layout
 
-That means V1 should help customers answer:
+Work Hat V1 uses a **hybrid navigation model**:
 
-- is AI getting more usable over time?
-- where is AI failing most often?
-- which edits should inform prompt, policy, or knowledge improvements?
-- is the team becoming more effective because the AI loop is improving?
+- **Persistent left sidebar** for navigation between modules
+- **Focused main panel** that changes based on the active module
+- **Contextual slide-in panels** for secondary information (customer profile, AI, notes) — never auto-expanded unless the agent requests them
 
-### Product Goals for V1
+Agents see what they need, when they need it. Nothing more.
 
-- deliver a usable inbox for support teams
-- enable AI-generated draft replies with context and risk indicators
-- track how agents change AI drafts
-- convert those edits into actionable QA and coaching insights
-- stay architecturally clean enough to support future enterprise requirements without building for them fully in V1
-- make AI performance improvement legible enough to become the product's clearest ROI story
+---
 
-## Non-Goals
+### Global Layout Structure
 
-The following are explicitly out of scope for V1:
+```
+┌──────────────────────────────────────────────────────────┐
+│  [Logo]  [Org Name]                    [User Avatar]     │  ← Top bar (minimal)
+├──────┬───────────────────────────────────────────────────┤
+│      │                                                   │
+│  S   │         MAIN PANEL (context-dependent)            │
+│  I   │                                                   │
+│  D   │                                                   │
+│  E   │                                                   │
+│  B   │                                                   │
+│  A   │                                                   │
+│  R   │                                                   │
+│      │                                                   │
+└──────┴───────────────────────────────────────────────────┘
+```
 
-- full sales CRM and pipeline management
-- telephony
-- social media channels
-- marketplace and broad integrations platform
-- workflow automation builder
-- advanced campaign management
-- mobile app
-- advanced SLA engine
-- complex custom reporting
-- white-label multi-brand support
-- full enterprise deployment flexibility on day one
+### Left Sidebar — Navigation Only
 
-## Product Principles
+The sidebar is narrow (icon + label) and contains exactly five destinations:
 
-- Conversation-first, not pipeline-first
-- AI must be measurable, not magical
-- Human review remains central in V1
-- Start narrow and sellable, not broad and impressive
-- Use deterministic logic before LLM reasoning when possible
-- External pricing should feel simple even if internal usage is complex
-- No autonomous outbound sending in V1
+| Icon | Label | Destination |
+|---|---|---|
+| Inbox | Inbox | Conversation list and active thread |
+| Contacts | Contacts | Customer records |
+| Companies | Companies | Account and company records |
+| Dashboard | Dashboard | Metrics and insights |
+| Settings | Settings | Channels, AI config, knowledge, users |
 
-## Core Users and Roles
+No other items. The sidebar does not contain filters, notifications, or secondary navigation — those live inside each module.
 
-### Admin
+### Inbox Module Layout — Three-Panel Split
 
-Can:
+When inside the Inbox module, the layout becomes a three-panel view:
 
-- manage org settings
-- invite and manage users
-- assign roles
-- connect channels
-- configure AI rules and knowledge
-- access billing and analytics
+```
+┌──────┬──────────────────┬──────────────────────────────────┐
+│      │                  │                                  │
+│ NAV  │  CONVERSATION    │      THREAD VIEW                 │
+│      │  LIST            │                                  │
+│      │  (filterable)    │  [Message 1 — inbound]           │
+│      │                  │  [Message 2 — outbound]          │
+│      │  Conversation A  │  [Message 3 — inbound]           │
+│      │  Conversation B  │                                  │
+│      │  Conversation C  │  ─────────────────────────────   │
+│      │  Conversation D  │  [Reply Composer]                │
+│      │                  │  [Send]  [AI Draft]              │
+└──────┴──────────────────┴──────────────────────────────────┘
+```
 
-### Manager
+**Critical design rule:** When an agent opens a conversation, they see the message thread only. No AI panel auto-loads. No customer profile auto-expands. The experience starts clean.
 
-Can:
+### Contextual Slide-In Panels
 
-- view conversations
-- monitor performance
-- review AI insights
-- access dashboards
-- review quality patterns
+When the agent needs more, they request it. Panels slide in from the right without replacing the thread view:
 
-### Agent
+- **Customer Profile panel** — triggered by clicking the customer name in the thread header
+- **AI Draft panel** — triggered by clicking "AI Draft" in the reply composer
+- **Notes panel** — triggered by clicking "Notes" tab above the composer
+- **Edit Compare panel** — triggered by clicking "Compare" after a reply is sent
 
-Can:
+Panels are dismissible. They do not persist unless the agent pins them.
 
-- work conversations in the inbox
-- open customer records
-- generate AI drafts
-- edit and send responses
-- add tags and internal notes
+---
 
-### QA Reviewer
+## 6. Module Definitions
 
-Can:
+### Module 1: Inbox
 
-- review AI draft versus final response
-- categorize edit reasons
-- score or annotate quality
-- identify coaching opportunities
+**Purpose:** The central work surface. Where agents spend most of their time.
 
-## V1 Scope
+**Sub-views (left column filter within inbox):**
 
-### In Scope
+| View | Description |
+|---|---|
+| All | Every open conversation |
+| Mine | Conversations assigned to the current agent |
+| Unassigned | Conversations with no owner |
+| Awaiting Reply | Customer is waiting for a response |
+| AI Review Needed | AI flagged Red confidence or missing context |
+| Closed | Resolved conversations |
 
-- authentication and organization setup
-- basic user roles
-- customer and company records
-- unified inbox
-- email channel at launch
-- SMS designed into the architecture but released after launch
-- conversation thread view
-- AI reply generation
-- AI confidence and risk indicators
-- agent edit tracking
-- AI versus final compare view
-- manager and QA insights dashboard
-- lightweight knowledge and tone configuration
-- billing foundation and AI usage tracking
-- human approval required before any outbound send
+**Conversation list item (each row shows):**
+- Customer name and subject
+- Message preview (truncated to one line)
+- Channel badge (Email / SMS)
+- Status badge
+- Assigned agent avatar
+- AI risk indicator (small colored dot)
+- Time since last message
 
-### Recommended Cut for True MVP
+**Thread view (main panel):**
+- Clean chronological message thread
+- Inbound messages left-aligned, outbound right-aligned
+- Internal notes visually distinct (muted background, lock icon)
+- Reply composer pinned to the bottom
 
-If speed becomes a concern, the strictest MVP cut should be:
+**Reply Composer:**
+- Text area with basic formatting options
+- "Send" button — requires confirmation if an AI draft was generated but not used
+- "AI Draft" button — opens the AI panel
+- "Note" toggle — switches composer to internal note mode
+- Tag selector and assign dropdown
 
-- email only at launch
-- inbox
-- conversation detail
-- AI draft generation
-- draft editing and sending
-- edit analysis
-- minimal manager dashboard
+---
 
-## Core Modules
+### Module 2: Contacts
 
-## 1. Unified Inbox
+**Purpose:** Unified customer record.
 
-The inbox is the center of daily work.
+**Contact record shows:** identity (name, email, phone), company association, tags, channel history, linked conversation threads, notes, assigned owner, and last activity timestamp.
 
-### Core Capabilities
+**Auto-creation behavior:** When an inbound email arrives from an unknown sender, a contact is automatically created using the email address as the primary key. If a match exists, the conversation is linked to that contact.
 
-- receive inbound customer conversations
-- display threaded message history
-- show customer and account context beside the thread
-- assign owners
-- add tags and internal notes
-- mark conversations open or closed
+---
 
-### Inbox Views
+### Module 3: Companies
 
-- all conversations
-- mine
-- unassigned
-- awaiting response
-- closed
-- high risk
-- AI needs review
+**Purpose:** Account-level view for B2B customers.
 
-### Conversation Detail View
+**Company record shows:** company name, industry, associated contacts, aggregate conversation count, notes, and tags. AI behavior overrides are deferred to V2.
 
-The conversation workspace should include:
+---
 
-- full message thread
-- reply composer
-- AI action panel
-- customer profile sidebar
+### Module 4: Dashboard
 
-AI-generated responses must enter the composer as editable drafts, not send automatically.
-- tags, notes, and recent history
+**Purpose:** Performance intelligence for managers and QA.
 
-## 2. AI Copilot
+**Manager view widgets:**
+- Total conversations this period
+- Average first response time
+- Average resolution time
+- AI draft usage rate (percentage of conversations where AI was used)
+- AI acceptance rate (percentage of AI drafts sent with less than 10% edit distance)
+- Average edit distance per agent
+- Most common edit categories this week
+- High-risk conversations flagged this week
 
-This is the main product differentiator, but it should stay focused.
+**Agent view (self-service):** conversations handled, AI usage rate, average edit distance on AI drafts, most common personal edit reasons, and coaching flags from QA.
 
-### Core Functions
+**QA view:** reviewed conversations, pass rate, top issue categories, top failing intents, and knowledge gaps identified.
 
-- summarize the thread
-- suggest a reply
-- explain rationale
-- highlight missing context
-- flag risk or policy concerns
-- suggest next best action
-- recommend tags or categories
+---
 
-### Operating Constraint
+### Module 5: Settings
 
-- AI can draft, summarize, explain, and classify
-- AI cannot send customer-facing replies automatically in V1
+**Purpose:** Org configuration. Most tabs are Admin-only.
 
-### Inputs
+| Tab | Contents |
+|---|---|
+| General | Org name, timezone, language |
+| Channels | Connect email (Gmail or Postmark), SMS (Twilio — V1.5) |
+| Users | Invite, assign roles, deactivate |
+| AI Config | Model selection, confidence thresholds, behavior rules |
+| Knowledge | Upload SOPs, FAQs, tone guidelines, forbidden phrases |
+| Billing | Plan, usage meter, seat count, payment method |
 
-- recent thread messages
-- customer profile
-- account context
-- org tone and brand rules
-- knowledge snippets
-- explicit response rules
+---
 
-### Outputs
+## 7. Core User Flows
 
-- suggested reply
-- rationale summary
-- confidence label
-- risk flags
-- missing context indicators
-- recommended tags
+### Flow 1: Agent Handles an Inbound Email
+
+```
+Inbound email arrives via connected channel
+    ↓
+System creates or matches contact
+System creates conversation record
+Conversation appears in Inbox > Unassigned
+    ↓
+Agent opens conversation
+Sees: clean message thread only
+    ↓
+Agent reads the thread
+    ↓
+Agent clicks "AI Draft" in composer
+AI panel slides in from right
+AI generates: draft reply + rationale + confidence level + risk flags
+    ↓
+Agent reviews the draft
+
+IF Green confidence AND agent approves:
+  Agent lightly edits or accepts as-is
+
+IF Yellow or Red confidence:
+  Agent edits substantially or writes manually
+
+    ↓
+Agent clicks "Send"
+System prompts: "Send this reply?" → Agent confirms
+Reply is sent
+
+System stores: sent reply, AI draft, edit comparison
+Edit Analyzer runs in background
+Results feed into Dashboard
+```
+
+**Non-negotiable rule: No AI draft is ever sent without explicit agent confirmation.**
+
+---
+
+### Flow 2: Manager Reviews Team Performance
+
+```
+Manager opens Dashboard
+Sees: volume, response time, AI usage rate, edit rate
+    ↓
+Manager clicks "Top Edit Categories"
+Sees: most common reasons AI drafts were changed this week
+    ↓
+Manager identifies "Tone adjustment" as top edit reason
+Manager opens Settings > Knowledge > Tone Guidelines
+Updates tone guidance
+    ↓
+AI performance improves in next cycle automatically
+```
+
+---
+
+### Flow 3: New Agent Onboarding
+
+```
+Admin opens Settings > Users
+Clicks "Invite User"
+Enters email and selects role: Agent
+Agent receives invite email
+Agent sets password and enters org workspace
+    ↓
+Agent sees Inbox — their assigned conversations
+Agent opens first conversation — sees clean thread view
+Agent discovers "AI Draft" button in the composer organically
+```
+
+---
+
+## 8. AI Experience Design
+
+### AI Is the Operator — Humans Supervise
+
+The AI does not assist. The AI operates. The human reviews and approves.
+
+This framing changes the UX significantly. AI drafts are the starting point, not the ending point. Agents review, not rubber-stamp. No draft exits the system without a human touching it.
+
+### AI Draft Panel (Slide-In)
+
+When the agent clicks "AI Draft," a panel slides in from the right. It never replaces the thread view.
+
+```
+┌─────────────────────────────────────────────┐
+│  AI Draft                          [X Close] │
+│  ─────────────────────────────────────────  │
+│  Confidence: Green — High                   │
+│                                             │
+│  [Draft text displayed here]                │
+│                                             │
+│  ─────────────────────────────────────────  │
+│  Why this response:                         │
+│  "Customer asked about refund policy.       │
+│   Matched SOP-12. No missing context."      │
+│                                             │
+│  Risk flags: None                           │
+│                                             │
+│  [Use This Draft]   [Dismiss]               │
+└─────────────────────────────────────────────┘
+```
+
+"Use This Draft" populates the composer. The agent then edits before sending.
 
 ### Confidence Model
 
-- Green: enough context and low ambiguity
-- Yellow: partial context or some uncertainty
-- Red: high uncertainty or elevated risk
+| Level | Color | Meaning | Recommended Agent Action |
+|---|---|---|---|
+| High | Green | Enough context, low ambiguity, matched knowledge | Accept with light review |
+| Medium | Yellow | Some context missing or ambiguous | Review carefully before sending |
+| Low | Red | High uncertainty, policy risk, or missing context | Write manually or heavily edit; consider flagging for QA |
 
-This confidence should be treated as an operational signal, not proof of correctness.
+**Confidence is a support signal, not a truth signal.** An AI can be Green and still be wrong. The human always has final say.
 
-## 3. Agent Edit Analyzer
+### What the AI Uses to Generate a Draft
 
-This is the likely wedge feature for V1.
+Input layers processed in order:
 
-### Workflow
+1. Org system rules — tone, brand voice, forbidden phrases, mandatory disclosures
+2. Relevant knowledge entries — SOPs and FAQs matched by semantic similarity
+3. Conversation thread — last N messages and customer history summary
+4. Customer profile context — name, account, prior resolution notes
+5. Output schema — structured response format requiring draft, confidence, rationale, risk flags
 
-1. AI generates a draft
-2. Agent edits the draft
-3. Agent sends the final response
-4. System compares draft versus final reply
-5. System classifies what changed and likely why
+The AI does not see other customers' conversations. The AI does not make up policy.
 
-### Initial Change Categories
+### Prompting Architecture
 
-- tone adjustment
-- clarity rewrite
-- factual correction
-- missing information
-- policy or compliance fix
-- personalization
-- empathy improvement
-- formatting or grammar
-- action or instruction correction
+Prompts are separated into independent layers — not one giant mega-prompt:
 
-### Outputs
+- Layer 1: System role and org rules
+- Layer 2: Tone and brand voice
+- Layer 3: Knowledge snippets (top 3–5 relevant entries)
+- Layer 4: Thread context (last 5 messages)
+- Layer 5: Output schema
 
-Per reply:
+Each layer is independently versioned. When a layer changes, the version is tracked so edit analysis can correctly attribute changes to the right source.
 
-- similarity or edit distance score
-- change percentage
-- detected categories
-- likely reason summary
-- confidence in classification
-- flag for manager review when necessary
+---
 
-At aggregate level:
+## 9. Edit Analyzer — The Killer Feature
 
-- most common edit reasons
-- top failing conversation types
-- agents with high edit rates
-- knowledge or prompt gaps
+### What It Does
 
-### Design Constraint
+Every time an agent sends a reply — whether they edited an AI draft or wrote manually — the system automatically:
 
-The system should not overclaim causality. It should report detected changes and likely reasons with confidence rather than pretending to know the true motive behind an edit.
+1. Retrieves the AI draft if one was generated
+2. Compares it to the final sent reply
+3. Runs a programmatic diff
+4. Classifies what changed and why using an LLM
+5. Stores structured output for dashboards and QA
 
-## 4. AI QA and Insights Dashboard
+### The Analysis Pipeline
 
-The dashboard turns the workflow into management value.
+**Step 1 — Programmatic diff (always runs first):**
+Character-level diff producing insertion and deletion counts, replacement counts, edit distance score (0–100), and similarity percentage.
 
-### Manager Metrics
+**Step 2 — LLM classification (runs after diff, only if meaningful edits exist):**
+What changed (category), why it likely changed (root cause hypothesis), severity (cosmetic / substantive / critical), and whether the issue points to a prompt gap, knowledge gap, or agent preference.
 
-- total conversations
-- first response time
-- average resolution time
-- AI assist rate
-- AI acceptance rate
-- average edit rate
-- top change reasons
-- high-risk conversations
-- top failing intents or categories
-- AI quality trend over time
-- prompt and knowledge improvement opportunities
+### Change Categories (V1)
 
-### Founder / Operator Metrics
+| Category | Description |
+|---|---|
+| Tone adjustment | Agent changed emotional register or formality |
+| Clarity rewrite | Agent restructured for comprehension |
+| Factual correction | Agent corrected incorrect information in the draft |
+| Missing information | Agent added context the AI did not include |
+| Policy or compliance fix | Agent corrected a policy violation |
+| Personalization | Agent added customer-specific details |
+| Empathy improvement | Agent added emotional acknowledgment |
+| Grammar and formatting | Surface-level cleanup only |
+| Action or step correction | Agent fixed incorrect instructions |
 
-- inbox volume and backlog
-- first response time trend
-- AI adoption rate
-- AI draft acceptance and edit rate
-- top quality failure reasons
-- visible handling efficiency improvement over time
-- measurable AI improvement trend over time
+### Transparency — Decision Locked
 
-### Agent Metrics
+This was resolved in `technical-build-spec.md`: **the Edit Compare view is optional for agents and standard for managers and QA reviewers.**
 
-- conversations handled
-- AI usage rate
-- average edit distance
-- response time
-- coaching flags
+In practice this means agents can access the compare view if they choose to, but it is not surfaced prominently in their workflow. Managers and QA reviewers see it as a standard part of their review interface. This maps to Option C from earlier analysis — aggregate access for agents, full visibility for leadership — without requiring a separate product decision.
 
-Agent-facing insight in V1 should be lightweight and optional rather than inserted into every response workflow.
+---
 
-### QA Metrics
+## 10. Design Language
+
+### Recommendation: Clean and Focused
 
-- reviewed conversations
-- pass or fail rate if enabled
-- common AI issue categories
-- common policy failures
-- top context gaps
-
-## 5. Context Engine
-
-This should remain intentionally lightweight in V1.
-
-### Supported Inputs
-
-- SOP snippets
-- FAQ entries
-- plain-text rules
-- uploaded files
-- writing guidelines
-- mandatory phrasing
-- forbidden phrasing
-
-### Retrieval Approach
-
-- start with simple retrieval
-- fetch only the most relevant snippets
-- pass concise context into the model
-
-Do not build a complex knowledge platform in V1.
-
-### V1 Knowledge Constraint
-
-- support both file uploads and structured text entries
-- extract uploaded content into concise retrievable chunks
-- avoid advanced knowledge workflows such as approvals, branching, or rich document editing
-
-## User Experience Requirements
-
-## UX Goals
-
-- fast triage from the inbox
-- clear context and ownership in the conversation view
-- AI support that feels transparent rather than mysterious
-- easy comparison between AI draft and final response
-- low training burden for new agents
-- setup and configuration simple enough for a hands-on operator to complete quickly
-
-## UX Principles
-
-- the conversation detail screen is the primary workspace
-- AI explanations should be short and operational
-- risk should be visible at a glance
-- confidence should help prioritize human review
-- the UI should reduce cognitive load, not add control-panel clutter
-
-## Initial Screen Set
-
-### 1. Login and Signup
-
-Purpose:
-
-- authentication
-- organization creation
-- initial onboarding
-
-### 2. Inbox List
-
-Purpose:
-
-- central operating table for support work
-
-Key elements:
-
-- filters by status, assignee, channel, tag, risk, and date
-- sortable conversation list
-- fast navigation into thread details
-
-### 3. Conversation Detail
-
-Purpose:
-
-- primary work surface for agents
-
-Key elements:
-
-- message thread
-- composer
-- AI draft actions
-- AI analysis panel
-- customer sidebar
-- notes and tags
-
-### 4. Contact Profile
-
-Purpose:
-
-- quick customer context
-
-Key elements:
-
-- identity
-- communication channels
-- notes
-- related conversations
-- company relationship
-
-### 5. AI Compare View
-
-Purpose:
-
-- compare AI draft and final response
-
-Key elements:
-
-- side-by-side or inline diff
-- change highlights
-- categories
-- likely root cause
-- reviewer notes
-
-Default behavior:
-
-- managers and QA can use this as a regular review surface
-- agents can open it on demand
-- agents do not see it forced after every send in V1
-
-### 6. Dashboard
-
-Purpose:
-
-- make AI and team performance legible
-
-### 7. Settings and Knowledge
-
-Purpose:
-
-- manage users, channels, AI rules, tone, knowledge, and billing
-
-## Functional Requirements
-
-## Authentication and Org Setup
-
-- users can sign up and log in
-- users belong to an organization
-- admins can invite users
-- roles must control access to features
-
-## Contact and Company Records
-
-- inbound messages auto-match to existing contacts by email or phone
-- if no match exists, the system creates a new contact automatically
-- contacts can be associated with companies
-- contacts and companies can have notes and tags
-
-## Conversation Management
-
-- conversations support open and closed states
-- conversations can be assigned to a user
-- conversations can be filtered and searched
-- messages support inbound, outbound, internal, and AI-generated states
-- agents can open draft-versus-final comparison on demand without interrupting the default reply flow
-
-## AI Assistance
-
-- agent can request AI draft from the conversation screen
-- system stores AI draft, rationale, confidence, and risk flags
-- agent can edit before sending
-- system stores final reply and links it to the AI draft when applicable
-- system must enforce human approval before any outbound customer message is sent
-
-## Edit Analysis
-
-- system computes a deterministic diff between AI draft and final reply
-- system uses AI to classify change types after diffing
-- analysis is stored in structured form for reporting
-
-## Knowledge and Rules
-
-- admins can create and manage knowledge entries
-- admins can upload source files for knowledge ingestion
-- entries can be scoped by tags or channel if needed
-- inactive entries should not be retrieved for generation
-- uploaded content should be normalized into retrievable text instead of treated as a raw attachment at generation time
-
-## Billing and Usage
-
-- system tracks seat count
-- system tracks AI usage events
-- plans must distinguish between CRM subscription and AI usage
-
-## Technical Direction
-
-## Recommended Stack
-
-- Frontend: Next.js, TypeScript, Tailwind CSS, shadcn/ui
-- Backend: Supabase
-- Database: Postgres via Supabase
-- Auth: Supabase Auth
-- Storage: Supabase Storage
-- AI: OpenAI first with a provider abstraction layer
-- Email: Resend, Postmark, or Gmail integration path
-- SMS: Twilio-ready abstraction designed in V1, activated in the post-launch phase
-- Billing: Stripe
-- Observability: Sentry and product analytics
-
-## Architecture Constraints
-
-- do not over-engineer the first version
-- use route handlers or a lean API layer
-- store enough AI metadata to support debugging and analytics
-- keep prompting modular rather than building one giant prompt
-- prefer deterministic logic before LLM logic when possible
-- keep file ingestion reliable and narrow rather than building a full document-management system
-- build as multi-tenant SaaS first with clean org-level data boundaries
-- preserve room for future enterprise needs such as auditability, SSO, and stricter data controls
-
-## Data Model
-
-Core entities:
-
-- organizations
-- users
-- contacts
-- companies
-- channels
-- conversations
-- messages
-- ai_drafts
-- sent_replies
-- edit_analyses
-- knowledge_entries
-- qa_reviews
-- tags
-- usage_events
-- billing_subscriptions
-
-Tenant isolation should be enforced consistently at the organization level across user, conversation, AI, and usage data.
-
-## Suggested API Surfaces
-
-### Auth and Org
-
-- `POST /api/org/create`
-- `POST /api/invite`
-- `GET /api/me`
-
-### Contacts
-
-- `GET /api/contacts`
-- `POST /api/contacts`
-- `GET /api/contacts/:id`
-- `PATCH /api/contacts/:id`
-
-### Conversations
-
-- `GET /api/conversations`
-- `GET /api/conversations/:id`
-- `PATCH /api/conversations/:id`
-- `POST /api/conversations/:id/assign`
-- `POST /api/conversations/:id/tag`
-
-### Messages
-
-- `GET /api/conversations/:id/messages`
-- `POST /api/conversations/:id/reply`
-- `POST /api/inbound/email/webhook`
-- `POST /api/inbound/sms/webhook`
-
-### AI
-
-- `POST /api/ai/draft`
-- `POST /api/ai/summarize`
-- `POST /api/ai/analyze-edit`
-- `POST /api/ai/classify-risk`
-
-### Knowledge
-
-- `GET /api/knowledge`
-- `POST /api/knowledge`
-- `PATCH /api/knowledge/:id`
-- `DELETE /api/knowledge/:id`
-
-### Dashboard
-
-- `GET /api/dashboard/manager`
-- `GET /api/dashboard/agent`
-- `GET /api/dashboard/qa`
-
-### Billing
-
-- `GET /api/billing`
-- `POST /api/billing/checkout`
-- `POST /api/billing/webhook`
-
-## AI Workflow Blueprint
-
-## Draft Generation Flow
-
-1. Gather recent thread messages
-2. Fetch contact and company context
-3. Retrieve relevant knowledge snippets
-4. Apply org tone and rule settings
-5. Generate structured response
-6. Store draft output and prompt version
-
-### Draft Output Schema
-
-- `draft_text`
-- `confidence_level`
-- `risk_flags`
-- `missing_context`
-- `recommended_tags`
-- `rationale`
-
-## Edit Analysis Flow
-
-1. Diff AI draft versus final response
-2. Extract deterministic changes
-3. Run AI classification over the diff
-4. Store structured analysis results
-
-This hybrid approach should be cheaper and more reliable than asking an LLM to infer everything from scratch.
-
-## Pricing Direction
-
-Pricing should remain simple and legible to buyers.
-
-### CRM Subscription
-
-- per-seat pricing
-- starter and growth tiers in V1
-
-### AI Usage
-
-- customer-facing pricing should use simple units such as AI actions or AI assists
-- internal implementation can remain token-based if needed
-
-### Pricing Constraint for First Buyer
-
-- packaging must be understandable to a founder or operator without procurement support
-- plans should emphasize fast time-to-value and predictable cost
-
-## Success Metrics
-
-### Customer-Level
-
-- time to first value after onboarding
-- weekly active agent usage
-- AI assist adoption rate
-- reduction in average reply drafting time
-- reduction in repeated quality issues
-- improvement in AI draft usability over time
-
-### Product-Level
-
-- AI draft acceptance rate
-- average edit percentage
-- risk flag precision over time
-- knowledge retrieval usefulness
-- conversion from trial or pilot to paid
-- rate of improvement in AI draft quality by customer over time
-
-## Risks and Mitigations
-
-### Risk: Overbuilding
-
-Mitigation:
-
-- hold scope around the conversation workflow
-- defer broad CRM modules
-
-### Risk: Channel Integration Complexity
-
-Mitigation:
-
-- start with email only if necessary
-- use the simplest reliable email ingestion path first
-- keep channel abstractions clean so SMS can be added immediately after launch
-
-### Risk: AI Accuracy Expectations
-
-Mitigation:
-
-- show confidence and rationale
-- keep human approval in the loop
-- avoid promising full automation
-
-### Risk: Weak Differentiation
-
-Mitigation:
-
-- lean hard into edit analysis and measurable improvement
-- position around AI coaching and response intelligence, not generic CRM breadth
-
-### Risk: Future Enterprise Requirements Cause Rework
-
-Mitigation:
-
-- keep tenancy, permissions, auditability, and provider abstractions clean in V1
-- avoid promising enterprise deployment modes before the core product is validated
-
-## Delivery Plan
-
-## Phase 1: Product Skeleton
-
-- project setup
-- auth
-- orgs and roles
-- basic layout shell
-- mock inbox
-
-## Phase 2: Real Inbox
-
-- email ingestion
-- thread display
-- reply sending
-- contact auto-creation
-
-## Phase 2.5: Post-Launch Channel Expansion
-
-- add SMS support using the existing channel abstraction
-- validate cross-channel contact matching
-- extend inbox and reply flows for SMS-specific handling
-
-## Phase 3: AI Copilot
-
-- draft generation
-- thread summary
-- confidence and risk schema
-- draft storage
-
-## Phase 4: Edit Analyzer
-
-- sent reply tracking
-- diff engine
-- categorized analysis
-- compare view
-
-## Phase 5: Dashboard
-
-- core team metrics
-- AI performance metrics
-- review and coaching views
-
-## Phase 6: Billing
-
-- plan modeling
-- usage tracking
-- checkout and subscription flows
-
-## Assumptions in This Draft
-
-- V1 is support-first, not sales-first
-- email is the launch channel
-- SMS is intentionally post-launch, but the architecture should support it cleanly
-- human-in-the-loop review is required before sending
-- no auto-send workflows are included in V1
-- Supabase and Next.js remain the preferred stack
-- pricing will separate CRM seats from AI usage
-- the product is multi-tenant SaaS first, with selective early attention to future enterprise constraints
-
-## Open Product Questions
-
-The highest-priority product questions from the first interview loop are now resolved.
-
-Primary resolved direction:
-
-- the product is designed first to prove measurable AI improvement
-
-## Interview Notes
-
-This PRD is intentionally opinionated, but it is still a draft. The next step is to tighten the unresolved product decisions through short interviews and revise this document after each answer.
-
-## Immediate Next Recommendation
-
-Lock these four decisions first:
-
-- launch channel scope
-- first buyer persona
-- human approval policy
-- primary ROI metric
-
-Once those are locked, the PRD can be converted into:
-
-- a technical build spec
-- a screen-by-screen UI spec
-- an implementation plan for the first milestone
+Given the current skeleton's problem of visual overload, Work Hat should feel like a precision tool, not a dashboard. The recommended aesthetic is clean and minimal — similar to Linear or Vercel.
+
+**Visual principles:**
+
+| Principle | Application |
+|---|---|
+| Whitespace is information | Every element has room to breathe. Density is earned. |
+| Hierarchy over decoration | Size, weight, and position communicate importance — not color or icons |
+| Neutral base, intentional color | Near-white base. Color is reserved for status signals only. |
+| Panels not pages | Contextual information slides in — it does not replace the current view |
+| One primary action per screen | Every view has one obvious next action. Secondary actions are discoverable. |
+
+**Recommended color palette:**
+
+| Token | Value | Use |
+|---|---|---|
+| Background | #F9F9F9 | Base canvas |
+| Surface | #FFFFFF | Cards and panels |
+| Border | #E5E5E5 | Dividers and panel edges |
+| Text primary | #111111 | Body text |
+| Text secondary | #6B6B6B | Labels, timestamps, metadata |
+| Brand | #2563EB | Primary actions and links |
+| Green (AI high) | #16A34A | Green confidence indicator |
+| Yellow (AI mid) | #CA8A04 | Yellow confidence indicator |
+| Red (AI low) | #DC2626 | Red confidence and alerts |
+
+**Typography:** Inter (system fallback: -apple-system, sans-serif). Body at 14px with 1.5 line height. Headings at 16–20px weight 600. Labels at 12px uppercase.
+
+**Component library:** shadcn/ui — already compatible with Next.js and Tailwind.
+
+---
+
+## 11. Technical Stack
+
+| Layer | Choice | Rationale |
+|---|---|---|
+| Frontend | Next.js (App Router) + TypeScript | Already in use, strong ecosystem |
+| Styling | Tailwind CSS + shadcn/ui | Fast, consistent, accessible |
+| Auth and backend | Supabase | Auth, Postgres, Storage, and realtime in one |
+| Database | Supabase Postgres | Relational, scalable |
+| AI | OpenAI GPT-4o — model-agnostic abstraction layer | Start with OpenAI, swap to Claude or Gemini later without rewiring |
+| Email ingestion | Postmark inbound webhook | Simpler than Gmail API for V1 |
+| Email sending | Resend or Postmark | Clean API, strong deliverability |
+| SMS | Twilio — deferred to V1.5 | Do not start with both channels |
+| Billing | Stripe | Industry standard |
+| Error tracking | Sentry | |
+| Product analytics | PostHog | Session replay and funnel analysis |
+| Search and retrieval | Postgres full-text search (V1), pgvector embeddings (V2) | Start simple |
+
+### AI Model Abstraction Layer
+
+Build a thin wrapper around the AI provider from day one so swapping models requires zero rewrites at call sites:
+
+```typescript
+// lib/ai/client.ts
+interface AIClient {
+  generateDraft(context: DraftContext): Promise<DraftResult>
+  summarizeThread(messages: Message[]): Promise<string>
+  analyzeEdits(draft: string, final: string): Promise<EditAnalysis>
+  classifyRisk(content: string): Promise<RiskResult>
+}
+```
+
+---
+
+## 12. Database Schema
+
+This is a summary-level schema aligned with `technical-build-spec.md` and `supabase-schema-migration-plan.md`. For full column constraints, index definitions, enum declarations, and migration file ordering, refer to those documents. When in doubt, the migration plan is the source of truth for implementation.
+
+**Field naming conventions:** all IDs use `uuid default gen_random_uuid()`, timestamps use `timestamptz not null default now()`, all business tables carry `org_id` for tenant isolation.
+
+```sql
+-- Organizations
+-- Field names: crm_plan / ai_plan (not plan_type / ai_plan_type)
+organizations (
+  id uuid PRIMARY KEY,
+  name text NOT NULL,
+  slug text UNIQUE NOT NULL,
+  crm_plan text DEFAULT 'free',            -- 'free' | 'starter' | 'growth'
+  ai_plan text DEFAULT 'free',             -- 'free' | 'starter' | 'growth'
+  created_at timestamptz,
+  updated_at timestamptz
+)
+
+-- Users
+-- auth_user_id is separate from id — maps to Supabase auth.users identity
+-- role uses the enum: admin | manager | agent | qa_reviewer
+users (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  auth_user_id uuid UNIQUE NOT NULL,       -- references auth.users, kept in public schema
+  full_name text,
+  email citext NOT NULL,                   -- citext for case-insensitive matching
+  role user_role NOT NULL,                 -- enum: 'admin' | 'manager' | 'agent' | 'qa_reviewer'
+  status user_status DEFAULT 'pending',    -- enum: 'pending' | 'active' | 'disabled'
+  created_at timestamptz,
+  updated_at timestamptz
+)
+
+-- Companies (must be created before contacts — FK dependency)
+companies (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  name text NOT NULL,
+  industry text,
+  notes text,
+  tags jsonb DEFAULT '[]',
+  created_at timestamptz,
+  updated_at timestamptz
+)
+
+-- Contacts
+-- Constraint: email IS NOT NULL OR phone IS NOT NULL (at least one identifier required)
+contacts (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  company_id uuid REFERENCES companies NULLABLE,
+  first_name text,
+  last_name text,
+  email citext,
+  phone text,
+  notes text,
+  tags jsonb DEFAULT '[]',
+  created_at timestamptz,
+  updated_at timestamptz
+)
+
+-- Channels
+channels (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  type channel_type NOT NULL,              -- enum: 'email' | 'sms'
+  provider text NOT NULL,                  -- 'postmark' | 'gmail' | 'twilio'
+  status channel_status DEFAULT 'active',  -- enum: 'active' | 'disabled' | 'error'
+  config_json jsonb,                       -- encrypted at app layer before storage
+  created_at timestamptz,
+  updated_at timestamptz
+)
+
+-- Conversations
+-- status: open | closed | waiting_on_customer | waiting_on_internal (NOT 'pending')
+-- risk_level and ai_confidence both use the risk_level enum: green | yellow | red
+conversations (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  contact_id uuid REFERENCES contacts NOT NULL,
+  company_id uuid REFERENCES companies NULLABLE,
+  channel_id uuid REFERENCES channels NOT NULL,
+  subject text,
+  status conversation_status DEFAULT 'open',
+  priority text,
+  assigned_user_id uuid REFERENCES users NULLABLE,
+  risk_level risk_level NULLABLE,          -- enum: 'green' | 'yellow' | 'red'
+  ai_confidence risk_level NULLABLE,
+  tags jsonb DEFAULT '[]',
+  last_message_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz,
+  updated_at timestamptz
+)
+
+-- Messages
+-- Constraint: if sender_type = 'agent' then sender_user_id must not be null
+messages (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  conversation_id uuid REFERENCES conversations,
+  sender_type sender_type NOT NULL,        -- enum: 'customer' | 'agent' | 'system' | 'ai'
+  sender_user_id uuid REFERENCES users NULLABLE,
+  direction message_direction NOT NULL,    -- enum: 'inbound' | 'outbound' | 'internal'
+  channel_message_id text,                 -- external provider ID, unique per org
+  body_text text NOT NULL,
+  body_html text,
+  subject text,
+  metadata_json jsonb DEFAULT '{}',
+  created_at timestamptz
+)
+
+-- AI Drafts
+-- prompt_version is NOT NULL — required for AI auditability and dashboard filtering
+-- includes provider/model/token/latency metadata for cost tracking and debugging
+ai_drafts (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  conversation_id uuid REFERENCES conversations,
+  source_message_id uuid REFERENCES messages NULLABLE,
+  generated_by_user_id uuid REFERENCES users NOT NULL,
+  draft_text text NOT NULL,
+  rationale text,
+  confidence_level risk_level,             -- enum: 'green' | 'yellow' | 'red'
+  risk_flags jsonb DEFAULT '[]',
+  missing_context jsonb DEFAULT '[]',
+  recommended_tags jsonb DEFAULT '[]',
+  provider text,                           -- 'openai' | 'anthropic' | etc.
+  model text,                              -- e.g. 'gpt-4o'
+  prompt_version text NOT NULL,
+  request_tokens int,
+  response_tokens int,
+  latency_ms int,
+  created_at timestamptz
+)
+
+-- Sent Replies
+-- message_id links this back to the outbound message record (unique constraint)
+-- source_ai_draft_id is null when agent wrote manually without AI
+sent_replies (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  conversation_id uuid REFERENCES conversations,
+  source_ai_draft_id uuid REFERENCES ai_drafts NULLABLE,
+  sent_by_user_id uuid REFERENCES users NOT NULL,
+  message_id uuid REFERENCES messages NOT NULL UNIQUE,
+  body_text text NOT NULL,
+  sent_at timestamptz
+)
+
+-- Edit Analyses
+-- Unique on sent_reply_id — one analysis per sent reply
+-- raw_diff_json and raw_analysis_json are kept for debugging and future classifier eval
+edit_analyses (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  conversation_id uuid REFERENCES conversations,
+  ai_draft_id uuid REFERENCES ai_drafts NOT NULL,
+  sent_reply_id uuid REFERENCES sent_replies NOT NULL UNIQUE,
+  edit_distance_score numeric,
+  change_percent numeric,
+  categories jsonb DEFAULT '[]',
+  likely_reason_summary text,
+  classification_confidence numeric,
+  raw_diff_json jsonb,
+  raw_analysis_json jsonb,
+  created_at timestamptz
+)
+
+-- Knowledge Entries
+-- source_file_path / source_storage_path support uploaded documents (Supabase Storage)
+-- created_by_user_id tracks who added each entry
+knowledge_entries (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  title text NOT NULL,
+  entry_type text NOT NULL,                -- 'rule' | 'faq' | 'sop' | 'tone_guide' | 'uploaded_doc'
+  content text NOT NULL,
+  source_file_path text,                   -- original filename if uploaded
+  source_storage_path text,               -- Supabase Storage path: orgs/{org_id}/knowledge/{id}/file.ext
+  tags jsonb DEFAULT '[]',
+  channel_scope text DEFAULT 'all',        -- 'all' | 'email' | 'sms'
+  is_active boolean DEFAULT true,
+  created_by_user_id uuid REFERENCES users NOT NULL,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+
+-- Knowledge Chunks
+-- Supports chunked retrieval for large knowledge entries and file uploads
+-- content_tsv enables Postgres full-text search (V1)
+-- embedding column is reserved for pgvector when added in V2
+knowledge_chunks (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  knowledge_entry_id uuid REFERENCES knowledge_entries,
+  chunk_index int NOT NULL,
+  content text NOT NULL,
+  content_tsv tsvector,                    -- maintained for full-text search
+  embedding vector NULLABLE,              -- reserved for pgvector (V2)
+  metadata_json jsonb DEFAULT '{}',
+  created_at timestamptz,
+  UNIQUE (knowledge_entry_id, chunk_index)
+)
+
+-- QA Reviews
+-- edit_analysis_id optionally links the review to the structured analysis
+qa_reviews (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  conversation_id uuid REFERENCES conversations,
+  edit_analysis_id uuid REFERENCES edit_analyses NULLABLE,
+  reviewer_user_id uuid REFERENCES users NOT NULL,
+  score numeric,                           -- 1 to 5
+  result text,                             -- 'pass' | 'flag' | 'fail'
+  categories jsonb DEFAULT '[]',
+  notes text,
+  created_at timestamptz
+)
+
+-- Usage Events
+-- event_type values: 'ai_draft_generated' | 'ai_summary_generated' |
+--                    'edit_analysis_generated' | 'email_sent' | 'email_received'
+usage_events (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations,
+  user_id uuid REFERENCES users NULLABLE,
+  event_type text NOT NULL,
+  units int NOT NULL DEFAULT 1,
+  metadata_json jsonb,
+  created_at timestamptz
+)
+
+-- Billing Subscriptions
+-- Unique per org. stripe fields null until Stripe is connected.
+billing_subscriptions (
+  id uuid PRIMARY KEY,
+  org_id uuid REFERENCES organizations UNIQUE,
+  crm_plan text DEFAULT 'free',
+  ai_plan text DEFAULT 'free',
+  seat_count int DEFAULT 1,
+  status text DEFAULT 'trialing',
+  renewal_date timestamptz,
+  provider_customer_id text,               -- Stripe customer ID
+  provider_subscription_id text,           -- Stripe subscription ID
+  created_at timestamptz,
+  updated_at timestamptz
+)
+```
+
+### Postgres Enums (declared in migration 0001)
+
+The following states are stable enough to use as enums. Categories that evolve quickly (plan names, knowledge types, edit categories) stay as `text` with app-layer validation.
+
+- `user_role`: admin, manager, agent, qa_reviewer
+- `user_status`: pending, active, disabled
+- `channel_type`: email, sms
+- `channel_status`: active, disabled, error
+- `conversation_status`: open, closed, waiting_on_customer, waiting_on_internal
+- `risk_level`: green, yellow, red (used for both `risk_level` and `ai_confidence`)
+- `sender_type`: customer, agent, system, ai
+- `message_direction`: inbound, outbound, internal
+
+---
+
+## 13. V1 Scope — What Is In, What Is Out
+
+### In Scope — Build This
+
+| Area | What We Build |
+|---|---|
+| Auth | Email and password signup, org creation, invite flow, role assignment |
+| Inbox | Conversation list with filters, thread view, reply composer |
+| Email channel | Inbound webhook, outbound send, contact auto-creation |
+| AI copilot | Draft generation, confidence display, rationale panel, risk flags |
+| Human approval gate | No draft can be sent without agent explicitly clicking Send |
+| Contacts | Record, linked conversations, notes, tags |
+| Companies | Record, linked contacts |
+| Edit Analyzer | Diff engine, LLM classification, category storage |
+| Dashboard | Manager metrics: volume, response time, AI usage, edit rate |
+| Knowledge | Text-based entries, active or inactive toggle, tag filter |
+| Settings | Channels, users, AI config, basic org settings |
+| Billing | Freemium model, Stripe checkout, usage tracking |
+
+### Out of Scope — Do Not Build in V1
+
+| Area | Why |
+|---|---|
+| SMS channel | Start with email only. SMS adds webhook and number management complexity. Target V1.5. |
+| Workflow automation | Every automation builder becomes a product of its own. Scope trap. |
+| Mobile app | Not the primary use case. Agents work at desks. |
+| Social channels | No demand signal from ICP yet. |
+| Full ticket SLA engine | Over-engineered for target segment. |
+| Telephony | Out of scope entirely. |
+| Multi-brand or white label | V3 at the earliest. |
+| Custom report builder | Dashboard covers V1 needs. |
+| Marketplace and integrations | After product-market fit. |
+| Campaign management | Work Hat is not a marketing tool. |
+
+---
+
+## 14. Billing Model
+
+### Philosophy
+
+Billing must feel simple externally. Hide technical complexity (token counts, model costs). Customers should understand what they are paying for without reading documentation.
+
+The customer-facing unit of measure is **AI Actions** (1 AI Action = 1 draft generation OR 1 summary OR 1 edit analysis).
+
+### CRM Subscription (per seat per month)
+
+| Plan | Price | Includes |
+|---|---|---|
+| Free | $0 | 1 seat, basic inbox, 100 AI Actions per month |
+| Starter | $29/user | Unlimited seats, all inbox features, basic dashboard |
+| Growth | $59/user | Everything in Starter plus QA module and advanced dashboard |
+
+### AI Subscription (per org per month)
+
+| Plan | Price | AI Actions Included |
+|---|---|---|
+| Free | $0 | 100 AI Actions per month |
+| AI Starter | $29 | 2,000 AI Actions per month |
+| AI Growth | $99 | 10,000 AI Actions per month |
+| Overage | $0.02 per action | After included limit is reached |
+
+### Freemium Entry Strategy
+
+The free tier gets orgs in the door with zero friction, lets them feel the product before committing, and converts them when they hit the action limit or need advanced features.
+
+Free tier limits are firm. When an org hits 100 AI Actions, the AI Draft button is grayed out with a clear upgrade prompt. The inbox continues to function — only AI features are gated.
+
+### V1 Billing Implementation
+
+- Stripe Checkout for plan upgrades
+- Usage events tracked in the `usage_events` table
+- Monthly reset of `ai_actions_used` on the `organizations` record
+- Stripe webhook handles subscription lifecycle events
+
+---
+
+## 15. Build Phases
+
+### Phase 1 — Foundation (Weeks 1–2)
+**Goal:** Working skeleton with real auth, routing, and layout shell
+
+- Project setup: Next.js, TypeScript, Tailwind, shadcn/ui
+- Supabase: auth, organizations, and users tables
+- Auth flow: signup, org creation, invite
+- Role-based access control in middleware
+- Global layout: sidebar, top bar, module routing
+- Inbox shell: conversation list UI with mock data
+- Conversation detail: thread view UI with mock data
+
+**Deliverable:** You can log in, create an org, invite a user, and see the inbox with fake data in the correct layout.
+
+---
+
+### Phase 2 — Real Inbox (Weeks 3–4)
+**Goal:** Actual email flows in and out
+
+- Channel setup: connect email via Postmark inbound webhook
+- Inbound email creates or matches contact, creates conversation, creates message
+- Outbound reply via Postmark, stored as sent_reply
+- Contact auto-creation on unknown sender
+- Real conversation list and thread view using live data
+- Assign, tag, and close conversation actions
+
+**Deliverable:** A real email hits the inbox. An agent can read it and reply.
+
+---
+
+### Phase 3 — AI Copilot (Weeks 5–6)
+**Goal:** AI generates useful drafts with visible confidence
+
+- Knowledge entries CRUD in settings
+- AI draft generation endpoint (OpenAI integration)
+- Prompt layer architecture: system rules, tone, knowledge, thread, output schema
+- AI Draft slide-in panel: draft, confidence, rationale, risk flags
+- "Use This Draft" populates composer
+- Human approval gate: confirm before send
+- Store ai_drafts on every generation
+- Usage event tracking on every AI action
+
+**Deliverable:** Agent opens a conversation, clicks AI Draft, sees a smart draft with confidence and rationale, edits it, confirms, and sends.
+
+---
+
+### Phase 4 — Edit Analyzer (Weeks 7–8)
+**Goal:** The killer feature is live
+
+- Store sent_replies with source_ai_draft_id
+- Programmatic diff engine on every sent reply
+- LLM classification of what changed and why
+- Store edit_analyses with categories and severity
+- Edit Compare view: side-by-side AI draft vs final sent reply
+- Dashboard: edit rate and top change categories
+
+**Deliverable:** Every sent reply is analyzed. Manager can see patterns. Product can improve itself.
+
+---
+
+### Phase 5 — Dashboard (Weeks 9–10)
+**Goal:** Manager has real visibility
+
+- Manager dashboard: volume, response time, AI usage rate, acceptance rate, edit patterns
+- Agent self-service dashboard
+- High-risk conversation list
+- Knowledge gap identification from edit analysis data
+
+**Deliverable:** A manager can open the dashboard and answer "Is our AI helping or hurting?"
+
+---
+
+### Phase 6 — Billing (Weeks 11–12)
+**Goal:** The product can charge money
+
+- Stripe Checkout integration
+- Free tier enforcement with AI action limit gating
+- Plan upgrade flow
+- Usage display in settings billing tab
+- Stripe webhook handling for subscription lifecycle
+
+**Deliverable:** A new org signs up, uses the free tier, hits the limit, upgrades to AI Starter, and pays.
+
+---
+
+## 16. Open Decisions
+
+The following decisions are not yet locked. Each must be resolved before the relevant phase begins. Decisions already locked in `technical-build-spec.md` are marked as closed.
+
+| Decision | Status | Options | Required By |
+|---|---|---|---|
+| Email provider for V1 | Open | Postmark (simpler webhook) vs Gmail API (deeper integration) | Before Phase 2 |
+| Contact merge strategy | Open | Manual only vs auto-merge on exact email match | Before Phase 2 |
+| AI model for production | Open | OpenAI GPT-4o vs Anthropic Claude 3.5 | Before Phase 3 |
+| SMS timing | Open | V1.5 immediately post-launch vs V2 | Before Phase 3 |
+| Dark mode support | Open | Yes from day one vs light only in V1 | Before Phase 1 completes |
+| Edit Analyzer agent visibility | **Closed** | Optional for agents, standard for managers/QA (per tech spec) | — |
+
+---
+
+## 17. Rules We Do Not Break
+
+These guardrails apply regardless of feature requests, customer pressure, or scope expansion.
+
+**Conversation-first, not pipeline-first.** Work Hat is not a sales CRM. Do not add deal stages, pipeline views, or funnel visualizations in V1.
+
+**Email first, done right.** Do not start SMS until email is stable, tested, and used by a real user. A bad email experience kills trust faster than no SMS at all.
+
+**Every AI action is measurable.** No AI output goes untracked. Every generation, every edit, every confidence label is stored.
+
+**Diff before LLM.** Run programmatic diff before LLM classification in the edit analyzer. It is cheaper, faster, and more reliable. LLM only classifies what the diff already found.
+
+**Human approval is non-negotiable in V1.** No AI draft is ever sent automatically. No exception. Even if a customer asks for it. Trust must be earned first.
+
+**Billing must feel simple.** Customers see AI Actions, not tokens. Overage is transparent and fair. No hidden costs.
+
+**Scope is locked.** If a feature is not in this document, it does not get built in V1. Add it to a V2 backlog with written justification.
+
+**One window, one job.** No panel opens automatically. Agents see the thread. Everything else is on demand.
+
+---
+
+---
+
+## Changelog
+
+| Version | Date | Changes |
+|---|---|---|
+| 1.0 | 2026-04-03 | Initial PRD — generated from ChatGPT/Codex conversation |
+| 2.0 | 2026-04-03 | Full rewrite: layout redesign (modular architecture, slide-in panels), design language, freemium billing model, agent UX decisions |
+| 2.1 | 2026-04-03 | Reconciled with technical-build-spec.md and supabase-schema-migration-plan.md: fixed schema (auth_user_id, knowledge_chunks, message_id on sent_replies, provider/token fields on ai_drafts, edit_analysis_id on qa_reviews), corrected conversation statuses, added enum declarations, closed Edit Analyzer visibility decision, added document map |
+
+---
+
+*End of Document*
+*Next update: After Phase 1 completes*
+*Owner: Teddy A — teddy@xtendops.us*
