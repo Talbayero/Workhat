@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f3f0e8;
-  --foreground: #122620;
-  --panel: rgba(255, 252, 246, 0.88);
-  --panel-strong: #fffdf8;
-  --line: rgba(18, 38, 32, 0.12);
-  --line-strong: rgba(18, 38, 32, 0.22);
-  --muted: #6e756d;
-  --sage: #cdd8c9;
-  --moss: #17463b;
-  --moss-strong: #102d26;
-  --amber: #d9872e;
-  --rose: #b85845;
-  --sky: #b9d8d1;
-  --shadow: 0 20px 60px rgba(39, 59, 51, 0.12);
+  --background: #0a0908;
+  --foreground: #f2f4f3;
+  --panel: rgba(20, 15, 14, 0.9);
+  --panel-strong: #15110f;
+  --line: rgba(169, 146, 125, 0.18);
+  --line-strong: rgba(169, 146, 125, 0.34);
+  --muted: #a9927d;
+  --sage: #5e503f;
+  --moss: #90323d;
+  --moss-strong: #5e0b15;
+  --amber: #a9927d;
+  --rose: #49111c;
+  --sky: #f2f4f3;
+  --shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
 }
 
 @theme inline {
@@ -30,9 +30,10 @@
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(185, 216, 209, 0.9), transparent 28%),
-    radial-gradient(circle at right center, rgba(217, 135, 46, 0.12), transparent 24%),
-    linear-gradient(180deg, #f7f4ec 0%, #ebe5d8 100%);
+    radial-gradient(circle at top left, rgba(144, 50, 61, 0.18), transparent 26%),
+    radial-gradient(circle at right center, rgba(169, 146, 125, 0.14), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(73, 17, 28, 0.22), transparent 28%),
+    linear-gradient(180deg, #120f0e 0%, #0a0908 100%);
 }
 
 body {
@@ -54,13 +55,13 @@ select {
 }
 
 ::selection {
-  background: rgba(23, 70, 59, 0.18);
+  background: rgba(169, 146, 125, 0.28);
 }
 
 .grain-panel {
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.92), rgba(255, 250, 243, 0.92)),
-    radial-gradient(circle at top, rgba(185, 216, 209, 0.14), transparent 55%);
+    linear-gradient(180deg, rgba(23, 18, 16, 0.92), rgba(15, 12, 11, 0.96)),
+    radial-gradient(circle at top, rgba(169, 146, 125, 0.08), transparent 58%);
   backdrop-filter: blur(18px);
   box-shadow: var(--shadow);
 }
@@ -79,7 +80,7 @@ select {
 }
 
 .status-dot-green {
-  background: #3f946c;
+  background: #78a17a;
 }
 
 .status-dot-yellow {
@@ -87,10 +88,10 @@ select {
 }
 
 .status-dot-red {
-  background: var(--rose);
+  background: #90323d;
 }
 
 .scroll-soft {
   scrollbar-width: thin;
-  scrollbar-color: rgba(18, 38, 32, 0.2) transparent;
+  scrollbar-color: rgba(169, 146, 125, 0.24) transparent;
 }

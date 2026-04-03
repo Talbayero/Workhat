@@ -69,7 +69,7 @@ export function InboxWorkspace({
                 className={`rounded-2xl px-4 py-3 text-sm transition ${
                   item.active
                     ? "bg-[var(--moss)] text-white"
-                    : "text-[var(--foreground)] hover:bg-[rgba(23,70,59,0.08)]"
+                    : "text-[var(--foreground)] hover:bg-[rgba(169,146,125,0.08)]"
                 }`}
               >
                 {item.label}
@@ -162,7 +162,7 @@ export function InboxWorkspace({
                       href={`/inbox/${conversation.id}`}
                       className={`rounded-[24px] border p-4 transition ${
                         isSelected
-                          ? "border-[var(--moss)] bg-[rgba(23,70,59,0.08)]"
+                          ? "border-[var(--moss)] bg-[rgba(144,50,61,0.16)]"
                           : "border-[var(--line)] bg-[var(--panel-strong)] hover:border-[var(--line-strong)]"
                       }`}
                     >
@@ -253,8 +253,8 @@ export function InboxWorkspace({
                         message.senderType === "customer"
                           ? "border-[var(--line)] bg-[var(--panel-strong)]"
                           : message.senderType === "ai"
-                            ? "border-[rgba(217,135,46,0.25)] bg-[rgba(217,135,46,0.08)]"
-                            : "border-[rgba(23,70,59,0.18)] bg-[rgba(23,70,59,0.07)]"
+                            ? "border-[rgba(169,146,125,0.28)] bg-[rgba(169,146,125,0.08)]"
+                            : "border-[rgba(94,80,63,0.35)] bg-[rgba(94,80,63,0.12)]"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -291,7 +291,7 @@ export function InboxWorkspace({
                   <textarea
                     readOnly
                     value={selected.aiDraft.draftText}
-                    className="mt-4 min-h-52 w-full rounded-[24px] border border-[var(--line)] bg-[#fffef9] px-4 py-4 text-sm leading-7 outline-none"
+                    className="mt-4 min-h-52 w-full rounded-[24px] border border-[var(--line)] bg-[rgba(10,9,8,0.86)] px-4 py-4 text-sm leading-7 text-[var(--foreground)] outline-none"
                   />
 
                   <div className="mt-4 flex flex-wrap gap-3">
@@ -326,7 +326,7 @@ export function InboxWorkspace({
                 <p className="mt-2 text-sm leading-7">{selected.aiDraft.rationale}</p>
               </div>
 
-              <div className="mt-4 rounded-[24px] border border-[rgba(217,135,46,0.22)] bg-[rgba(217,135,46,0.08)] p-4">
+              <div className="mt-4 rounded-[24px] border border-[rgba(169,146,125,0.26)] bg-[rgba(94,80,63,0.16)] p-4">
                 <p className="text-sm font-medium text-[var(--amber)]">
                   Missing context
                 </p>
