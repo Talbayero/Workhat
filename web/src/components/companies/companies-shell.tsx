@@ -1,0 +1,313 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+import {
+  companies,
+  getCompanyById,
+  getContactsForCompany,
+  getConversationsForCompany,
+  type CompanyRecord,
+} from "@/lib/mock-data";
+
+type CompaniesShellProps = {
+  selectedCompanyId?: string;
+};
+
+const companyViews = [
+  { id: "all", label: "All accounts", count: 42 },
+  { id: "active", label: "Active accounts", count: 30 },
+  { id: "priority", label: "Priority", count: 9 },
+  { id: "watch", label: "Watch list", count: 5 },
+] as const;
+
+function getSelectedCompany(selectedCompanyId?: string): CompanyRecord | null {
+  if (!selectedCompanyId) {
+    return null;
+  }
+
+  const company = getCompanyById(selectedCompanyId);
+
+  if (!company) {
+    notFound();
+  }
+
+  return company;
+}
+
+export function CompaniesShell({ selectedCompanyId }: CompaniesShellProps) {
+  const selectedCompany = getSelectedCompany(selectedCompanyId);
+  const companyContacts = selectedCompany
+    ? getContactsForCompany(selectedCompany.id)
+    : [];
+  const companyConversations = selectedCompany
+    ? getConversationsForCompany(selectedCompany.id)
+    : [];
+
+  return (
+    <div className="flex h-full overflow-hidden">
+      <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--line)]">
+        <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-sm font-semibold">Companies</h1>
+            <button className="rounded-full bg-[var(--moss)] px-3 py-1.5 text-[11px] font-medium text-white">
+              New account
+            </button>
+          </div>
+
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+            Lightweight accounts module linked directly to people, owners, and
+            conversation load.
+          </p>
+
+          <div className="mt-3 rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--muted)]">
+            Search companies, owners, industry...
+          </div>
+        </div>
+
+        <div className="shrink-0 border-b border-[var(--line)] px-3 py-3">
+          <div className="flex flex-col gap-0.5">
+            {companyViews.map((view) => (
+              <div
+                key={view.id}
+                className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-1.5 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
+              >
+                <span>{view.label}</span>
+                <span className="text-xs">{view.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="scroll-soft flex-1 space-y-2 overflow-y-auto p-3">
+          {companies.map((company) => {
+            const isSelected = company.id === selectedCompanyId;
+
+            return (
+              <Link
+                key={company.id}
+                href={`/companies/${company.id}`}
+                className={`block rounded-[20px] border p-3.5 transition-colors ${
+                  isSelected
+                    ? "border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
+                    : "border-[var(--line)] bg-[var(--panel-strong)] hover:border-[var(--line-strong)]"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{company.name}</p>
+                    <p className="truncate text-xs text-[var(--muted)]">
+                      {company.industry}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[var(--sage)] px-2 py-0.5 text-[10px]">
+                    {company.openConversations} open
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--muted)]">
+                  <div>
+                    <p>Owner</p>
+                    <p className="mt-1 text-[var(--foreground)]">{company.accountOwner}</p>
+                  </div>
+                  <div>
+                    <p>Contacts</p>
+                    <p className="mt-1 text-[var(--foreground)]">{company.activeContacts}</p>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {selectedCompany ? (
+          <>
+            <div className="shrink-0 border-b border-[var(--line)] px-5 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="eyebrow text-[10px] text-[var(--muted)]">Account record</p>
+                  <h2 className="mt-1 text-xl font-semibold">{selectedCompany.name}</h2>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+                    <span>{selectedCompany.industry}</span>
+                    <span>•</span>
+                    <span>Owner: {selectedCompany.accountOwner}</span>
+                    <span>•</span>
+                    <span>{selectedCompany.openConversations} open conversations</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium">
+                    Edit account
+                  </button>
+                  <button className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white">
+                    Add contact
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="scroll-soft overflow-y-auto px-5 py-4">
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                    <p className="eyebrow text-[9px] text-[var(--muted)]">Account summary</p>
+                    <div className="mt-3 grid gap-3 text-sm">
+                      <div>
+                        <p className="text-[var(--muted)]">Industry</p>
+                        <p>{selectedCompany.industry}</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--muted)]">Account owner</p>
+                        <p>{selectedCompany.accountOwner}</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--muted)]">Active contacts</p>
+                        <p>{selectedCompany.activeContacts}</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--muted)]">Open conversations</p>
+                        <p>{selectedCompany.openConversations}</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                    <p className="eyebrow text-[9px] text-[var(--muted)]">Connected people</p>
+                    <div className="mt-3 space-y-3">
+                      {companyContacts.map((contact) => (
+                        <Link
+                          key={contact.id}
+                          href={`/contacts/${contact.id}`}
+                          className="block rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-3 transition-colors hover:border-[var(--line-strong)]"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium">{contact.fullName}</p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                {contact.email}
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px]">
+                              {contact.status}
+                            </span>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-4 lg:col-span-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="eyebrow text-[9px] text-[var(--muted)]">
+                        Company-wide conversation history
+                      </p>
+                      <Link href="/inbox" className="text-xs text-[var(--moss)]">
+                        Open inbox
+                      </Link>
+                    </div>
+
+                    <div className="mt-3 space-y-3">
+                      {companyConversations.map((conversation) => (
+                        <Link
+                          key={conversation.id}
+                          href={`/inbox/${conversation.id}`}
+                          className="block rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4 transition-colors hover:border-[var(--line-strong)]"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium">{conversation.subject}</p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                {conversation.customerName} • {conversation.intent} • {conversation.lastSeen}
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]">
+                              {conversation.status}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+                            {conversation.preview}
+                          </p>
+                        </Link>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              <aside className="scroll-soft border-l border-[var(--line)] overflow-y-auto px-4 py-4">
+                <div className="space-y-4">
+                  <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                    <p className="eyebrow text-[9px] text-[var(--muted)]">Coordination notes</p>
+                    <ul className="mt-3 space-y-2 text-sm leading-6">
+                      <li className="flex gap-2">
+                        <span className="text-[var(--muted)]">•</span>
+                        <span>Keep company context visible while contacts stay people-first.</span>
+                      </li>
+                      <li className="flex gap-2">
+                        <span className="text-[var(--muted)]">•</span>
+                        <span>Make sure notes, tags, and ownership carry across modules.</span>
+                      </li>
+                    </ul>
+                  </section>
+
+                  <section className="rounded-[20px] border border-[rgba(144,50,61,0.3)] bg-[rgba(73,17,28,0.18)] p-4">
+                    <p className="eyebrow text-[9px] text-[var(--amber)]">Account pressure points</p>
+                    <ul className="mt-3 space-y-2 text-sm leading-6">
+                      <li className="flex gap-2">
+                        <span className="text-[var(--muted)]">•</span>
+                        <span>{selectedCompany.openConversations} open threads need unified context.</span>
+                      </li>
+                      <li className="flex gap-2">
+                        <span className="text-[var(--muted)]">•</span>
+                        <span>{selectedCompany.activeContacts} active contacts should stay aligned on the same account state.</span>
+                      </li>
+                    </ul>
+                  </section>
+
+                  <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                    <p className="eyebrow text-[9px] text-[var(--muted)]">Module links</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link
+                        href="/contacts"
+                        className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px]"
+                      >
+                        Contacts
+                      </Link>
+                      <Link
+                        href="/inbox"
+                        className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px]"
+                      >
+                        Inbox
+                      </Link>
+                      <Link
+                        href="/dashboard"
+                        className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px]"
+                      >
+                        Dashboard
+                      </Link>
+                    </div>
+                  </section>
+                </div>
+              </aside>
+            </div>
+          </>
+        ) : (
+          <div className="flex h-full items-center justify-center px-8">
+            <div className="max-w-xl rounded-[24px] border border-[var(--line)] bg-[var(--panel-strong)] p-8 text-center">
+              <p className="eyebrow text-[10px] text-[var(--muted)]">Companies module</p>
+              <h2 className="mt-3 text-2xl font-semibold">
+                Choose an account to open its shared workspace
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+                Companies stay lightweight in V1, but they now connect directly to
+                contacts and conversation load so information carries across modules.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

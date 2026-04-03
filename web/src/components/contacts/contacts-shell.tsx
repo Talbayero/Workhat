@@ -218,7 +218,12 @@ export function ContactsShell({ selectedContactId }: ContactsShellProps) {
                     {company ? (
                       <div className="mt-3 space-y-3 text-sm">
                         <div>
-                          <p className="font-medium">{company.name}</p>
+                          <Link
+                            href={`/companies/${company.id}`}
+                            className="font-medium transition-colors hover:text-[var(--moss)]"
+                          >
+                            {company.name}
+                          </Link>
                           <p className="text-[var(--muted)]">{company.industry}</p>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
@@ -252,6 +257,17 @@ export function ContactsShell({ selectedContactId }: ContactsShellProps) {
                         Open inbox
                       </Link>
                     </div>
+
+                    {company ? (
+                      <div className="mt-2">
+                        <Link
+                          href={`/companies/${company.id}`}
+                          className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+                        >
+                          Open company record
+                        </Link>
+                      </div>
+                    ) : null}
 
                     <div className="mt-3 space-y-3">
                       {linkedConversations.map((conversation) => (

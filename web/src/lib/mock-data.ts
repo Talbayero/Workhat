@@ -394,3 +394,11 @@ export function getCompanyById(id: string) {
 export function getConversationsForContact(contactId: string) {
   return conversations.filter((conversation) => conversation.contactId === contactId);
 }
+
+export function getContactsForCompany(companyId: string) {
+  return contacts.filter((contact) => contact.companyId === companyId);
+}
+
+export function getConversationsForCompany(companyId: string) {
+  return conversations.filter((conversation) => conversation.companyId === companyId);
+}
