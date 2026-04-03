@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
 
@@ -335,6 +336,12 @@ export function ThreadWorkspace({
                   </p>
                   <p className="mt-1 text-sm">{conversation.profile.tier}</p>
                 </div>
+                <Link
+                  href={`/contacts/${conversation.contactId}`}
+                  className="inline-flex rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] hover:bg-[var(--moss)] hover:text-white"
+                >
+                  Open full contact record
+                </Link>
               </div>
 
               {/* Notes */}

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { insightCards } from "@/lib/mock-data";
 
 const dashboardSections = [
@@ -61,6 +63,21 @@ export default function DashboardPage() {
               </p>
             </article>
           ))}
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/inbox"
+            className="rounded-full bg-[var(--moss)] px-5 py-3 text-sm font-medium text-white"
+          >
+            Open inbox
+          </Link>
+          <Link
+            href="/contacts"
+            className="rounded-full border border-[var(--line-strong)] px-5 py-3 text-sm font-medium"
+          >
+            Open contacts
+          </Link>
         </div>
       </div>
     </main>

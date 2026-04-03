@@ -1,8 +1,43 @@
 export type RiskLevel = "green" | "yellow" | "red";
 
+export type ContactRecord = {
+  id: string;
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  companyId: string;
+  companyName: string;
+  email: string;
+  phone: string;
+  owner: string;
+  tier: string;
+  status: "active" | "watch" | "vip";
+  tags: string[];
+  lastActivity: string;
+  openConversationCount: number;
+  notes: string[];
+  openIssues: string[];
+  editableFields: {
+    preferredChannel: string;
+    location: string;
+    lifecycleStage: string;
+  };
+};
+
+export type CompanyRecord = {
+  id: string;
+  name: string;
+  industry: string;
+  accountOwner: string;
+  activeContacts: number;
+  openConversations: number;
+};
+
 export type InboxConversation = {
   id: string;
+  contactId: string;
   customerName: string;
+  companyId: string;
   companyName: string;
   subject: string;
   preview: string;
@@ -46,14 +81,145 @@ export const inboxViews = [
 
 export const insightCards = [
   { label: "AI draft acceptance", value: "68%", delta: "+9% this week" },
-  { label: "Avg. edit intensity", value: "24%", delta: "-6% after SOP upload" },
-  { label: "Top failure pattern", value: "Missing order context", delta: "31 flagged threads" },
+  {
+    label: "Avg. edit intensity",
+    value: "24%",
+    delta: "-6% after SOP upload",
+  },
+  {
+    label: "Top failure pattern",
+    value: "Missing order context",
+    delta: "31 flagged threads",
+  },
 ] as const;
+
+export const contactsListViews = [
+  { id: "all", label: "All contacts", count: 138 },
+  { id: "active", label: "Active", count: 92 },
+  { id: "vip", label: "VIP", count: 18 },
+  { id: "watch", label: "Watch list", count: 14 },
+  { id: "manual", label: "Manual entries", count: 27 },
+] as const;
+
+export const contactFilters = [
+  "Name",
+  "Company",
+  "Last activity",
+  "Tags",
+  "Owner",
+  "Risk",
+  "Open conversations",
+  "VIP status",
+] as const;
+
+export const companies: CompanyRecord[] = [
+  {
+    id: "company-northstar-home",
+    name: "Northstar Home",
+    industry: "Home installations",
+    accountOwner: "Marcos",
+    activeContacts: 4,
+    openConversations: 3,
+  },
+  {
+    id: "company-peak-trail",
+    name: "Peak Trail Co.",
+    industry: "Outdoor retail",
+    accountOwner: "Anika",
+    activeContacts: 2,
+    openConversations: 2,
+  },
+  {
+    id: "company-fieldmade",
+    name: "Fieldmade Studio",
+    industry: "Design services",
+    accountOwner: "Marcos",
+    activeContacts: 3,
+    openConversations: 1,
+  },
+];
+
+export const contacts: ContactRecord[] = [
+  {
+    id: "contact-nina-patel",
+    fullName: "Nina Patel",
+    firstName: "Nina",
+    lastName: "Patel",
+    companyId: "company-northstar-home",
+    companyName: "Northstar Home",
+    email: "nina@northstarhome.com",
+    phone: "+1 (415) 555-0182",
+    owner: "Marcos",
+    tier: "Priority account",
+    status: "vip",
+    tags: ["shipping", "vip"],
+    lastActivity: "3 min ago",
+    openConversationCount: 2,
+    notes: [
+      "Prefers concrete timelines over generic reassurance.",
+      "Handles installs for end clients; delays create downstream revenue impact.",
+    ],
+    openIssues: ["Shipment delay", "Needs updated ETA"],
+    editableFields: {
+      preferredChannel: "Email",
+      location: "San Francisco, CA",
+      lifecycleStage: "Active customer",
+    },
+  },
+  {
+    id: "contact-david-rojas",
+    fullName: "David Rojas",
+    firstName: "David",
+    lastName: "Rojas",
+    companyId: "company-peak-trail",
+    companyName: "Peak Trail Co.",
+    email: "david@peaktrail.co",
+    phone: "+1 (206) 555-0120",
+    owner: "Anika",
+    tier: "Growth account",
+    status: "active",
+    tags: ["refund", "policy"],
+    lastActivity: "18 min ago",
+    openConversationCount: 1,
+    notes: ["Long-term customer with high reorder frequency."],
+    openIssues: ["Return fee exception"],
+    editableFields: {
+      preferredChannel: "Email",
+      location: "Seattle, WA",
+      lifecycleStage: "Expansion",
+    },
+  },
+  {
+    id: "contact-sofia-nguyen",
+    fullName: "Sofia Nguyen",
+    firstName: "Sofia",
+    lastName: "Nguyen",
+    companyId: "company-fieldmade",
+    companyName: "Fieldmade Studio",
+    email: "sofia@fieldmade.studio",
+    phone: "+1 (310) 555-0194",
+    owner: "Marcos",
+    tier: "Standard",
+    status: "watch",
+    tags: ["billing"],
+    lastActivity: "2 h ago",
+    openConversationCount: 0,
+    notes: ["Finance requests precise terminology."],
+    openIssues: [],
+    editableFields: {
+      preferredChannel: "Email",
+      location: "Los Angeles, CA",
+      lifecycleStage: "Active customer",
+    },
+  },
+];
 
 export const conversations: InboxConversation[] = [
   {
     id: "conv-shipping-delay",
+    contactId: "contact-nina-patel",
     customerName: "Nina Patel",
+    companyId: "company-northstar-home",
     companyName: "Northstar Home",
     subject: "Urgent: order still shows label created",
     preview:
@@ -117,7 +283,9 @@ export const conversations: InboxConversation[] = [
   },
   {
     id: "conv-refund-policy",
+    contactId: "contact-david-rojas",
     customerName: "David Rojas",
+    companyId: "company-peak-trail",
     companyName: "Peak Trail Co.",
     subject: "Can you make an exception on the return fee?",
     preview:
@@ -169,7 +337,9 @@ export const conversations: InboxConversation[] = [
   },
   {
     id: "conv-billing-copy",
+    contactId: "contact-sofia-nguyen",
     customerName: "Sofia Nguyen",
+    companyId: "company-fieldmade",
     companyName: "Fieldmade Studio",
     subject: "Need invoice wording updated for our finance team",
     preview:
@@ -211,4 +381,16 @@ export const conversations: InboxConversation[] = [
 
 export function getConversationById(id: string) {
   return conversations.find((conversation) => conversation.id === id);
+}
+
+export function getContactById(id: string) {
+  return contacts.find((contact) => contact.id === id);
+}
+
+export function getCompanyById(id: string) {
+  return companies.find((company) => company.id === id);
+}
+
+export function getConversationsForContact(contactId: string) {
+  return conversations.filter((conversation) => conversation.contactId === contactId);
 }
