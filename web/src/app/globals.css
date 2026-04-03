@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3f0e8;
+  --foreground: #122620;
+  --panel: rgba(255, 252, 246, 0.88);
+  --panel-strong: #fffdf8;
+  --line: rgba(18, 38, 32, 0.12);
+  --line-strong: rgba(18, 38, 32, 0.22);
+  --muted: #6e756d;
+  --sage: #cdd8c9;
+  --moss: #17463b;
+  --moss-strong: #102d26;
+  --amber: #d9872e;
+  --rose: #b85845;
+  --sky: #b9d8d1;
+  --shadow: 0 20px 60px rgba(39, 59, 51, 0.12);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Aptos", "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", "Cascadia Code", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background:
+    radial-gradient(circle at top left, rgba(185, 216, 209, 0.9), transparent 28%),
+    radial-gradient(circle at right center, rgba(217, 135, 46, 0.12), transparent 24%),
+    linear-gradient(180deg, #f7f4ec 0%, #ebe5d8 100%);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Aptos", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(23, 70, 59, 0.18);
+}
+
+.grain-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.92), rgba(255, 250, 243, 0.92)),
+    radial-gradient(circle at top, rgba(185, 216, 209, 0.14), transparent 55%);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow);
+}
+
+.eyebrow {
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Cascadia Code", monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.status-dot {
+  display: inline-block;
+  height: 0.65rem;
+  width: 0.65rem;
+  border-radius: 9999px;
+}
+
+.status-dot-green {
+  background: #3f946c;
+}
+
+.status-dot-yellow {
+  background: var(--amber);
+}
+
+.status-dot-red {
+  background: var(--rose);
+}
+
+.scroll-soft {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(18, 38, 32, 0.2) transparent;
+}

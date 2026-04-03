@@ -1,0 +1,38 @@
+# Workspace
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Editors and tooling
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+coverage/
+*.tsbuildinfo
+
+# Vercel
+.vercel/
+
+# Nested app artifacts
+web/node_modules/
+web/.next/
+web/out/
+web/.vercel/
+
+# Local Supabase state
+supabase/.temp/
+supabase/.branches/
+supabase/.secrets/
