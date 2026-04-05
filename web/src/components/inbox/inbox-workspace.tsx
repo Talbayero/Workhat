@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import {
   conversations,
+  conversationStatusLabel,
   filterConversations,
   getConversationById,
   inboxViews,
@@ -115,14 +116,9 @@ export function InboxWorkspace({ selectedConversationId, activeView = "all" }: I
                     <span className="rounded-full bg-[var(--sage)] px-2 py-0.5 text-[10px] font-medium">
                       {conversation.intent}
                     </span>
-                    {conversation.tags.slice(0, 1).map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px]"
-                      >
-                        {tag}
-                      </span>
-                    ))}
+                    <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+                      {conversationStatusLabel[conversation.status]}
+                    </span>
                   </div>
                   <span
                     className={`status-dot shrink-0 ${riskDot[conversation.riskLevel]}`}

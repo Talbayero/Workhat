@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import {
-  knowledgeEntries,
   knowledgeCategories,
+  filterKnowledgeEntries,
   getKnowledgeEntryById,
   type KnowledgeEntry,
   type KnowledgeCategory,
@@ -11,6 +11,7 @@ import {
 
 type KnowledgeShellProps = {
   selectedEntryId?: string;
+  activeCategory?: KnowledgeCategory | "all";
 };
 
 const categoryColors: Record<KnowledgeCategory, string> = {
@@ -41,8 +42,9 @@ function getSelected(id?: string): KnowledgeEntry | null {
   return entry;
 }
 
-export function KnowledgeShell({ selectedEntryId }: KnowledgeShellProps) {
+export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: KnowledgeShellProps) {
   const selected = getSelected(selectedEntryId);
+  const filtered = filterKnowledgeEntries(activeCategory);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -67,26 +69,39 @@ export function KnowledgeShell({ selectedEntryId }: KnowledgeShellProps) {
         {/* Category filters */}
         <div className="shrink-0 border-b border-[var(--line)] px-3 py-3">
           <div className="flex flex-col gap-0.5">
-            {knowledgeCategories.map((cat) => (
-              <div
-                key={cat.id}
-                className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-1.5 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
-              >
-                <span>{cat.label}</span>
-                <span className="text-xs">{cat.count}</span>
-              </div>
-            ))}
+            {knowledgeCategories.map((cat) => {
+              const isActive = cat.id === activeCategory;
+              return (
+                <Link
+                  key={cat.id}
+                  href={cat.id === "all" ? "/knowledge" : `/knowledge?category=${cat.id}`}
+                  className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-sm transition-colors ${
+                    isActive
+                      ? "bg-[var(--sage)] text-[var(--foreground)]"
+                      : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <span>{cat.label}</span>
+                  <span className="text-xs">{cat.count}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
 
         {/* Entry rows */}
         <div className="scroll-soft flex-1 space-y-2 overflow-y-auto p-3">
-          {knowledgeEntries.map((entry) => {
+          {filtered.length === 0 && (
+            <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
+              No entries in this category yet.
+            </p>
+          )}
+          {filtered.map((entry) => {
             const isSelected = entry.id === selectedEntryId;
             return (
               <Link
                 key={entry.id}
-                href={`/knowledge/${entry.id}`}
+                href={`/knowledge/${entry.id}${activeCategory !== "all" ? `?category=${activeCategory}` : ""}`}
                 className={`block rounded-[20px] border p-3.5 transition-colors ${
                   isSelected
                     ? "border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"

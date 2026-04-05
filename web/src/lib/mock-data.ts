@@ -529,6 +529,11 @@ export function getKnowledgeEntryById(id: string) {
   return knowledgeEntries.find((entry) => entry.id === id);
 }
 
+export function filterKnowledgeEntries(category: KnowledgeCategory | "all") {
+  if (category === "all") return knowledgeEntries;
+  return knowledgeEntries.filter((e) => e.category === category);
+}
+
 // ─── Display helpers ──────────────────────────────────────────────────────────
 
 export const conversationStatusLabel: Record<InboxConversation["status"], string> = {

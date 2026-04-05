@@ -1,5 +1,10 @@
 import { CompaniesShell } from "@/components/companies/companies-shell";
 
-export default function CompaniesPage() {
-  return <CompaniesShell />;
+type CompaniesPageProps = {
+  searchParams: Promise<{ view?: string }>;
+};
+
+export default async function CompaniesPage({ searchParams }: CompaniesPageProps) {
+  const { view } = await searchParams;
+  return <CompaniesShell activeView={view} />;
 }

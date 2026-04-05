@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
+import { conversationStatusLabel } from "@/lib/mock-data";
+import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
 
 type LocalMessage = InboxConversation["messages"][number];
-import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
+type ConversationStatus = InboxConversation["status"];
 
 type ActivePanel = "ai" | "profile" | null;
 type ComposerMode = "reply" | "note";
@@ -54,6 +56,8 @@ export function ThreadWorkspace({
   const [pendingSend, setPendingSend] = useState(false);
   const [lastEditRecord, setLastEditRecord] = useState<EditRecord | null>(null);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>(conversation.messages);
+  const [status, setStatus] = useState<ConversationStatus>(conversation.status);
+  const [assignee] = useState(conversation.assignee);
 
   function togglePanel(panel: ActivePanel) {
     setActivePanel((prev) => (prev === panel ? null : panel));
@@ -117,7 +121,7 @@ export function ThreadWorkspace({
         {/* Thread header */}
         <div className="shrink-0 border-b border-[var(--line)] px-5 py-4">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               {/* Clicking customer name opens profile panel */}
               <button
                 onClick={() => togglePanel("profile")}
@@ -131,19 +135,51 @@ export function ThreadWorkspace({
                   {conversation.customerName}
                 </h2>
               </button>
-              <p className="mt-1 text-sm text-[var(--muted)]">
+              <p className="mt-1 truncate text-sm text-[var(--muted)]">
                 {conversation.subject}
               </p>
+              {/* Status + assignee row */}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium ${
+                  status === "resolved" || status === "archived"
+                    ? "border-[var(--line)] text-[var(--muted)]"
+                    : status === "waiting_on_customer"
+                    ? "border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.1)] text-[var(--foreground)]"
+                    : "border-[rgba(169,146,125,0.35)] bg-[rgba(169,146,125,0.08)] text-[var(--foreground)]"
+                }`}>
+                  {conversationStatusLabel[status]}
+                </span>
+                {assignee && (
+                  <span className="text-[10px] text-[var(--muted)]">
+                    Assigned to {assignee}
+                  </span>
+                )}
+              </div>
             </div>
 
-            {/* Confidence indicator */}
-            <div className="shrink-0 flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2">
-              <span
-                className={`status-dot ${confidenceDot[conversation.aiConfidence]}`}
-              />
-              <span className="text-xs text-[var(--muted)]">
-                {confidenceLabel[conversation.aiConfidence]}
-              </span>
+            {/* Right side: AI confidence + Resolve */}
+            <div className="shrink-0 flex flex-col items-end gap-2">
+              <div className="flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2">
+                <span className={`status-dot ${confidenceDot[conversation.aiConfidence]}`} />
+                <span className="text-xs text-[var(--muted)]">
+                  {confidenceLabel[conversation.aiConfidence]}
+                </span>
+              </div>
+              {status !== "resolved" && status !== "archived" ? (
+                <button
+                  onClick={() => setStatus("resolved")}
+                  className="rounded-full border border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.08)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[rgba(120,161,122,0.18)]"
+                >
+                  ✓ Resolve
+                </button>
+              ) : (
+                <button
+                  onClick={() => setStatus("waiting_on_customer")}
+                  className="rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+                >
+                  Reopen
+                </button>
+              )}
             </div>
           </div>
         </div>

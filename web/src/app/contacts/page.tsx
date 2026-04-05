@@ -1,5 +1,10 @@
 import { ContactsShell } from "@/components/contacts/contacts-shell";
 
-export default function ContactsPage() {
-  return <ContactsShell />;
+type ContactsPageProps = {
+  searchParams: Promise<{ view?: string }>;
+};
+
+export default async function ContactsPage({ searchParams }: ContactsPageProps) {
+  const { view } = await searchParams;
+  return <ContactsShell activeView={view} />;
 }

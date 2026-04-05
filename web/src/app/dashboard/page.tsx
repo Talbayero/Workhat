@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { computeEditStats, getEditLog, type EditType } from "@/lib/edit-analysis";
 import { conversations } from "@/lib/mock-data";
 
@@ -24,14 +25,19 @@ const editTypeColor: Record<EditType, string> = {
   full_rewrite: "status-dot-red",
 };
 
-// Threads that need QA attention: high-risk or low AI confidence
-const qaQueue = conversations.filter(
-  (c) => c.riskLevel === "red" || c.aiConfidence === "red" || c.aiConfidence === "yellow",
+// Base QA queue: red risk or low AI confidence only
+const redQueue = conversations.filter(
+  (c) => c.riskLevel === "red" || c.aiConfidence === "red",
+);
+const yellowQueue = conversations.filter(
+  (c) => c.riskLevel === "yellow" || c.aiConfidence === "yellow",
 );
 
 export default function DashboardPage() {
   const stats = computeEditStats();
   const log = getEditLog();
+  const [showYellow, setShowYellow] = useState(false);
+  const qaQueue = showYellow ? [...redQueue, ...yellowQueue] : redQueue;
 
   const metricCards = [
     {
@@ -186,20 +192,31 @@ export default function DashboardPage() {
 
         {/* QA Review Queue */}
         <section className="grain-panel rounded-[24px] border border-[var(--line)] p-5">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-start justify-between gap-3">
             <div>
               <p className="eyebrow text-[9px] text-[var(--muted)]">QA review queue</p>
               <h2 className="mt-1 text-base font-semibold">
                 Threads needing attention
               </h2>
               <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                High-risk threads and low AI confidence conversations. Review
-                before they escalate.
+                Red-flagged threads and low AI confidence conversations.
               </p>
             </div>
-            <span className="rounded-full bg-[rgba(144,50,61,0.18)] border border-[rgba(144,50,61,0.3)] px-3 py-1.5 text-xs font-medium">
-              {qaQueue.length} flagged
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => setShowYellow(!showYellow)}
+                className={`rounded-full border px-3 py-1.5 text-[10px] font-medium transition-colors ${
+                  showYellow
+                    ? "border-[rgba(169,146,125,0.4)] bg-[rgba(169,146,125,0.12)] text-[var(--foreground)]"
+                    : "border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {showYellow ? "Showing review recommended" : "Show review recommended"}
+              </button>
+              <span className="rounded-full bg-[rgba(144,50,61,0.18)] border border-[rgba(144,50,61,0.3)] px-3 py-1.5 text-xs font-medium">
+                {qaQueue.length} flagged
+              </span>
+            </div>
           </div>
 
           {qaQueue.length === 0 ? (

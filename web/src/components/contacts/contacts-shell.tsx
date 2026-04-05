@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { useState } from "react";
 
 import {
   contactFilters,
@@ -14,7 +17,31 @@ import {
 
 type ContactsShellProps = {
   selectedContactId?: string;
+  activeView?: string;
 };
+
+function Phase2Modal({ title, onClose }: { title: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="mx-4 w-full max-w-sm rounded-[24px] border border-[var(--line)] bg-[var(--panel)] p-6">
+        <p className="eyebrow text-[10px] text-[var(--muted)]">Coming in Phase 2</p>
+        <h3 className="mt-2 text-lg font-semibold">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          This action will be fully functional once Supabase is connected. For now
+          the data layer is read-only mock data.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function getSelectedContact(selectedContactId?: string): ContactRecord | null {
   if (!selectedContactId) {
@@ -48,7 +75,8 @@ function ContactStatusPill({ status }: { status: ContactRecord["status"] }) {
   );
 }
 
-export function ContactsShell({ selectedContactId }: ContactsShellProps) {
+export function ContactsShell({ selectedContactId, activeView = "all" }: ContactsShellProps) {
+  const [modal, setModal] = useState<string | null>(null);
   const selectedContact = getSelectedContact(selectedContactId);
   const company = selectedContact ? getCompanyById(selectedContact.companyId) : null;
   const linkedConversations = selectedContact
@@ -56,12 +84,17 @@ export function ContactsShell({ selectedContactId }: ContactsShellProps) {
     : [];
 
   return (
+    <>
+      {modal && <Phase2Modal title={modal} onClose={() => setModal(null)} />}
     <div className="flex h-full overflow-hidden">
       <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--line)]">
         <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-sm font-semibold">Contacts</h1>
-            <button className="rounded-full bg-[var(--moss)] px-3 py-1.5 text-[11px] font-medium text-white">
+            <button
+              onClick={() => setModal("New contact")}
+              className="rounded-full bg-[var(--moss)] px-3 py-1.5 text-[11px] font-medium text-white"
+            >
               New contact
             </button>
           </div>
@@ -89,15 +122,23 @@ export function ContactsShell({ selectedContactId }: ContactsShellProps) {
 
         <div className="shrink-0 border-b border-[var(--line)] px-3 py-3">
           <div className="flex flex-col gap-0.5">
-            {contactsListViews.map((view) => (
-              <div
-                key={view.id}
-                className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-1.5 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
-              >
-                <span>{view.label}</span>
-                <span className="text-xs">{view.count}</span>
-              </div>
-            ))}
+            {contactsListViews.map((view) => {
+              const isActive = view.id === activeView;
+              return (
+                <Link
+                  key={view.id}
+                  href={view.id === "all" ? "/contacts" : `/contacts?view=${view.id}`}
+                  className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-sm transition-colors ${
+                    isActive
+                      ? "bg-[var(--sage)] text-[var(--foreground)]"
+                      : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <span>{view.label}</span>
+                  <span className="text-xs">{view.count}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
 
@@ -173,12 +214,18 @@ export function ContactsShell({ selectedContactId }: ContactsShellProps) {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <button className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium">
+                  <button
+                    onClick={() => setModal("Edit contact info")}
+                    className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium"
+                  >
                     Edit info
                   </button>
-                  <button className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white">
+                  <Link
+                    href="/inbox"
+                    className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white"
+                  >
                     Create conversation
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -374,5 +421,6 @@ export function ContactsShell({ selectedContactId }: ContactsShellProps) {
         )}
       </div>
     </div>
+    </>
   );
 }

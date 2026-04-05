@@ -56,11 +56,20 @@ function FieldRow({
   );
 }
 
-function TextInput({ defaultValue, placeholder }: { defaultValue?: string; placeholder?: string }) {
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
   return (
     <input
       type="text"
-      defaultValue={defaultValue}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       className="w-64 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
     />
@@ -89,23 +98,32 @@ function Toggle({ defaultChecked = false }: { defaultChecked?: boolean }) {
 
 // ── Tab content ────────────────────────────────────────────────────────────────
 
-function OrgTab() {
+function OrgTab({ onDirty }: { onDirty: () => void }) {
+  const [orgName, setOrgName] = useState("Work Hat");
+  const [supportEmail, setSupportEmail] = useState("support@work-hat.com");
+  const [timezone, setTimezone] = useState("America/New_York");
+  const [language, setLanguage] = useState("English (US)");
+
+  function field(setter: (v: string) => void) {
+    return (v: string) => { setter(v); onDirty(); };
+  }
+
   return (
     <div className="space-y-5">
       <SectionCard>
         <p className="eyebrow text-[9px] text-[var(--muted)]">Workspace</p>
         <div className="mt-1 divide-y divide-[var(--line)]">
           <FieldRow label="Organization name" description="Shown on invoices and team notifications.">
-            <TextInput defaultValue="Work Hat" />
+            <TextInput value={orgName} onChange={field(setOrgName)} />
           </FieldRow>
           <FieldRow label="Support email" description="Replies go out from this address.">
-            <TextInput defaultValue="support@work-hat.com" />
+            <TextInput value={supportEmail} onChange={field(setSupportEmail)} />
           </FieldRow>
           <FieldRow label="Timezone" description="Used for SLA calculations and queue scheduling.">
-            <TextInput defaultValue="America/New_York" />
+            <TextInput value={timezone} onChange={field(setTimezone)} />
           </FieldRow>
           <FieldRow label="Default language" description="Language used for AI draft generation.">
-            <TextInput defaultValue="English (US)" />
+            <TextInput value={language} onChange={field(setLanguage)} />
           </FieldRow>
         </div>
       </SectionCard>
@@ -128,7 +146,7 @@ function OrgTab() {
   );
 }
 
-function TeamTab() {
+function TeamTab({ onDirty: _onDirty }: { onDirty: () => void }) {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4">
@@ -199,7 +217,14 @@ function TeamTab() {
   );
 }
 
-function ChannelsTab() {
+function ChannelsTab({ onDirty }: { onDirty: () => void }) {
+  const [inbound, setInbound] = useState("support@work-hat.com");
+  const [fromName, setFromName] = useState("Work Hat Support");
+
+  function field(setter: (v: string) => void) {
+    return (v: string) => { setter(v); onDirty(); };
+  }
+
   return (
     <div className="space-y-5">
       <SectionCard>
@@ -215,10 +240,10 @@ function ChannelsTab() {
         </div>
         <div className="mt-4 divide-y divide-[var(--line)]">
           <FieldRow label="Inbound address" description="Forward your support mailbox here.">
-            <TextInput defaultValue="support@work-hat.com" />
+            <TextInput value={inbound} onChange={field(setInbound)} />
           </FieldRow>
           <FieldRow label="From name" description="Shown in the customer's inbox.">
-            <TextInput defaultValue="Work Hat Support" />
+            <TextInput value={fromName} onChange={field(setFromName)} />
           </FieldRow>
           <FieldRow label="Auto-assign new threads" description="Round-robin to active agents.">
             <Toggle defaultChecked />
@@ -244,7 +269,14 @@ function ChannelsTab() {
   );
 }
 
-function AiTab() {
+function AiTab({ onDirty }: { onDirty: () => void }) {
+  const [model, setModel] = useState("gpt-4o");
+  const [maxTokens, setMaxTokens] = useState("400");
+
+  function field(setter: (v: string) => void) {
+    return (v: string) => { setter(v); onDirty(); };
+  }
+
   return (
     <div className="space-y-5">
       <SectionCard>
@@ -269,13 +301,13 @@ function AiTab() {
         <p className="eyebrow text-[9px] text-[var(--muted)]">Model</p>
         <div className="mt-1 divide-y divide-[var(--line)]">
           <FieldRow label="Draft model" description="Used for reply generation and edit classification.">
-            <TextInput defaultValue="gpt-4o" />
+            <TextInput value={model} onChange={field(setModel)} />
           </FieldRow>
           <FieldRow label="Retrieval" description="Knowledge base entries injected into every draft prompt.">
             <Toggle defaultChecked />
           </FieldRow>
           <FieldRow label="Max draft tokens" description="Keeps replies concise.">
-            <TextInput defaultValue="400" />
+            <TextInput value={maxTokens} onChange={field(setMaxTokens)} />
           </FieldRow>
         </div>
       </SectionCard>
@@ -371,18 +403,39 @@ function BillingTab() {
   );
 }
 
-const tabContent: Record<SettingsTab, React.ReactNode> = {
-  organization: <OrgTab />,
-  team: <TeamTab />,
-  channels: <ChannelsTab />,
-  ai: <AiTab />,
-  billing: <BillingTab />,
-};
-
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
 export function SettingsShell() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("organization");
+  const [isDirty, setIsDirty] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+
+  function handleDirty() {
+    setIsDirty(true);
+    setSaveStatus("idle");
+  }
+
+  async function handleSave() {
+    setSaveStatus("saving");
+    // Phase 2: PATCH /api/settings with form state
+    await new Promise((r) => setTimeout(r, 600));
+    setSaveStatus("saved");
+    setIsDirty(false);
+    setTimeout(() => setSaveStatus("idle"), 2500);
+  }
+
+  function handleCancel() {
+    setIsDirty(false);
+    setSaveStatus("idle");
+  }
+
+  const tabContent: Record<SettingsTab, React.ReactNode> = {
+    organization: <OrgTab onDirty={handleDirty} />,
+    team: <TeamTab onDirty={handleDirty} />,
+    channels: <ChannelsTab onDirty={handleDirty} />,
+    ai: <AiTab onDirty={handleDirty} />,
+    billing: <BillingTab />,
+  };
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -417,17 +470,33 @@ export function SettingsShell() {
         </div>
 
         {/* Save bar */}
-        <div className="shrink-0 border-t border-[var(--line)] px-6 py-4">
+        <div
+          className={`shrink-0 border-t border-[var(--line)] px-6 py-4 transition-opacity ${
+            isDirty || saveStatus === "saved" ? "opacity-100" : "opacity-40 pointer-events-none"
+          }`}
+        >
           <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
             <p className="text-xs text-[var(--muted)]">
-              Changes are saved per section. Phase 2 wires to Supabase.
+              {saveStatus === "saved"
+                ? "All changes saved."
+                : isDirty
+                ? "You have unsaved changes."
+                : "No unsaved changes."}
             </p>
             <div className="flex gap-2">
-              <button className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium">
+              <button
+                onClick={handleCancel}
+                disabled={!isDirty || saveStatus === "saving"}
+                className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium disabled:opacity-40 transition-opacity"
+              >
                 Cancel
               </button>
-              <button className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white">
-                Save changes
+              <button
+                onClick={handleSave}
+                disabled={!isDirty || saveStatus === "saving"}
+                className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white disabled:opacity-50 transition-opacity min-w-[96px]"
+              >
+                {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : "Save changes"}
               </button>
             </div>
           </div>
