@@ -158,6 +158,22 @@ export const companies: CompanyRecord[] = [
     activeContacts: 3,
     openConversations: 1,
   },
+  {
+    id: "company-brightwave",
+    name: "Brightwave",
+    industry: "SaaS / software",
+    accountOwner: "Jordan",
+    activeContacts: 5,
+    openConversations: 3,
+  },
+  {
+    id: "company-mesa-dental",
+    name: "Mesa Dental Group",
+    industry: "Healthcare",
+    accountOwner: "Anika",
+    activeContacts: 2,
+    openConversations: 2,
+  },
 ];
 
 export const contacts: ContactRecord[] = [
@@ -231,6 +247,78 @@ export const contacts: ContactRecord[] = [
       preferredChannel: "Email",
       location: "Los Angeles, CA",
       lifecycleStage: "Active customer",
+    },
+  },
+  {
+    id: "contact-lena-okafor",
+    fullName: "Lena Okafor",
+    firstName: "Lena",
+    lastName: "Okafor",
+    companyId: "company-brightwave",
+    companyName: "Brightwave",
+    email: "lena@brightwave.io",
+    phone: "+1 (512) 555-0133",
+    owner: "Jordan",
+    tier: "Enterprise",
+    status: "vip",
+    tags: ["integration", "enterprise", "escalated"],
+    lastActivity: "just now",
+    openConversationCount: 2,
+    notes: [
+      "Technical lead — routes all support through herself.",
+      "Escalation-prone when issues are not acknowledged within 1h.",
+    ],
+    openIssues: ["API integration broken after latest deploy", "Onboarding blocked"],
+    editableFields: {
+      preferredChannel: "Email",
+      location: "Austin, TX",
+      lifecycleStage: "Active customer",
+    },
+  },
+  {
+    id: "contact-raj-sharma",
+    fullName: "Raj Sharma",
+    firstName: "Raj",
+    lastName: "Sharma",
+    companyId: "company-mesa-dental",
+    companyName: "Mesa Dental Group",
+    email: "raj@mesadental.com",
+    phone: "+1 (602) 555-0179",
+    owner: "Anika",
+    tier: "Growth account",
+    status: "active",
+    tags: ["billing", "payment"],
+    lastActivity: "45 min ago",
+    openConversationCount: 1,
+    notes: ["Operations manager. Handles billing and vendor relationships."],
+    openIssues: ["Payment failed — subscription at risk"],
+    editableFields: {
+      preferredChannel: "Email",
+      location: "Phoenix, AZ",
+      lifecycleStage: "Renewal risk",
+    },
+  },
+  {
+    id: "contact-priya-chen",
+    fullName: "Priya Chen",
+    firstName: "Priya",
+    lastName: "Chen",
+    companyId: "company-brightwave",
+    companyName: "Brightwave",
+    email: "priya@brightwave.io",
+    phone: "+1 (512) 555-0166",
+    owner: "Jordan",
+    tier: "Enterprise",
+    status: "active",
+    tags: ["access", "onboarding"],
+    lastActivity: "1 h ago",
+    openConversationCount: 1,
+    notes: ["New hire at Brightwave, blocked on account setup."],
+    openIssues: ["Cannot access admin panel"],
+    editableFields: {
+      preferredChannel: "Email",
+      location: "Austin, TX",
+      lifecycleStage: "Onboarding",
     },
   },
 ];
@@ -399,6 +487,291 @@ export const conversations: InboxConversation[] = [
     },
   },
 ];
+
+// ─── Additional conversations ─────────────────────────────────────────────────
+
+conversations.push(
+  // mine + no risk → Marcos, normal
+  {
+    id: "conv-feature-request",
+    contactId: "contact-david-rojas",
+    customerName: "David Rojas",
+    companyId: "company-peak-trail",
+    companyName: "Peak Trail Co.",
+    subject: "Can we get bulk export for order history?",
+    preview: "We need to pull the last 12 months of orders into a spreadsheet for our accountant.",
+    status: "waiting_on_customer",
+    channel: "email",
+    riskLevel: "green",
+    aiConfidence: "green",
+    assignee: "Marcos",
+    lastSeen: "1 h ago",
+    tags: ["feature", "export"],
+    intent: "Feature request",
+    messages: [
+      {
+        id: "m1",
+        sender: "David Rojas",
+        senderType: "customer",
+        timestamp: "10:05",
+        body: "Hi, is there a way to bulk export our full order history as a CSV or Excel file? We need it for end-of-year accounting.",
+      },
+    ],
+    aiDraft: {
+      rationale: "Standard feature inquiry. Bulk export is not in scope for the current plan but can be routed to product.",
+      missingContext: [],
+      suggestions: ["confirm current plan limits", "link to roadmap or submit feedback form"],
+      draftText:
+        "Hi David, bulk CSV export is not available in the current plan, but it's on our product roadmap. I can submit this as a feature request on your behalf — would you like me to do that?",
+    },
+    profile: {
+      email: "david@peaktrail.co",
+      phone: "+1 (206) 555-0120",
+      tier: "Growth account",
+      notes: ["Long-term customer with high reorder frequency."],
+      openIssues: ["Return fee exception"],
+    },
+  },
+
+  // unassigned + red risk + red confidence → shows in high-risk, ai-review, unassigned
+  {
+    id: "conv-api-broken",
+    contactId: "contact-lena-okafor",
+    customerName: "Lena Okafor",
+    companyId: "company-brightwave",
+    companyName: "Brightwave",
+    subject: "API integration returning 403 after your deploy — we are blocked",
+    preview: "Your latest release broke our webhook integration. Our entire onboarding flow is down.",
+    status: "waiting_on_internal",
+    channel: "email",
+    riskLevel: "red",
+    aiConfidence: "red",
+    assignee: "",
+    lastSeen: "just now",
+    tags: ["integration", "escalated", "enterprise"],
+    intent: "Bug report",
+    messages: [
+      {
+        id: "m1",
+        sender: "Lena Okafor",
+        senderType: "customer",
+        timestamp: "11:22",
+        body: "We deployed nothing on our end. Your API started returning 403 on all webhook calls after your maintenance window this morning. Our onboarding pipeline is completely blocked. This is an enterprise-level issue and needs immediate escalation.",
+      },
+      {
+        id: "m2",
+        sender: "Internal note",
+        senderType: "internal",
+        timestamp: "11:25",
+        body: "Confirmed — webhook auth token rotation rolled out at 11:00 AM. Old tokens are now invalid. Engineering is preparing a hotfix but no ETA yet. Do not promise a fix time.",
+      },
+    ],
+    aiDraft: {
+      rationale: "High-severity outage. AI lacks incident details and engineering timeline — do not use this draft without filling in specifics.",
+      missingContext: ["engineering ETA", "incident ID", "which token scopes are affected"],
+      suggestions: [
+        "acknowledge the outage explicitly",
+        "cite the maintenance window as the likely cause",
+        "provide a named point of contact or escalation path",
+      ],
+      draftText:
+        "Hi Lena, I've escalated this to our engineering team. We believe this is related to our maintenance window this morning. I'll follow up with a status update as soon as I have one — I understand this is blocking critical workflows.",
+    },
+    profile: {
+      email: "lena@brightwave.io",
+      phone: "+1 (512) 555-0133",
+      tier: "Enterprise",
+      notes: [
+        "Technical lead — routes all support through herself.",
+        "Escalation-prone when issues are not acknowledged within 1h.",
+      ],
+      openIssues: ["API integration broken after latest deploy", "Onboarding blocked"],
+    },
+  },
+
+  // unassigned + red risk → shows in high-risk, unassigned
+  {
+    id: "conv-payment-failed",
+    contactId: "contact-raj-sharma",
+    customerName: "Raj Sharma",
+    companyId: "company-mesa-dental",
+    companyName: "Mesa Dental Group",
+    subject: "Payment failed — account shows past due",
+    preview: "Our card was declined but the card is valid. Account shows past due now and staff can't log in.",
+    status: "waiting_on_customer",
+    channel: "email",
+    riskLevel: "red",
+    aiConfidence: "yellow",
+    assignee: "",
+    lastSeen: "45 min ago",
+    tags: ["billing", "payment", "churn-risk"],
+    intent: "Billing issue",
+    messages: [
+      {
+        id: "m1",
+        sender: "Raj Sharma",
+        senderType: "customer",
+        timestamp: "09:50",
+        body: "Our auto-renewal payment failed and now our account is locked. Staff can't access the system. The card we have on file is valid — please fix this immediately.",
+      },
+    ],
+    aiDraft: {
+      rationale: "Payment failure with account lockout. Sensitive — do not promise a credit or waiver without checking account status.",
+      missingContext: ["payment processor error code", "card type", "whether lockout is automatic or manual"],
+      suggestions: [
+        "restore access immediately if policy allows",
+        "ask for a retry or alternative payment method",
+        "confirm no data is at risk during lockout",
+      ],
+      draftText:
+        "Hi Raj, I'm sorry for the disruption. I've flagged this with our billing team to investigate the declined charge. While that's being resolved, let me see if I can restore temporary access to keep your team unblocked — I'll follow up within 30 minutes.",
+    },
+    profile: {
+      email: "raj@mesadental.com",
+      phone: "+1 (602) 555-0179",
+      tier: "Growth account",
+      notes: ["Operations manager. Handles billing and vendor relationships."],
+      openIssues: ["Payment failed — subscription at risk"],
+    },
+  },
+
+  // assigned to Jordan + yellow risk + red confidence → ai-review, high-risk
+  {
+    id: "conv-integration-bug",
+    contactId: "contact-nina-patel",
+    customerName: "Nina Patel",
+    companyId: "company-northstar-home",
+    companyName: "Northstar Home",
+    subject: "Zapier connection stopped syncing — orders not updating",
+    preview: "Zapier zap broke after the platform update. New orders aren't syncing to our spreadsheet.",
+    status: "waiting_on_internal",
+    channel: "email",
+    riskLevel: "yellow",
+    aiConfidence: "red",
+    assignee: "Jordan",
+    lastSeen: "30 min ago",
+    tags: ["integration", "zapier"],
+    intent: "Bug report",
+    messages: [
+      {
+        id: "m1",
+        sender: "Nina Patel",
+        senderType: "customer",
+        timestamp: "08:58",
+        body: "Our Zapier automation stopped working last week. New orders aren't showing up in our tracking sheet. The trigger is set correctly — I think something changed on your side.",
+      },
+    ],
+    aiDraft: {
+      rationale: "Integration issue, likely related to API changes. AI has no information about recent API changes — this draft should not be sent without engineering input.",
+      missingContext: ["recent API changelog", "Zapier trigger field names that may have changed", "whether a re-authentication is needed"],
+      suggestions: [
+        "ask the customer to share the Zap error log",
+        "check if trigger field names changed in the last release",
+        "route to integration support if needed",
+      ],
+      draftText:
+        "Hi Nina, I'm sorry the Zapier sync stopped working. Can you share a screenshot of the error from your Zap history? That will help me pinpoint whether this is a configuration change on your end or a field mapping issue on ours.",
+    },
+    profile: {
+      email: "nina@northstarhome.com",
+      phone: "+1 (415) 555-0182",
+      tier: "Priority account",
+      notes: [
+        "Prefers concrete timelines over generic reassurance.",
+        "Handles installs for end clients; delays create downstream revenue impact.",
+      ],
+      openIssues: ["Shipment delay", "Needs updated ETA"],
+    },
+  },
+
+  // mine (Marcos) + green → normal volume
+  {
+    id: "conv-upgrade-inquiry",
+    contactId: "contact-sofia-nguyen",
+    customerName: "Sofia Nguyen",
+    companyId: "company-fieldmade",
+    companyName: "Fieldmade Studio",
+    subject: "Interested in upgrading to the next plan tier",
+    preview: "We are growing our team and the current seat limit is getting tight.",
+    status: "waiting_on_customer",
+    channel: "email",
+    riskLevel: "green",
+    aiConfidence: "green",
+    assignee: "Marcos",
+    lastSeen: "2 h ago",
+    tags: ["upgrade", "expansion"],
+    intent: "Upgrade inquiry",
+    messages: [
+      {
+        id: "m1",
+        sender: "Sofia Nguyen",
+        senderType: "customer",
+        timestamp: "07:40",
+        body: "We've added two people to the team and we're hitting the seat limit. Can you walk me through what the next tier includes and how the upgrade works?",
+      },
+    ],
+    aiDraft: {
+      rationale: "Expansion opportunity. Customer is ready to upgrade — provide plan details and make the process easy.",
+      missingContext: [],
+      suggestions: ["include pricing", "offer a call if they have questions", "confirm billing impact date"],
+      draftText:
+        "Hi Sofia, great to hear the team is growing! The next tier includes up to 10 seats, plus higher AI Action limits and priority support. Upgrading is instant — billing adjusts at your next renewal date. Would you like me to walk you through the options on a quick call, or shall I send over the full plan comparison?",
+    },
+    profile: {
+      email: "sofia@fieldmade.studio",
+      phone: "+1 (310) 555-0194",
+      tier: "Standard",
+      notes: ["Finance requests precise terminology."],
+      openIssues: [],
+    },
+  },
+
+  // unassigned + yellow risk + yellow confidence → high-risk, ai-review, unassigned
+  {
+    id: "conv-access-issue",
+    contactId: "contact-priya-chen",
+    customerName: "Priya Chen",
+    companyId: "company-brightwave",
+    companyName: "Brightwave",
+    subject: "New account — can't access admin panel after invite",
+    preview: "I accepted the invite and set a password, but the admin panel shows 'access denied' on every page.",
+    status: "waiting_on_customer",
+    channel: "email",
+    riskLevel: "yellow",
+    aiConfidence: "yellow",
+    assignee: "",
+    lastSeen: "1 h ago",
+    tags: ["access", "onboarding", "permissions"],
+    intent: "Access issue",
+    messages: [
+      {
+        id: "m1",
+        sender: "Priya Chen",
+        senderType: "customer",
+        timestamp: "10:33",
+        body: "I was added to the Brightwave account as an admin last week. I accepted the invite, set my password, and logged in — but every section shows 'access denied'. I can't do anything.",
+      },
+    ],
+    aiDraft: {
+      rationale: "Likely a role/permissions mismatch. The invite may have defaulted to a non-admin role. Verify in the admin panel before responding.",
+      missingContext: ["user role assigned at invite time", "whether another admin confirmed the role"],
+      suggestions: [
+        "ask the account owner to verify the assigned role",
+        "direct the customer to Settings → Team Members if they have access",
+        "check for invite expiry issues",
+      ],
+      draftText:
+        "Hi Priya, this sounds like a permissions mismatch — the invite may have been set to a non-admin role. Could you ask the person who invited you to check your role in Settings → Team Members? If it shows anything other than Admin, they can update it and you should have access immediately.",
+    },
+    profile: {
+      email: "priya@brightwave.io",
+      phone: "+1 (512) 555-0166",
+      tier: "Enterprise",
+      notes: ["New hire at Brightwave, blocked on account setup."],
+      openIssues: ["Cannot access admin panel"],
+    },
+  }
+);
 
 export function getConversationById(id: string) {
   return conversations.find((conversation) => conversation.id === id);
