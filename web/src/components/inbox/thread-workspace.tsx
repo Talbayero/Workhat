@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
+
+type LocalMessage = InboxConversation["messages"][number];
 import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
 
 type ActivePanel = "ai" | "profile" | null;
@@ -51,6 +53,7 @@ export function ThreadWorkspace({
   const [replyText, setReplyText] = useState("");
   const [pendingSend, setPendingSend] = useState(false);
   const [lastEditRecord, setLastEditRecord] = useState<EditRecord | null>(null);
+  const [localMessages, setLocalMessages] = useState<LocalMessage[]>(conversation.messages);
 
   function togglePanel(panel: ActivePanel) {
     setActivePanel((prev) => (prev === panel ? null : panel));
@@ -75,6 +78,19 @@ export function ThreadWorkspace({
   }
 
   function confirmSend() {
+    const now = new Date();
+    const timestamp = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+
+    // Optimistically append the message to the thread
+    const newMessage: LocalMessage = {
+      id: `local-${Date.now()}`,
+      sender: composerMode === "note" ? "Internal note" : "You (agent)",
+      senderType: composerMode === "note" ? "internal" : "agent",
+      timestamp,
+      body: replyText,
+    };
+    setLocalMessages((prev) => [...prev, newMessage]);
+
     if (composerMode === "reply") {
       // Capture the edit: compare what the agent sent vs the AI draft
       const record = recordEdit(
@@ -84,6 +100,7 @@ export function ThreadWorkspace({
       );
       setLastEditRecord(record);
     }
+
     // Phase 2: POST /api/conversations/:id/reply (or /note for internal notes)
     setReplyText("");
     setPendingSend(false);
@@ -133,7 +150,7 @@ export function ThreadWorkspace({
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto scroll-soft px-5 py-4 space-y-3">
-          {conversation.messages.map((message) => (
+          {localMessages.map((message) => (
             <article
               key={message.id}
               className={`rounded-[20px] border px-4 py-3.5 ${
