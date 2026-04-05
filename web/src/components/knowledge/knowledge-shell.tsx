@@ -1,8 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { useState } from "react";
 
 import {
   knowledgeCategories,
+  knowledgeEntries,
   filterKnowledgeEntries,
   getKnowledgeEntryById,
   type KnowledgeEntry,
@@ -13,6 +17,29 @@ type KnowledgeShellProps = {
   selectedEntryId?: string;
   activeCategory?: KnowledgeCategory | "all";
 };
+
+function Phase2Modal({ title, onClose }: { title: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="mx-4 w-full max-w-sm rounded-[24px] border border-[var(--line)] bg-[var(--panel)] p-6">
+        <p className="eyebrow text-[10px] text-[var(--muted)]">Coming in Phase 2</p>
+        <h3 className="mt-2 text-lg font-semibold">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          This action will be fully functional once Supabase is connected. Knowledge
+          entries will be stored, versioned, and linked to AI draft usage analytics.
+        </p>
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const categoryColors: Record<KnowledgeCategory, string> = {
   policy:
@@ -43,17 +70,31 @@ function getSelected(id?: string): KnowledgeEntry | null {
 }
 
 export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: KnowledgeShellProps) {
+  const [modal, setModal] = useState<string | null>(null);
   const selected = getSelected(selectedEntryId);
   const filtered = filterKnowledgeEntries(activeCategory);
 
+  // Compute real category counts from actual entries
+  const categoryCounts = Object.fromEntries(
+    knowledgeCategories.map((cat) => [
+      cat.id,
+      cat.id === "all" ? knowledgeEntries.length : knowledgeEntries.filter((e) => e.category === cat.id).length,
+    ])
+  ) as Record<KnowledgeCategory | "all", number>;
+
   return (
+    <>
+      {modal && <Phase2Modal title={modal} onClose={() => setModal(null)} />}
     <div className="flex h-full overflow-hidden">
       {/* ── Entry list ── */}
       <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--line)]">
         <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-sm font-semibold">Knowledge base</h1>
-            <button className="rounded-full bg-[var(--moss)] px-3 py-1.5 text-[11px] font-medium text-white">
+            <button
+              onClick={() => setModal("New knowledge entry")}
+              className="rounded-full bg-[var(--moss)] px-3 py-1.5 text-[11px] font-medium text-white"
+            >
               New entry
             </button>
           </div>
@@ -61,9 +102,11 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
             SOPs, policies, tone guides, and product context fed directly into AI
             draft generation.
           </p>
-          <div className="mt-3 rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--muted)]">
-            Search entries, tags, category...
-          </div>
+          <input
+            type="search"
+            placeholder="Search entries, tags, category…"
+            className="mt-3 w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
+          />
         </div>
 
         {/* Category filters */}
@@ -82,7 +125,7 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
                   }`}
                 >
                   <span>{cat.label}</span>
-                  <span className="text-xs">{cat.count}</span>
+                  <span className="text-xs">{categoryCounts[cat.id]}</span>
                 </Link>
               );
             })}
@@ -146,7 +189,10 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium">
+                  <button
+                    onClick={() => setModal("Edit knowledge entry")}
+                    className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium"
+                  >
                     Edit entry
                   </button>
                 </div>
@@ -281,5 +327,6 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
         )}
       </div>
     </div>
+    </>
   );
 }

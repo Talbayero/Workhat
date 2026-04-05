@@ -104,9 +104,11 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
             separate module.
           </p>
 
-          <div className="mt-3 rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--muted)]">
-            Search contacts, companies, tags, owner...
-          </div>
+          <input
+            type="search"
+            placeholder="Search contacts, companies, tags, owner…"
+            className="mt-3 w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
+          />
 
           <div className="mt-3 flex flex-wrap gap-1.5">
             {contactFilters.slice(0, 6).map((filter) => (

@@ -93,9 +93,11 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
             conversation load.
           </p>
 
-          <div className="mt-3 rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--muted)]">
-            Search companies, owners, industry...
-          </div>
+          <input
+            type="search"
+            placeholder="Search companies, owners, industry…"
+            className="mt-3 w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
+          />
         </div>
 
         <div className="shrink-0 border-b border-[var(--line)] px-3 py-3">

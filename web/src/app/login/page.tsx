@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [mode, setMode] = useState<"password" | "magic">("password");
 
   async function handleSubmit(e: React.FormEvent) {
@@ -88,7 +89,14 @@ export default function LoginPage() {
                 <label htmlFor="password" className="eyebrow text-[10px] text-[var(--muted)]">
                   Password
                 </label>
-                <button type="button" className="text-[10px] text-[var(--moss)]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInfo("Password reset will be available once Supabase auth is connected. Use Magic link for now.");
+                    setMode("magic");
+                  }}
+                  className="text-[10px] text-[var(--moss)]"
+                >
                   Forgot password?
                 </button>
               </div>
@@ -102,6 +110,12 @@ export default function LoginPage() {
                 className="mt-1.5 w-full rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
               />
             </div>
+          )}
+
+          {info && (
+            <p className="rounded-[12px] border border-[rgba(169,146,125,0.35)] bg-[rgba(169,146,125,0.08)] px-4 py-3 text-xs text-[var(--foreground)]">
+              {info}
+            </p>
           )}
 
           {error && (

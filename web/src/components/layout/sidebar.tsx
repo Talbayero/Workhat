@@ -106,10 +106,17 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Footer — agent identity (Phase 2 wires to auth session) */}
       <div className="mt-auto shrink-0 border-t border-[var(--line)] px-5 py-4">
-        <p className="eyebrow text-[10px] text-[var(--muted)]">Milestone 1 shell</p>
-        <p className="mt-1 text-xs text-[var(--muted)]">work-hat.com</p>
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--moss)] text-[11px] font-semibold text-white">
+            M
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium">Marcos</p>
+            <p className="truncate text-[10px] text-[var(--muted)]">Agent</p>
+          </div>
+        </div>
       </div>
     </aside>
   );

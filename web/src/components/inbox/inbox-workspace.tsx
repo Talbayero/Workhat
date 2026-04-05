@@ -36,6 +36,11 @@ export function InboxWorkspace({ selectedConversationId, activeView = "all" }: I
   const filtered = filterConversations(conversations, activeView);
   const selected = getSelected(selectedConversationId, filtered);
 
+  // Compute real counts from actual data so they always match the filtered list
+  const viewCounts = Object.fromEntries(
+    inboxViews.map((v) => [v.id, filterConversations(conversations, v.id).length])
+  ) as Record<InboxViewId, number>;
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* ── Conversation list ── */}
@@ -64,11 +69,20 @@ export function InboxWorkspace({ selectedConversationId, activeView = "all" }: I
                   }`}
                 >
                   <span>{view.label}</span>
-                  <span className="text-xs">{view.count}</span>
+                  <span className="text-xs">{viewCounts[view.id]}</span>
                 </Link>
               );
             })}
           </div>
+        </div>
+
+        {/* Search */}
+        <div className="shrink-0 border-b border-[var(--line)] px-3 py-3">
+          <input
+            type="search"
+            placeholder="Search conversations…"
+            className="w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
+          />
         </div>
 
         {/* Conversation rows */}
