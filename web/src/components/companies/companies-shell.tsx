@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import {
   companies,
+  conversationStatusLabel,
   getCompanyById,
   getContactsForCompany,
   getConversationsForCompany,
@@ -223,7 +224,7 @@ export function CompaniesShell({ selectedCompanyId }: CompaniesShellProps) {
                               </p>
                             </div>
                             <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]">
-                              {conversation.status}
+                              {conversationStatusLabel[conversation.status]}
                             </span>
                           </div>
                           <p className="mt-2 text-sm leading-6 text-[var(--muted)]">

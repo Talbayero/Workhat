@@ -36,6 +36,17 @@ const navItems = [
     ),
   },
   {
+    href: "/knowledge",
+    label: "Knowledge",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+        <path d="M3 2.5h8a1.5 1.5 0 011.5 1.5v9A1.5 1.5 0 0111 14.5H3a1.5 1.5 0 01-1.5-1.5V4A1.5 1.5 0 013 2.5z" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M5 6h5M5 8.5h5M5 11h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M12.5 5.5L15 3M12.5 11.5L15 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/dashboard",
     label: "Dashboard",
     icon: (

@@ -1,15 +1,18 @@
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
+import type { InboxViewId } from "@/lib/mock-data";
 
-type InboxConversationPageProps = {
-  params: Promise<{
-    conversationId: string;
-  }>;
+type Props = {
+  params: Promise<{ conversationId: string }>;
+  searchParams: Promise<{ view?: string }>;
 };
 
-export default async function InboxConversationPage({
-  params,
-}: InboxConversationPageProps) {
+export default async function InboxConversationPage({ params, searchParams }: Props) {
   const { conversationId } = await params;
-
-  return <InboxWorkspace selectedConversationId={conversationId} />;
+  const { view } = await searchParams;
+  return (
+    <InboxWorkspace
+      selectedConversationId={conversationId}
+      activeView={(view as InboxViewId) ?? "all"}
+    />
+  );
 }

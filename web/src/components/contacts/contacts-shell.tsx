@@ -5,6 +5,7 @@ import {
   contactFilters,
   contacts,
   contactsListViews,
+  conversationStatusLabel,
   getCompanyById,
   getContactById,
   getConversationsForContact,
@@ -284,7 +285,7 @@ export function ContactsShell({ selectedContactId }: ContactsShellProps) {
                               </p>
                             </div>
                             <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]">
-                              {conversation.status}
+                              {conversationStatusLabel[conversation.status]}
                             </span>
                           </div>
                           <p className="mt-2 text-sm leading-6 text-[var(--muted)]">

@@ -3,15 +3,18 @@ import { notFound } from "next/navigation";
 
 import {
   conversations,
+  filterConversations,
   getConversationById,
   inboxViews,
   type InboxConversation,
+  type InboxViewId,
   type RiskLevel,
 } from "@/lib/mock-data";
 import { ThreadWorkspace } from "./thread-workspace";
 
 type InboxWorkspaceProps = {
   selectedConversationId?: string;
+  activeView?: InboxViewId;
 };
 
 const riskDot: Record<RiskLevel, string> = {
@@ -20,15 +23,17 @@ const riskDot: Record<RiskLevel, string> = {
   red: "status-dot-red",
 };
 
-function getSelected(id?: string): InboxConversation {
-  if (!id) return conversations[0];
+function getSelected(id?: string, list?: InboxConversation[]): InboxConversation {
+  const pool = list ?? conversations;
+  if (!id) return pool[0] ?? conversations[0];
   const c = getConversationById(id);
   if (!c) notFound();
   return c;
 }
 
-export function InboxWorkspace({ selectedConversationId }: InboxWorkspaceProps) {
-  const selected = getSelected(selectedConversationId);
+export function InboxWorkspace({ selectedConversationId, activeView = "all" }: InboxWorkspaceProps) {
+  const filtered = filterConversations(conversations, activeView);
+  const selected = getSelected(selectedConversationId, filtered);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -39,32 +44,45 @@ export function InboxWorkspace({ selectedConversationId }: InboxWorkspaceProps) 
           <div className="flex items-center justify-between">
             <h1 className="text-sm font-semibold">Inbox</h1>
             <span className="rounded-full bg-[var(--sage)] px-2.5 py-1 text-[11px] font-medium">
-              42 open
+              {filtered.length} {activeView === "all" ? "open" : "filtered"}
             </span>
           </div>
 
           {/* View filters */}
           <div className="mt-3 flex flex-col gap-0.5">
-            {inboxViews.map((view) => (
-              <div
-                key={view.id}
-                className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-1.5 text-sm text-[var(--muted)] transition-colors hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
-              >
-                <span>{view.label}</span>
-                <span className="text-xs">{view.count}</span>
-              </div>
-            ))}
+            {inboxViews.map((view) => {
+              const isActive = view.id === activeView;
+              return (
+                <Link
+                  key={view.id}
+                  href={`/inbox?view=${view.id}`}
+                  className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-sm transition-colors ${
+                    isActive
+                      ? "bg-[var(--sage)] text-[var(--foreground)]"
+                      : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <span>{view.label}</span>
+                  <span className="text-xs">{view.count}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
 
         {/* Conversation rows */}
         <div className="flex-1 overflow-y-auto scroll-soft space-y-2 p-3">
-          {conversations.map((conversation) => {
+          {filtered.length === 0 && (
+            <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
+              No conversations match this filter.
+            </p>
+          )}
+          {filtered.map((conversation) => {
             const isSelected = selected.id === conversation.id;
             return (
               <Link
                 key={conversation.id}
-                href={`/inbox/${conversation.id}`}
+                href={`/inbox/${conversation.id}?view=${activeView}`}
                 className={`block rounded-[20px] border p-3.5 transition-colors ${
                   isSelected
                     ? "border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"

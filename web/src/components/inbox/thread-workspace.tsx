@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
+import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
 
 type ActivePanel = "ai" | "profile" | null;
+type ComposerMode = "reply" | "note";
 
 const confidenceLabel: Record<RiskLevel, string> = {
   green: "High confidence",
@@ -45,16 +47,26 @@ export function ThreadWorkspace({
   conversation: InboxConversation;
 }) {
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  const [composerMode, setComposerMode] = useState<ComposerMode>("reply");
   const [replyText, setReplyText] = useState("");
   const [pendingSend, setPendingSend] = useState(false);
+  const [lastEditRecord, setLastEditRecord] = useState<EditRecord | null>(null);
 
   function togglePanel(panel: ActivePanel) {
     setActivePanel((prev) => (prev === panel ? null : panel));
   }
 
   function useDraft() {
+    setComposerMode("reply");
     setReplyText(conversation.aiDraft.draftText);
     setActivePanel(null);
+  }
+
+  function switchMode(mode: ComposerMode) {
+    setComposerMode(mode);
+    setReplyText("");
+    setPendingSend(false);
+    if (mode === "note") setActivePanel(null);
   }
 
   function handleSendClick() {
@@ -63,7 +75,16 @@ export function ThreadWorkspace({
   }
 
   function confirmSend() {
-    // Phase 2: wire to POST /api/conversations/:id/reply
+    if (composerMode === "reply") {
+      // Capture the edit: compare what the agent sent vs the AI draft
+      const record = recordEdit(
+        conversation.id,
+        conversation.aiDraft.draftText,
+        replyText,
+      );
+      setLastEditRecord(record);
+    }
+    // Phase 2: POST /api/conversations/:id/reply (or /note for internal notes)
     setReplyText("");
     setPendingSend(false);
     setActivePanel(null);
@@ -135,21 +156,78 @@ export function ThreadWorkspace({
           ))}
         </div>
 
-        {/* Reply composer */}
+        {/* Edit capture feedback — shows after a reply is confirmed */}
+        {lastEditRecord && (
+          <div className="shrink-0 border-t border-[var(--line)] px-5 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <span className="status-dot status-dot-green" />
+                <span className="text-xs text-[var(--muted)]">
+                  Edit logged —{" "}
+                  <span className="text-[var(--foreground)] capitalize">
+                    {lastEditRecord.editType.replace(/_/g, " ")}
+                  </span>{" "}
+                  · {lastEditRecord.editIntensity}% edit intensity
+                </span>
+              </div>
+              <button
+                onClick={() => setLastEditRecord(null)}
+                className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                aria-label="Dismiss"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Composer */}
         <div className="shrink-0 border-t border-[var(--line)] p-4">
+          {/* Mode tabs */}
+          {!pendingSend && (
+            <div className="mb-3 flex gap-1.5">
+              <button
+                onClick={() => switchMode("reply")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                  composerMode === "reply"
+                    ? "bg-[var(--moss)] text-white"
+                    : "border border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                Reply
+              </button>
+              <button
+                onClick={() => switchMode("note")}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                  composerMode === "note"
+                    ? "bg-[rgba(169,146,125,0.2)] border border-[rgba(169,146,125,0.4)] text-[var(--foreground)]"
+                    : "border border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                Internal note
+              </button>
+            </div>
+          )}
+
           {pendingSend ? (
-            /* Confirmation gate — no AI draft ever sends without explicit approval */
+            /* Confirmation gate — no message ever sends without explicit approval */
             <div className="rounded-[20px] border border-[var(--line-strong)] bg-[var(--panel-strong)] p-4">
-              <p className="text-sm font-medium">Send this reply?</p>
+              <p className="text-sm font-medium">
+                {composerMode === "note" ? "Post this internal note?" : "Send this reply?"}
+              </p>
               <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
                 {replyText}
               </p>
               <div className="mt-3 flex gap-2">
                 <button
                   onClick={confirmSend}
-                  className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white"
+                  className={`rounded-full px-4 py-2 text-xs font-medium text-white ${
+                    composerMode === "note"
+                      ? "bg-[rgba(169,146,125,0.55)]"
+                      : "bg-[var(--moss)]"
+                  }`}
                 >
-                  Confirm send
+                  {composerMode === "note" ? "Confirm note" : "Confirm send"}
                 </button>
                 <button
                   onClick={() => setPendingSend(false)}
@@ -159,7 +237,31 @@ export function ThreadWorkspace({
                 </button>
               </div>
             </div>
+          ) : composerMode === "note" ? (
+            /* Internal note composer — amber tint, no AI draft button */
+            <div className="rounded-[20px] border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.06)] overflow-hidden">
+              <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="Write an internal note — only visible to your team…"
+                rows={3}
+                className="w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm leading-6 text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none"
+              />
+              <div className="flex items-center gap-2 border-t border-[rgba(169,146,125,0.2)] px-3 py-2.5">
+                <button
+                  onClick={handleSendClick}
+                  disabled={!replyText.trim()}
+                  className="rounded-full bg-[rgba(169,146,125,0.45)] px-4 py-1.5 text-xs font-medium text-[var(--foreground)] disabled:opacity-35 disabled:cursor-not-allowed transition-opacity"
+                >
+                  Post note
+                </button>
+                <span className="text-[10px] text-[var(--muted)]">
+                  Not sent to customer
+                </span>
+              </div>
+            </div>
           ) : (
+            /* Reply composer */
             <div className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] overflow-hidden">
               <textarea
                 value={replyText}
@@ -185,9 +287,6 @@ export function ThreadWorkspace({
                   }`}
                 >
                   AI Draft
-                </button>
-                <button className="rounded-full border border-[var(--line-strong)] px-4 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">
-                  Note
                 </button>
               </div>
             </div>
