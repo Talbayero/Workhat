@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+
+// Minimal shape of what we actually use from supabase-js User
+interface AuthUser {
+  id: string;
+  email?: string;
+  user_metadata: Record<string, unknown>;
+}
 
 const navItems = [
   {
@@ -76,6 +85,41 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    // Get current session on mount
+    supabase.auth.getUser().then(({ data }: { data: { user: AuthUser | null } }) =>
+      setUser(data.user)
+    );
+
+    // Subscribe to auth changes (login / logout from another tab)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event: unknown, session: { user: AuthUser } | null) => {
+        setUser(session?.user ?? null);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
+
+  // Derive display name from user metadata or email
+  const displayName =
+    (user?.user_metadata?.full_name as string | undefined) ||
+    (user?.user_metadata?.name as string | undefined) ||
+    user?.email?.split("@")[0] ||
+    "Agent";
+  const initials = displayName.slice(0, 1).toUpperCase();
 
   return (
     <aside className="grain-panel flex h-full w-[215px] shrink-0 flex-col border-r border-[var(--line)]">
@@ -106,16 +150,27 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer — agent identity (Phase 2 wires to auth session) */}
-      <div className="mt-auto shrink-0 border-t border-[var(--line)] px-5 py-4">
+      {/* Footer — real user from Supabase auth */}
+      <div className="mt-auto shrink-0 border-t border-[var(--line)] px-4 py-4">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--moss)] text-[11px] font-semibold text-white">
-            M
+            {initials}
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium">Marcos</p>
-            <p className="truncate text-[10px] text-[var(--muted)]">Agent</p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium">{displayName}</p>
+            <p className="truncate text-[10px] text-[var(--muted)]">{user?.email ?? "Not signed in"}</p>
           </div>
+          {/* Sign out */}
+          <button
+            onClick={handleSignOut}
+            title="Sign out"
+            className="shrink-0 rounded-lg p-1 text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)] transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M5.5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              <path d="M9.5 9.5L12 7l-2.5-2.5M12 7H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
     </aside>

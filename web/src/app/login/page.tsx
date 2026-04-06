@@ -1,33 +1,83 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, Suspense } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    searchParams.get("error") === "auth_callback_failed"
+      ? "The sign-in link expired or was already used. Please request a new one."
+      : null
+  );
   const [info, setInfo] = useState<string | null>(null);
-  const [mode, setMode] = useState<"password" | "magic">("password");
+  const [sent, setSent] = useState(false);
+  const [mode, setMode] = useState<"password" | "magic">("magic");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim()) {
-      setError("Email is required.");
-      return;
-    }
-    if (!email.includes("@")) {
-      setError("Enter a valid email address.");
-      return;
-    }
+    if (!email.trim()) { setError("Email is required."); return; }
+    if (!email.includes("@")) { setError("Enter a valid email address."); return; }
+
     setLoading(true);
     setError(null);
-    // Phase 2: replace with supabase.auth.signInWithPassword / signInWithOtp
-    await new Promise((r) => setTimeout(r, 700));
-    router.push("/inbox");
+    setInfo(null);
+
+    const supabase = createClient();
+
+    if (mode === "magic") {
+      const { error: err } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${location.origin}/auth/callback`,
+        },
+      });
+      setLoading(false);
+      if (err) {
+        setError(err.message);
+      } else {
+        setSent(true);
+      }
+    } else {
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      setLoading(false);
+      if (err) {
+        setError(err.message);
+      } else {
+        router.push("/inbox");
+        router.refresh();
+      }
+    }
+  }
+
+  if (sent) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <section className="grain-panel w-full max-w-md rounded-[32px] border border-[var(--line)] p-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--sage)]">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M4 10l4 4 8-8" stroke="var(--moss)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <h2 className="mt-4 text-xl font-semibold">Check your email</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+            We sent a sign-in link to <strong className="text-[var(--foreground)]">{email}</strong>. Click it to access Work Hat.
+          </p>
+          <p className="mt-4 text-xs text-[var(--muted)]">
+            Didn&apos;t get it?{" "}
+            <button onClick={() => setSent(false)} className="text-[var(--moss)]">
+              Resend
+            </button>
+          </p>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -45,18 +95,7 @@ export default function LoginPage() {
         <div className="mt-7 flex gap-1 rounded-full border border-[var(--line)] bg-[var(--panel-strong)] p-1">
           <button
             type="button"
-            onClick={() => setMode("password")}
-            className={`flex-1 rounded-full py-2 text-xs font-medium transition-colors ${
-              mode === "password"
-                ? "bg-[var(--moss)] text-white"
-                : "text-[var(--muted)] hover:text-[var(--foreground)]"
-            }`}
-          >
-            Password
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("magic")}
+            onClick={() => { setMode("magic"); setError(null); setInfo(null); }}
             className={`flex-1 rounded-full py-2 text-xs font-medium transition-colors ${
               mode === "magic"
                 ? "bg-[var(--moss)] text-white"
@@ -64,6 +103,17 @@ export default function LoginPage() {
             }`}
           >
             Magic link
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode("password"); setError(null); setInfo(null); }}
+            className={`flex-1 rounded-full py-2 text-xs font-medium transition-colors ${
+              mode === "password"
+                ? "bg-[var(--moss)] text-white"
+                : "text-[var(--muted)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            Password
           </button>
         </div>
 
@@ -91,10 +141,7 @@ export default function LoginPage() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => {
-                    setInfo("Password reset will be available once Supabase auth is connected. Use Magic link for now.");
-                    setMode("magic");
-                  }}
+                  onClick={() => { setMode("magic"); setInfo("Use a magic link to sign in without a password."); }}
                   className="text-[10px] text-[var(--moss)]"
                 >
                   Forgot password?
@@ -141,13 +188,15 @@ export default function LoginPage() {
             Request access
           </Link>
         </p>
-
-        <div className="mt-5 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
-          <p className="text-[10px] text-[var(--muted)]">
-            Dev mode — any valid email grants access. Supabase auth wires in Phase 2.
-          </p>
-        </div>
       </section>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
