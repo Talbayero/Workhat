@@ -7,36 +7,43 @@ type CookieItem = { name: string; value: string; options?: Record<string, unknow
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  // `next` param lets us redirect to a specific page post-auth
   const next = searchParams.get("next") ?? "/inbox";
 
-  if (code) {
-    const cookieStore = await cookies();
+  console.log("[auth/callback] incoming params:", Object.fromEntries(searchParams.entries()));
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet: CookieItem[]) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
-            );
-          },
-        },
-      }
-    );
-
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
-    }
+  if (!code) {
+    console.error("[auth/callback] No code param — full URL:", request.url);
+    return NextResponse.redirect(`${origin}/login?error=no_code`);
   }
 
-  // Something went wrong — redirect to login with error param
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
+  const cookieStore = await cookies();
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet: CookieItem[]) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
+          );
+        },
+      },
+    }
+  );
+
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error) {
+    console.error("[auth/callback] exchangeCodeForSession error:", error.message, error);
+    return NextResponse.redirect(
+      `${origin}/login?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  console.log("[auth/callback] session exchanged successfully, redirecting to", next);
+  return NextResponse.redirect(`${origin}${next}`);
 }

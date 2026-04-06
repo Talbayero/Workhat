@@ -12,8 +12,8 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(
-    searchParams.get("error") === "auth_callback_failed"
-      ? "The sign-in link expired or was already used. Please request a new one."
+    searchParams.get("error")
+      ? decodeURIComponent(searchParams.get("error")!)
       : null
   );
   const [info, setInfo] = useState<string | null>(null);
