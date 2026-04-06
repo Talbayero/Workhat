@@ -146,7 +146,7 @@ export function InboxWorkspace({ selectedConversationId, activeView = "all" }: I
 
       {/* ── Thread workspace (client component handles slide-in panels) ── */}
       <div className="flex-1 min-w-0 overflow-hidden">
-        <ThreadWorkspace conversation={selected} />
+        <ThreadWorkspace key={selected?.id ?? "empty"} conversation={selected} />
       </div>
     </div>
   );

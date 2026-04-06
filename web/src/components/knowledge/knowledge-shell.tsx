@@ -71,8 +71,16 @@ function getSelected(id?: string): KnowledgeEntry | null {
 
 export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: KnowledgeShellProps) {
   const [modal, setModal] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const selected = getSelected(selectedEntryId);
-  const filtered = filterKnowledgeEntries(activeCategory);
+  const categoryFiltered = filterKnowledgeEntries(activeCategory);
+  const filtered = query.trim()
+    ? categoryFiltered.filter((e) =>
+        [e.title, e.summary, e.category, ...e.tags].some((field) =>
+          field.toLowerCase().includes(query.toLowerCase())
+        )
+      )
+    : categoryFiltered;
 
   // Compute real category counts from actual entries
   const categoryCounts = Object.fromEntries(
@@ -104,6 +112,8 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
           </p>
           <input
             type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Search entries, tags, category…"
             className="mt-3 w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
           />
@@ -136,7 +146,7 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
         <div className="scroll-soft flex-1 space-y-2 overflow-y-auto p-3">
           {filtered.length === 0 && (
             <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
-              No entries in this category yet.
+              {query.trim() ? "No entries match your search." : "No entries in this category yet."}
             </p>
           )}
           {filtered.map((entry) => {
