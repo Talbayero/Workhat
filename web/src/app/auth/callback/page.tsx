@@ -1,46 +1,55 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 function CallbackHandler() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [status, setStatus] = useState<"loading" | "error">("loading");
-  const [errorMsg, setErrorMsg] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const code = searchParams.get("code");
-
-    if (!code) {
-      router.replace("/login?error=no_code");
-      return;
-    }
-
     const supabase = createClient();
 
-    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-      if (error) {
-        console.error("[auth/callback] exchange failed:", error.message);
-        setStatus("error");
-        setErrorMsg(error.message);
-        // Give user a moment to see the message, then redirect
-        setTimeout(() => {
-          router.replace(`/login?error=${encodeURIComponent(error.message)}`);
-        }, 1500);
-      } else {
+    // With implicit flow, Supabase detects access_token from the URL hash
+    // automatically when detectSessionInUrl:true and fires onAuthStateChange.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
         router.replace("/inbox");
       }
     });
-  }, [router, searchParams]);
 
-  if (status === "error") {
+    // Also check if a session already exists (e.g. revisiting callback URL)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        router.replace("/inbox");
+      }
+    });
+
+    // Safety timeout — if nothing happens in 6 s, surface an error
+    const timeout = setTimeout(() => {
+      setError("Sign-in timed out. Please request a new magic link.");
+    }, 6000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, [router]);
+
+  if (error) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
-        <div className="rounded-[24px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] p-8 text-center">
-          <p className="text-sm text-[var(--muted)]">Sign-in failed: {errorMsg}</p>
-          <p className="mt-2 text-xs text-[var(--muted)]">Redirecting back to login…</p>
+        <div className="max-w-sm rounded-[24px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] p-8 text-center">
+          <p className="text-sm">{error}</p>
+          <button
+            onClick={() => router.replace("/login")}
+            className="mt-4 rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white"
+          >
+            Back to login
+          </button>
         </div>
       </main>
     );
