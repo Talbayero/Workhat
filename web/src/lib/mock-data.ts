@@ -930,6 +930,74 @@ export const knowledgeEntries: KnowledgeEntry[] = [
       { id: "kb-invoice-c2", text: "If a customer's finance team rejects an invoice, send a corrected version within 24 hours." },
     ],
   },
+  {
+    id: "kb-new-customer-sop",
+    title: "New customer onboarding SOP",
+    category: "sop",
+    summary:
+      "Step-by-step process for onboarding a new account from signed contract to first successful reply.",
+    body: `Step 1: Within 24 hours of contract signing, create the customer's account and send the magic-link invite to the primary contact.\n\nStep 2: Schedule a 30-minute kickoff call. Agenda: confirm support email forwarding, walk through inbox layout, set up at least one AI draft together.\n\nStep 3: Upload the customer's existing SOPs and policies to the knowledge base before the kickoff call. AI draft quality depends on this — do not skip it.\n\nStep 4: After the kickoff, send a follow-up email summarising the three things the customer needs to do: confirm email forwarding, invite their team, review the first AI draft.\n\nStep 5: Check in at Day 7. If the customer hasn't sent their first reply using an AI draft, flag the account for CSM review.\n\nNote: Onboarding is considered complete when the customer has sent at least 5 replies using the AI draft workflow.`,
+    tags: ["onboarding", "sop", "new-customer"],
+    lastUpdated: "1 week ago",
+    updatedBy: "Jordan",
+    usedInDrafts: 3,
+    chunks: [
+      { id: "kb-onboarding-c1", text: "Within 24 hours of contract signing, create the customer's account and send the magic-link invite to the primary contact." },
+      { id: "kb-onboarding-c2", text: "Upload the customer's existing SOPs and policies to the knowledge base before the kickoff call. AI draft quality depends on this." },
+      { id: "kb-onboarding-c3", text: "Onboarding is considered complete when the customer has sent at least 5 replies using the AI draft workflow." },
+    ],
+  },
+  {
+    id: "kb-escalation-sop",
+    title: "Escalation handoff SOP",
+    category: "sop",
+    summary:
+      "How to hand off a conversation to a manager or senior agent without losing context or making the customer repeat themselves.",
+    body: `Escalation criteria: escalate when (a) the customer has repeated the same issue across more than two replies, (b) the conversation involves a refund above $500, (c) the AI confidence is red and the agent is unsure how to proceed, or (d) the customer explicitly requests a manager.\n\nStep 1: Before escalating, leave an internal note summarising: the customer's core issue, what has already been tried, what the customer expects as a resolution, and any account context the next agent needs.\n\nStep 2: Reassign the thread in the system and notify the receiving agent via Slack (#escalations) with a link to the thread.\n\nStep 3: Send the customer a holding message: "I'm connecting you with a senior member of our team who can resolve this. They'll be in touch within [timeframe]."\n\nStep 4: Do not close the thread or change its status until the receiving agent confirms they have reviewed the handoff note.`,
+    tags: ["escalation", "handoff", "sop"],
+    lastUpdated: "4 days ago",
+    updatedBy: "Anika",
+    usedInDrafts: 7,
+    chunks: [
+      { id: "kb-escalation-sop-c1", text: "Escalate when the customer has repeated the same issue across more than two replies, the refund is above $500, AI confidence is red, or the customer requests a manager." },
+      { id: "kb-escalation-sop-c2", text: "Before escalating, leave an internal note with: core issue, what's been tried, expected resolution, and account context." },
+      { id: "kb-escalation-sop-c3", text: "Send the customer a holding message before reassigning. Do not close the thread until the receiving agent confirms they have reviewed the handoff note." },
+    ],
+  },
+  {
+    id: "kb-ai-actions-product",
+    title: "AI Actions — what they are and how they're counted",
+    category: "product",
+    summary:
+      "Plain-language explanation of AI Actions for customers asking about usage, limits, and billing.",
+    body: `An AI Action is consumed each time the platform uses AI on your behalf. This includes: generating a draft reply, classifying an agent edit, and retrieving knowledge base chunks to inform a draft.\n\nOne inbound email typically consumes 1–3 AI Actions: one for draft generation, one for knowledge retrieval, and one for edit classification if the agent modifies the draft before sending.\n\nAI Actions reset on the first day of your billing month. Unused Actions do not roll over.\n\nIf a customer asks why their count is higher than expected: check whether they have multiple channels active, whether auto-draft is turned on for all threads, or whether a high-volume day caused a spike. You can view the Action log in Settings → AI settings → AI Actions.\n\nOverage: Customers on the Growth plan are paused (not charged) at their limit. Enterprise customers can configure overage billing.`,
+    tags: ["ai-actions", "billing", "product", "usage"],
+    lastUpdated: "2 days ago",
+    updatedBy: "Marcos",
+    usedInDrafts: 11,
+    chunks: [
+      { id: "kb-ai-actions-c1", text: "An AI Action is consumed each time the platform uses AI: generating a draft, classifying an edit, or retrieving knowledge base chunks." },
+      { id: "kb-ai-actions-c2", text: "One inbound email typically consumes 1–3 AI Actions. AI Actions reset on the first day of your billing month and unused Actions do not roll over." },
+      { id: "kb-ai-actions-c3", text: "Growth plan customers are paused at their limit. Enterprise customers can configure overage billing." },
+    ],
+  },
+  {
+    id: "kb-tone-difficult",
+    title: "Tone guide: handling frustrated or angry customers",
+    category: "tone",
+    summary:
+      "How to de-escalate charged conversations without sounding scripted, dismissive, or over-apologetic.",
+    body: `Angry customers are not attacking you — they are expressing that something important to them has gone wrong. Your job is to slow the conversation down and redirect it toward resolution.\n\nDo not:\n- Match their energy or become defensive\n- Lead with "I understand your frustration" — it reads as dismissive if not followed immediately by action\n- Promise things you cannot guarantee ("I'll make sure this never happens again")\n- Use passive voice that obscures ownership ("Mistakes were made")\n\nDo:\n- Name the specific problem they raised ("The shipment has been stuck on label-created for 48 hours")\n- State what you are doing right now, not what you will do eventually\n- Give a specific timeframe, even if it's just for your next update ("I will follow up by 3pm today")\n- If you genuinely cannot resolve the issue, say so and escalate clearly\n\nFor VIP accounts: treat the first message as if it's already an escalation. Do not wait for them to repeat themselves.`,
+    tags: ["tone", "de-escalation", "angry-customer"],
+    lastUpdated: "3 days ago",
+    updatedBy: "Jordan",
+    usedInDrafts: 18,
+    chunks: [
+      { id: "kb-tone-difficult-c1", text: "Name the specific problem the customer raised. Do not lead with 'I understand your frustration' unless followed immediately by a concrete action." },
+      { id: "kb-tone-difficult-c2", text: "State what you are doing right now, not eventually. Give a specific timeframe, even if it's just for your next update." },
+      { id: "kb-tone-difficult-c3", text: "For VIP accounts: treat the first message as if it's already an escalation. Do not wait for them to repeat themselves." },
+    ],
+  },
 ];
 
 export function getKnowledgeEntryById(id: string) {

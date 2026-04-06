@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
 import { conversationStatusLabel } from "@/lib/mock-data";
 import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
@@ -57,7 +57,14 @@ export function ThreadWorkspace({
   const [lastEditRecord, setLastEditRecord] = useState<EditRecord | null>(null);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>(conversation.messages);
   const [status, setStatus] = useState<ConversationStatus>(conversation.status);
-  const [assignee] = useState(conversation.assignee);
+  const [assignee, setAssignee] = useState(conversation.assignee);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom whenever messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [localMessages]);
 
   function togglePanel(panel: ActivePanel) {
     setActivePanel((prev) => (prev === panel ? null : panel));
@@ -154,9 +161,17 @@ export function ThreadWorkspace({
                     Assigned to {assignee}
                   </span>
                 ) : (
-                  <span className="rounded-full border border-[rgba(169,146,125,0.3)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
-                    Unassigned
-                  </span>
+                  <>
+                    <span className="rounded-full border border-[rgba(169,146,125,0.3)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
+                      Unassigned
+                    </span>
+                    <button
+                      onClick={() => setAssignee("Marcos")}
+                      className="rounded-full border border-[var(--moss)] px-2.5 py-1 text-[10px] font-medium text-[var(--moss)] transition-colors hover:bg-[var(--moss)] hover:text-white"
+                    >
+                      Claim
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -211,6 +226,8 @@ export function ThreadWorkspace({
               <p className="mt-2 text-sm leading-6">{message.body}</p>
             </article>
           ))}
+          {/* Scroll anchor */}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Edit capture feedback — shows after a reply is confirmed */}

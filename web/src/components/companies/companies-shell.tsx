@@ -65,7 +65,15 @@ function getSelectedCompany(selectedCompanyId?: string): CompanyRecord | null {
 
 export function CompaniesShell({ selectedCompanyId, activeView = "all" }: CompaniesShellProps) {
   const [modal, setModal] = useState<string | null>(null);
-  const filteredCompanies = filterCompanies(companies, activeView);
+  const [query, setQuery] = useState("");
+  const viewFiltered = filterCompanies(companies, activeView);
+  const filteredCompanies = query.trim()
+    ? viewFiltered.filter((c) =>
+        [c.name, c.industry, c.accountOwner].some((field) =>
+          field.toLowerCase().includes(query.toLowerCase())
+        )
+      )
+    : viewFiltered;
   const selectedCompany = getSelectedCompany(selectedCompanyId);
   const companyContacts = selectedCompany
     ? getContactsForCompany(selectedCompany.id)
@@ -97,6 +105,8 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
 
           <input
             type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Search companies, owners, industry…"
             className="mt-3 w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
           />

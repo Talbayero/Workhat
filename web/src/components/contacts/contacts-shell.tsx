@@ -78,7 +78,15 @@ function ContactStatusPill({ status }: { status: ContactRecord["status"] }) {
 
 export function ContactsShell({ selectedContactId, activeView = "all" }: ContactsShellProps) {
   const [modal, setModal] = useState<string | null>(null);
-  const filteredContacts = filterContacts(contacts, activeView);
+  const [query, setQuery] = useState("");
+  const viewFiltered = filterContacts(contacts, activeView);
+  const filteredContacts = query.trim()
+    ? viewFiltered.filter((c) =>
+        [c.fullName, c.companyName, c.email, ...c.tags].some((field) =>
+          field.toLowerCase().includes(query.toLowerCase())
+        )
+      )
+    : viewFiltered;
   const selectedContact = getSelectedContact(selectedContactId);
   const company = selectedContact ? getCompanyById(selectedContact.companyId) : null;
   const linkedConversations = selectedContact
@@ -108,6 +116,8 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
 
           <input
             type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Search contacts, companies, tags, owner…"
             className="mt-3 w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
           />
