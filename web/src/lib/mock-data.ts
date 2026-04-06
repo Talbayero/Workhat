@@ -31,6 +31,7 @@ export type CompanyRecord = {
   accountOwner: string;
   activeContacts: number;
   openConversations: number;
+  tier: "priority" | "watch" | "standard";
 };
 
 export type InboxConversation = {
@@ -141,6 +142,7 @@ export const companies: CompanyRecord[] = [
     accountOwner: "Marcos",
     activeContacts: 4,
     openConversations: 3,
+    tier: "priority",
   },
   {
     id: "company-peak-trail",
@@ -149,6 +151,7 @@ export const companies: CompanyRecord[] = [
     accountOwner: "Anika",
     activeContacts: 2,
     openConversations: 2,
+    tier: "standard",
   },
   {
     id: "company-fieldmade",
@@ -157,6 +160,7 @@ export const companies: CompanyRecord[] = [
     accountOwner: "Marcos",
     activeContacts: 3,
     openConversations: 1,
+    tier: "watch",
   },
   {
     id: "company-brightwave",
@@ -165,6 +169,7 @@ export const companies: CompanyRecord[] = [
     accountOwner: "Jordan",
     activeContacts: 5,
     openConversations: 3,
+    tier: "priority",
   },
   {
     id: "company-mesa-dental",
@@ -173,6 +178,7 @@ export const companies: CompanyRecord[] = [
     accountOwner: "Anika",
     activeContacts: 2,
     openConversations: 2,
+    tier: "watch",
   },
 ];
 
@@ -772,6 +778,34 @@ conversations.push(
     },
   }
 );
+
+export function filterContacts(list: ContactRecord[], view: string): ContactRecord[] {
+  switch (view) {
+    case "vip":
+      return list.filter((c) => c.status === "vip");
+    case "active":
+      return list.filter((c) => c.status === "active");
+    case "watch":
+      return list.filter((c) => c.status === "watch");
+    case "manual":
+      return list; // Phase 2: filter by data source
+    default:
+      return list;
+  }
+}
+
+export function filterCompanies(list: CompanyRecord[], view: string): CompanyRecord[] {
+  switch (view) {
+    case "active":
+      return list.filter((c) => c.openConversations > 0);
+    case "priority":
+      return list.filter((c) => c.tier === "priority");
+    case "watch":
+      return list.filter((c) => c.tier === "watch");
+    default:
+      return list;
+  }
+}
 
 export function getConversationById(id: string) {
   return conversations.find((conversation) => conversation.id === id);

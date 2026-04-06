@@ -7,6 +7,7 @@ import { useState } from "react";
 import {
   companies,
   conversationStatusLabel,
+  filterCompanies,
   getCompanyById,
   getContactsForCompany,
   getConversationsForCompany,
@@ -64,6 +65,7 @@ function getSelectedCompany(selectedCompanyId?: string): CompanyRecord | null {
 
 export function CompaniesShell({ selectedCompanyId, activeView = "all" }: CompaniesShellProps) {
   const [modal, setModal] = useState<string | null>(null);
+  const filteredCompanies = filterCompanies(companies, activeView);
   const selectedCompany = getSelectedCompany(selectedCompanyId);
   const companyContacts = selectedCompany
     ? getContactsForCompany(selectedCompany.id)
@@ -104,6 +106,7 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
           <div className="flex flex-col gap-0.5">
             {companyViews.map((view) => {
               const isActive = view.id === activeView;
+              const count = filterCompanies(companies, view.id).length;
               return (
                 <Link
                   key={view.id}
@@ -115,7 +118,7 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
                   }`}
                 >
                   <span>{view.label}</span>
-                  <span className="text-xs">{view.count}</span>
+                  <span className="text-xs">{count}</span>
                 </Link>
               );
             })}
@@ -123,13 +126,19 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
         </div>
 
         <div className="scroll-soft flex-1 space-y-2 overflow-y-auto p-3">
-          {companies.map((company) => {
+          {filteredCompanies.length === 0 && (
+            <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
+              No companies match this filter.
+            </p>
+          )}
+          {filteredCompanies.map((company) => {
             const isSelected = company.id === selectedCompanyId;
+            const viewParam = activeView !== "all" ? `?view=${activeView}` : "";
 
             return (
               <Link
                 key={company.id}
-                href={`/companies/${company.id}`}
+                href={`/companies/${company.id}${viewParam}`}
                 className={`block rounded-[20px] border p-3.5 transition-colors ${
                   isSelected
                     ? "border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"

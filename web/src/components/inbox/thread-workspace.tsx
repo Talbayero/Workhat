@@ -149,9 +149,13 @@ export function ThreadWorkspace({
                 }`}>
                   {conversationStatusLabel[status]}
                 </span>
-                {assignee && (
+                {assignee ? (
                   <span className="text-[10px] text-[var(--muted)]">
                     Assigned to {assignee}
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-[rgba(169,146,125,0.3)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
+                    Unassigned
                   </span>
                 )}
               </div>

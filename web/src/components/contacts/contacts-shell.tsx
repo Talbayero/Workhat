@@ -9,6 +9,7 @@ import {
   contacts,
   contactsListViews,
   conversationStatusLabel,
+  filterContacts,
   getCompanyById,
   getContactById,
   getConversationsForContact,
@@ -77,6 +78,7 @@ function ContactStatusPill({ status }: { status: ContactRecord["status"] }) {
 
 export function ContactsShell({ selectedContactId, activeView = "all" }: ContactsShellProps) {
   const [modal, setModal] = useState<string | null>(null);
+  const filteredContacts = filterContacts(contacts, activeView);
   const selectedContact = getSelectedContact(selectedContactId);
   const company = selectedContact ? getCompanyById(selectedContact.companyId) : null;
   const linkedConversations = selectedContact
@@ -126,6 +128,7 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
           <div className="flex flex-col gap-0.5">
             {contactsListViews.map((view) => {
               const isActive = view.id === activeView;
+              const count = filterContacts(contacts, view.id).length;
               return (
                 <Link
                   key={view.id}
@@ -137,7 +140,7 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
                   }`}
                 >
                   <span>{view.label}</span>
-                  <span className="text-xs">{view.count}</span>
+                  <span className="text-xs">{count}</span>
                 </Link>
               );
             })}
@@ -145,13 +148,19 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
         </div>
 
         <div className="scroll-soft flex-1 space-y-2 overflow-y-auto p-3">
-          {contacts.map((contact) => {
+          {filteredContacts.length === 0 && (
+            <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
+              No contacts match this filter.
+            </p>
+          )}
+          {filteredContacts.map((contact) => {
             const isSelected = contact.id === selectedContactId;
+            const viewParam = activeView !== "all" ? `?view=${activeView}` : "";
 
             return (
               <Link
                 key={contact.id}
-                href={`/contacts/${contact.id}`}
+                href={`/contacts/${contact.id}${viewParam}`}
                 className={`block rounded-[20px] border p-3.5 transition-colors ${
                   isSelected
                     ? "border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
