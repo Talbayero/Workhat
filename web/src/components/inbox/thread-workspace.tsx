@@ -150,6 +150,8 @@ export function ThreadWorkspace({
                 <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium ${
                   status === "resolved" || status === "archived"
                     ? "border-[var(--line)] text-[var(--muted)]"
+                    : status === "open"
+                    ? "border-[rgba(120,161,122,0.25)] bg-[rgba(120,161,122,0.05)] text-[var(--foreground)]"
                     : status === "waiting_on_customer"
                     ? "border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.1)] text-[var(--foreground)]"
                     : "border-[rgba(169,146,125,0.35)] bg-[rgba(169,146,125,0.08)] text-[var(--foreground)]"
@@ -184,7 +186,7 @@ export function ThreadWorkspace({
                   {confidenceLabel[conversation.aiConfidence]}
                 </span>
               </div>
-              {status !== "resolved" && status !== "archived" ? (
+              {status !== "resolved" ? (
                 <button
                   onClick={() => setStatus("resolved")}
                   className="rounded-full border border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.08)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[rgba(120,161,122,0.18)]"
@@ -193,7 +195,7 @@ export function ThreadWorkspace({
                 </button>
               ) : (
                 <button
-                  onClick={() => setStatus("waiting_on_customer")}
+                  onClick={() => setStatus("open")}
                   className="rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
                 >
                   Reopen

@@ -1,21 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { useState } from "react";
 
 import {
-  companies,
   conversationStatusLabel,
   filterCompanies,
-  getCompanyById,
-  getContactsForCompany,
-  getConversationsForCompany,
   type CompanyRecord,
+  type ContactRecord,
+  type InboxConversation,
 } from "@/lib/mock-data";
 
 type CompaniesShellProps = {
-  selectedCompanyId?: string;
+  companies: CompanyRecord[];
+  selectedCompany?: CompanyRecord | null;
+  companyContacts?: ContactRecord[];
+  companyConversations?: InboxConversation[];
   activeView?: string;
 };
 
@@ -49,23 +49,16 @@ function Phase2Modal({ title, onClose }: { title: string; onClose: () => void })
   );
 }
 
-function getSelectedCompany(selectedCompanyId?: string): CompanyRecord | null {
-  if (!selectedCompanyId) {
-    return null;
-  }
-
-  const company = getCompanyById(selectedCompanyId);
-
-  if (!company) {
-    notFound();
-  }
-
-  return company;
-}
-
-export function CompaniesShell({ selectedCompanyId, activeView = "all" }: CompaniesShellProps) {
+export function CompaniesShell({
+  companies,
+  selectedCompany = null,
+  companyContacts = [],
+  companyConversations = [],
+  activeView = "all",
+}: CompaniesShellProps) {
   const [modal, setModal] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const selectedCompanyId = selectedCompany?.id;
   const viewFiltered = filterCompanies(companies, activeView);
   const filteredCompanies = query.trim()
     ? viewFiltered.filter((c) =>
@@ -74,22 +67,18 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
         )
       )
     : viewFiltered;
-  const selectedCompany = getSelectedCompany(selectedCompanyId);
-  const companyContacts = selectedCompany
-    ? getContactsForCompany(selectedCompany.id)
-    : [];
-  const companyConversations = selectedCompany
-    ? getConversationsForCompany(selectedCompany.id)
-    : [];
 
   return (
     <>
       {modal && <Phase2Modal title={modal} onClose={() => setModal(null)} />}
     <div className="flex h-full overflow-hidden">
-      <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--line)]">
+      <aside className="flex h-full w-[330px] shrink-0 flex-col border-r border-[var(--line)] bg-[rgba(255,255,255,0.015)]">
         <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-sm font-semibold">Companies</h1>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="eyebrow text-[9px] text-[var(--muted)]">Accounts</p>
+              <h1 className="mt-1 text-base font-semibold">Companies</h1>
+            </div>
             <button
               onClick={() => setModal("New account")}
               className="rounded-full bg-[var(--moss)] px-3 py-1.5 text-[11px] font-medium text-white"
@@ -99,8 +88,7 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
           </div>
 
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-            Lightweight accounts module linked directly to people, owners, and
-            conversation load.
+            Lightweight account records with direct links to people, ownership, and operational load.
           </p>
 
           <input
@@ -135,7 +123,7 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
           </div>
         </div>
 
-        <div className="scroll-soft flex-1 space-y-2 overflow-y-auto p-3">
+        <div className="scroll-soft flex-1 overflow-y-auto p-3">
           {filteredCompanies.length === 0 && (
             <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
               No companies match this filter.
@@ -149,10 +137,10 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
               <Link
                 key={company.id}
                 href={`/companies/${company.id}${viewParam}`}
-                className={`block rounded-[20px] border p-3.5 transition-colors ${
+                className={`block border-b px-2 py-3 transition-colors ${
                   isSelected
-                    ? "border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
-                    : "border-[var(--line)] bg-[var(--panel-strong)] hover:border-[var(--line-strong)]"
+                    ? "rounded-[18px] border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
+                    : "border-transparent hover:rounded-[18px] hover:border-[var(--line)] hover:bg-[var(--panel-strong)]"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -213,6 +201,24 @@ export function CompaniesShell({ selectedCompanyId, activeView = "all" }: Compan
                   >
                     Add contact
                   </button>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Owner</p>
+                  <p className="mt-1 text-sm font-medium">{selectedCompany.accountOwner}</p>
+                </div>
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Industry</p>
+                  <p className="mt-1 text-sm font-medium">{selectedCompany.industry}</p>
+                </div>
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Active contacts</p>
+                  <p className="mt-1 text-sm font-medium">{selectedCompany.activeContacts}</p>
+                </div>
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Open load</p>
+                  <p className="mt-1 text-sm font-medium">{selectedCompany.openConversations} threads</p>
                 </div>
               </div>
             </div>

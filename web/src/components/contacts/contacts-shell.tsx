@@ -1,23 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { useState } from "react";
 
 import {
   contactFilters,
-  contacts,
   contactsListViews,
   conversationStatusLabel,
   filterContacts,
-  getCompanyById,
-  getContactById,
-  getConversationsForContact,
   type ContactRecord,
+  type CompanyRecord,
+  type InboxConversation,
 } from "@/lib/mock-data";
 
 type ContactsShellProps = {
-  selectedContactId?: string;
+  contacts: ContactRecord[];
+  selectedContact?: ContactRecord | null;
+  company?: CompanyRecord | null;
+  linkedConversations?: InboxConversation[];
   activeView?: string;
 };
 
@@ -44,20 +44,6 @@ function Phase2Modal({ title, onClose }: { title: string; onClose: () => void })
   );
 }
 
-function getSelectedContact(selectedContactId?: string): ContactRecord | null {
-  if (!selectedContactId) {
-    return null;
-  }
-
-  const contact = getContactById(selectedContactId);
-
-  if (!contact) {
-    notFound();
-  }
-
-  return contact;
-}
-
 function ContactStatusPill({ status }: { status: ContactRecord["status"] }) {
   const styles = {
     vip: "bg-[rgba(144,50,61,0.18)] text-[var(--foreground)] border border-[rgba(144,50,61,0.35)]",
@@ -76,7 +62,13 @@ function ContactStatusPill({ status }: { status: ContactRecord["status"] }) {
   );
 }
 
-export function ContactsShell({ selectedContactId, activeView = "all" }: ContactsShellProps) {
+export function ContactsShell({
+  contacts,
+  selectedContact = null,
+  company = null,
+  linkedConversations = [],
+  activeView = "all",
+}: ContactsShellProps) {
   const [modal, setModal] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const viewFiltered = filterContacts(contacts, activeView);
@@ -87,20 +79,19 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
         )
       )
     : viewFiltered;
-  const selectedContact = getSelectedContact(selectedContactId);
-  const company = selectedContact ? getCompanyById(selectedContact.companyId) : null;
-  const linkedConversations = selectedContact
-    ? getConversationsForContact(selectedContact.id)
-    : [];
+  const selectedContactId = selectedContact?.id;
 
   return (
     <>
       {modal && <Phase2Modal title={modal} onClose={() => setModal(null)} />}
     <div className="flex h-full overflow-hidden">
-      <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--line)]">
+      <aside className="flex h-full w-[330px] shrink-0 flex-col border-r border-[var(--line)] bg-[rgba(255,255,255,0.015)]">
         <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-sm font-semibold">Contacts</h1>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="eyebrow text-[9px] text-[var(--muted)]">People</p>
+              <h1 className="mt-1 text-base font-semibold">Contacts</h1>
+            </div>
             <button
               onClick={() => setModal("New contact")}
               className="rounded-full bg-[var(--moss)] px-3 py-1.5 text-[11px] font-medium text-white"
@@ -110,8 +101,7 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
           </div>
 
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-            People-first records with companies linked in, not buried in a
-            separate module.
+            Harvest gets list clarity right. Here we keep that structure, but connect records to live support work.
           </p>
 
           <input
@@ -157,7 +147,7 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
           </div>
         </div>
 
-        <div className="scroll-soft flex-1 space-y-2 overflow-y-auto p-3">
+        <div className="scroll-soft flex-1 overflow-y-auto p-3">
           {filteredContacts.length === 0 && (
             <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
               No contacts match this filter.
@@ -171,10 +161,10 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
               <Link
                 key={contact.id}
                 href={`/contacts/${contact.id}${viewParam}`}
-                className={`block rounded-[20px] border p-3.5 transition-colors ${
+                className={`block border-b px-2 py-3 transition-colors ${
                   isSelected
-                    ? "border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
-                    : "border-[var(--line)] bg-[var(--panel-strong)] hover:border-[var(--line-strong)]"
+                    ? "rounded-[18px] border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
+                    : "border-transparent hover:rounded-[18px] hover:border-[var(--line)] hover:bg-[var(--panel-strong)]"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -219,9 +209,7 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
             <div className="shrink-0 border-b border-[var(--line)] px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="eyebrow text-[10px] text-[var(--muted)]">
-                    Contact record
-                  </p>
+                  <p className="eyebrow text-[10px] text-[var(--muted)]">Contact record</p>
                   <h2 className="mt-1 text-xl font-semibold">
                     {selectedContact.fullName}
                   </h2>
@@ -247,6 +235,24 @@ export function ContactsShell({ selectedContactId, activeView = "all" }: Contact
                   >
                     Create conversation
                   </Link>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Company</p>
+                  <p className="mt-1 text-sm font-medium">{selectedContact.companyName}</p>
+                </div>
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Owner</p>
+                  <p className="mt-1 text-sm font-medium">{selectedContact.owner}</p>
+                </div>
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Open conversations</p>
+                  <p className="mt-1 text-sm font-medium">{selectedContact.openConversationCount}</p>
+                </div>
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Last activity</p>
+                  <p className="mt-1 text-sm font-medium">{selectedContact.lastActivity}</p>
                 </div>
               </div>
             </div>

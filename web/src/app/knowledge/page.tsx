@@ -1,4 +1,5 @@
 import { KnowledgeShell } from "@/components/knowledge/knowledge-shell";
+import { getKnowledgeEntries } from "@/lib/supabase/queries";
 import type { KnowledgeCategory } from "@/lib/mock-data";
 
 type Props = {
@@ -7,5 +8,7 @@ type Props = {
 
 export default async function KnowledgePage({ searchParams }: Props) {
   const { category } = await searchParams;
-  return <KnowledgeShell activeCategory={(category as KnowledgeCategory) ?? "all"} />;
+  const cat = (category as KnowledgeCategory | "all") ?? "all";
+  const entries = await getKnowledgeEntries(cat);
+  return <KnowledgeShell entries={entries} activeCategory={cat} />;
 }

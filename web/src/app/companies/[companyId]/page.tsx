@@ -1,4 +1,11 @@
+import { notFound } from "next/navigation";
 import { CompaniesShell } from "@/components/companies/companies-shell";
+import {
+  getCompanies,
+  getCompanyById,
+  getContactsForCompany,
+  getConversationsForCompany,
+} from "@/lib/supabase/queries";
 
 type CompanyPageProps = {
   params: Promise<{ companyId: string }>;
@@ -9,5 +16,23 @@ export default async function CompanyPage({ params, searchParams }: CompanyPageP
   const { companyId } = await params;
   const { view } = await searchParams;
 
-  return <CompaniesShell selectedCompanyId={companyId} activeView={view} />;
+  const [companies, selectedCompany, companyContacts, companyConversations] =
+    await Promise.all([
+      getCompanies(view),
+      getCompanyById(companyId),
+      getContactsForCompany(companyId),
+      getConversationsForCompany(companyId),
+    ]);
+
+  if (!selectedCompany) notFound();
+
+  return (
+    <CompaniesShell
+      companies={companies}
+      selectedCompany={selectedCompany}
+      companyContacts={companyContacts}
+      companyConversations={companyConversations}
+      activeView={view}
+    />
+  );
 }

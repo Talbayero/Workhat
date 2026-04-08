@@ -2,15 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import {
-  conversations,
   conversationStatusLabel,
   filterConversations,
-  getConversationById,
   inboxViews,
   type InboxConversation,
   type InboxViewId,
   type RiskLevel,
 } from "@/lib/mock-data";
+import { getConversations, getConversationById } from "@/lib/supabase/queries";
 import { ThreadWorkspace } from "./thread-workspace";
 
 type InboxWorkspaceProps = {
@@ -24,37 +23,47 @@ const riskDot: Record<RiskLevel, string> = {
   red: "status-dot-red",
 };
 
-function getSelected(id?: string, list?: InboxConversation[]): InboxConversation {
-  const pool = list ?? conversations;
-  if (!id) return pool[0] ?? conversations[0];
-  const c = getConversationById(id);
-  if (!c) notFound();
-  return c;
-}
+export async function InboxWorkspace({
+  selectedConversationId,
+  activeView = "all",
+}: InboxWorkspaceProps) {
+  // Fetch all conversations for sidebar list + view counts
+  const allConversations = await getConversations();
+  const filtered = filterConversations(allConversations, activeView);
 
-export function InboxWorkspace({ selectedConversationId, activeView = "all" }: InboxWorkspaceProps) {
-  const filtered = filterConversations(conversations, activeView);
-  const selected = getSelected(selectedConversationId, filtered);
+  // Determine which conversation to show in the thread pane
+  const targetId = selectedConversationId ?? filtered[0]?.id;
+  let selected: InboxConversation | null = null;
 
-  // Compute real counts from actual data so they always match the filtered list
+  if (targetId) {
+    selected = await getConversationById(targetId);
+    if (selectedConversationId && !selected) notFound();
+    // Fall back to first in list without messages if fetch failed
+    if (!selected) selected = filtered[0] ?? null;
+  }
+
+  // Compute real counts from actual data
   const viewCounts = Object.fromEntries(
-    inboxViews.map((v) => [v.id, filterConversations(conversations, v.id).length])
+    inboxViews.map((v) => [v.id, filterConversations(allConversations, v.id).length])
   ) as Record<InboxViewId, number>;
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* ── Conversation list ── */}
-      <aside className="flex h-full w-[290px] shrink-0 flex-col border-r border-[var(--line)]">
-        {/* List header */}
+      <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--line)] bg-[rgba(255,255,255,0.015)]">
         <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-sm font-semibold">Inbox</h1>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="eyebrow text-[9px] text-[var(--muted)]">Queue</p>
+              <h2 className="mt-1 text-base font-semibold">Conversations</h2>
+            </div>
             <span className="rounded-full bg-[var(--sage)] px-2.5 py-1 text-[11px] font-medium">
               {filtered.length} {activeView === "all" ? "open" : "filtered"}
             </span>
           </div>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+            Keep the queue compact, scan risk quickly, and open the next thread without losing context.
+          </p>
 
-          {/* View filters */}
           <div className="mt-3 flex flex-col gap-0.5">
             {inboxViews.map((view) => {
               const isActive = view.id === activeView;
@@ -62,7 +71,7 @@ export function InboxWorkspace({ selectedConversationId, activeView = "all" }: I
                 <Link
                   key={view.id}
                   href={`/inbox?view=${view.id}`}
-                  className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-sm transition-colors ${
+                  className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors ${
                     isActive
                       ? "bg-[var(--sage)] text-[var(--foreground)]"
                       : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
@@ -76,32 +85,34 @@ export function InboxWorkspace({ selectedConversationId, activeView = "all" }: I
           </div>
         </div>
 
-        {/* Search */}
         <div className="shrink-0 border-b border-[var(--line)] px-3 py-3">
           <input
             type="search"
             placeholder="Search conversations…"
             className="w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
           />
+          <div className="mt-3 flex items-center justify-between text-[10px] text-[var(--muted)]">
+            <span>Sorted by latest reply</span>
+            <span>Customer, account, risk</span>
+          </div>
         </div>
 
-        {/* Conversation rows */}
-        <div className="flex-1 overflow-y-auto scroll-soft space-y-2 p-3">
+        <div className="flex-1 overflow-y-auto scroll-soft p-3">
           {filtered.length === 0 && (
             <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
               No conversations match this filter.
             </p>
           )}
           {filtered.map((conversation) => {
-            const isSelected = selected.id === conversation.id;
+            const isSelected = selected?.id === conversation.id;
             return (
               <Link
                 key={conversation.id}
                 href={`/inbox/${conversation.id}?view=${activeView}`}
-                className={`block rounded-[20px] border p-3.5 transition-colors ${
+                className={`block border-b px-2 py-3 transition-colors ${
                   isSelected
-                    ? "border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
-                    : "border-[var(--line)] bg-[var(--panel-strong)] hover:border-[var(--line-strong)]"
+                    ? "rounded-[18px] border-[var(--moss)] bg-[rgba(144,50,61,0.1)]"
+                    : "border-transparent hover:rounded-[18px] hover:border-[var(--line)] hover:bg-[var(--panel-strong)]"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -118,7 +129,7 @@ export function InboxWorkspace({ selectedConversationId, activeView = "all" }: I
                   </span>
                 </div>
 
-                <p className="mt-2 truncate text-xs font-medium">
+                <p className="mt-2 truncate text-sm font-medium">
                   {conversation.subject}
                 </p>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
@@ -134,9 +145,10 @@ export function InboxWorkspace({ selectedConversationId, activeView = "all" }: I
                       {conversationStatusLabel[conversation.status]}
                     </span>
                   </div>
-                  <span
-                    className={`status-dot shrink-0 ${riskDot[conversation.riskLevel]}`}
-                  />
+                  <div className="flex items-center gap-1.5 text-[10px] text-[var(--muted)]">
+                    <span className={`status-dot shrink-0 ${riskDot[conversation.riskLevel]}`} />
+                    <span className="capitalize">{conversation.riskLevel}</span>
+                  </div>
                 </div>
               </Link>
             );
@@ -144,9 +156,20 @@ export function InboxWorkspace({ selectedConversationId, activeView = "all" }: I
         </div>
       </aside>
 
-      {/* ── Thread workspace (client component handles slide-in panels) ── */}
       <div className="flex-1 min-w-0 overflow-hidden">
-        <ThreadWorkspace key={selected?.id ?? "empty"} conversation={selected} />
+        {selected ? (
+          <ThreadWorkspace key={selected.id} conversation={selected} />
+        ) : (
+          <div className="flex h-full items-center justify-center px-8">
+            <div className="max-w-sm rounded-[24px] border border-[var(--line)] bg-[var(--panel-strong)] p-8 text-center">
+              <p className="eyebrow text-[10px] text-[var(--muted)]">Inbox</p>
+              <h2 className="mt-3 text-xl font-semibold">No conversations yet</h2>
+              <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+                Once customers reach out, their threads will appear here.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

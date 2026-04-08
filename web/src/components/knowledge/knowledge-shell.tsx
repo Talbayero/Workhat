@@ -1,20 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { useState } from "react";
 
 import {
   knowledgeCategories,
-  knowledgeEntries,
-  filterKnowledgeEntries,
-  getKnowledgeEntryById,
   type KnowledgeEntry,
   type KnowledgeCategory,
 } from "@/lib/mock-data";
 
 type KnowledgeShellProps = {
-  selectedEntryId?: string;
+  entries: KnowledgeEntry[];
+  selectedEntry?: KnowledgeEntry | null;
   activeCategory?: KnowledgeCategory | "all";
 };
 
@@ -62,18 +59,19 @@ function CategoryPill({ category }: { category: KnowledgeCategory }) {
   );
 }
 
-function getSelected(id?: string): KnowledgeEntry | null {
-  if (!id) return null;
-  const entry = getKnowledgeEntryById(id);
-  if (!entry) notFound();
-  return entry;
-}
-
-export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: KnowledgeShellProps) {
+export function KnowledgeShell({
+  entries,
+  selectedEntry = null,
+  activeCategory = "all",
+}: KnowledgeShellProps) {
   const [modal, setModal] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const selected = getSelected(selectedEntryId);
-  const categoryFiltered = filterKnowledgeEntries(activeCategory);
+
+  const categoryFiltered =
+    activeCategory === "all"
+      ? entries
+      : entries.filter((e) => e.category === activeCategory);
+
   const filtered = query.trim()
     ? categoryFiltered.filter((e) =>
         [e.title, e.summary, e.category, ...e.tags].some((field) =>
@@ -82,11 +80,13 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
       )
     : categoryFiltered;
 
-  // Compute real category counts from actual entries
+  // Compute category counts from actual entries
   const categoryCounts = Object.fromEntries(
     knowledgeCategories.map((cat) => [
       cat.id,
-      cat.id === "all" ? knowledgeEntries.length : knowledgeEntries.filter((e) => e.category === cat.id).length,
+      cat.id === "all"
+        ? entries.length
+        : entries.filter((e) => e.category === cat.id).length,
     ])
   ) as Record<KnowledgeCategory | "all", number>;
 
@@ -94,11 +94,13 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
     <>
       {modal && <Phase2Modal title={modal} onClose={() => setModal(null)} />}
     <div className="flex h-full overflow-hidden">
-      {/* ── Entry list ── */}
-      <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--line)]">
+      <aside className="flex h-full w-[330px] shrink-0 flex-col border-r border-[var(--line)] bg-[rgba(255,255,255,0.015)]">
         <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-sm font-semibold">Knowledge base</h1>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="eyebrow text-[9px] text-[var(--muted)]">Context</p>
+              <h1 className="mt-1 text-base font-semibold">Knowledge base</h1>
+            </div>
             <button
               onClick={() => setModal("New knowledge entry")}
               className="rounded-full bg-[var(--moss)] px-3 py-1.5 text-[11px] font-medium text-white"
@@ -142,23 +144,22 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
           </div>
         </div>
 
-        {/* Entry rows */}
-        <div className="scroll-soft flex-1 space-y-2 overflow-y-auto p-3">
+        <div className="scroll-soft flex-1 overflow-y-auto p-3">
           {filtered.length === 0 && (
             <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
               {query.trim() ? "No entries match your search." : "No entries in this category yet."}
             </p>
           )}
           {filtered.map((entry) => {
-            const isSelected = entry.id === selectedEntryId;
+            const isSelected = entry.id === selectedEntry?.id;
             return (
               <Link
                 key={entry.id}
                 href={`/knowledge/${entry.id}${activeCategory !== "all" ? `?category=${activeCategory}` : ""}`}
-                className={`block rounded-[20px] border p-3.5 transition-colors ${
+                className={`block border-b px-2 py-3 transition-colors ${
                   isSelected
-                    ? "border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
-                    : "border-[var(--line)] bg-[var(--panel-strong)] hover:border-[var(--line-strong)]"
+                    ? "rounded-[18px] border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
+                    : "border-transparent hover:rounded-[18px] hover:border-[var(--line)] hover:bg-[var(--panel-strong)]"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -181,21 +182,20 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
 
       {/* ── Entry detail ── */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {selected ? (
+        {selectedEntry ? (
           <>
-            {/* Header */}
             <div className="shrink-0 border-b border-[var(--line)] px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="eyebrow text-[10px] text-[var(--muted)]">
                     Knowledge entry
                   </p>
-                  <h2 className="mt-1 text-xl font-semibold">{selected.title}</h2>
+                  <h2 className="mt-1 text-xl font-semibold">{selectedEntry.title}</h2>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
-                    <CategoryPill category={selected.category} />
-                    <span>Updated {selected.lastUpdated} by {selected.updatedBy}</span>
+                    <CategoryPill category={selectedEntry.category} />
+                    <span>Updated {selectedEntry.lastUpdated} by {selectedEntry.updatedBy}</span>
                     <span>•</span>
-                    <span>{selected.usedInDrafts} AI drafts used this</span>
+                    <span>{selectedEntry.usedInDrafts} AI drafts used this</span>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -207,6 +207,20 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
                   </button>
                 </div>
               </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Category</p>
+                  <p className="mt-1 text-sm font-medium capitalize">{selectedEntry.category}</p>
+                </div>
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">Updated by</p>
+                  <p className="mt-1 text-sm font-medium">{selectedEntry.updatedBy}</p>
+                </div>
+                <div className="surface-subtle rounded-[16px] px-4 py-3">
+                  <p className="text-[10px] text-[var(--muted)]">AI usage</p>
+                  <p className="mt-1 text-sm font-medium">{selectedEntry.usedInDrafts} draft retrievals</p>
+                </div>
+              </div>
             </div>
 
             <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -216,14 +230,14 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
                   {/* Summary */}
                   <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
                     <p className="eyebrow text-[9px] text-[var(--muted)]">Summary</p>
-                    <p className="mt-3 text-sm leading-6">{selected.summary}</p>
+                    <p className="mt-3 text-sm leading-6">{selectedEntry.summary}</p>
                   </section>
 
                   {/* Full body */}
                   <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
                     <p className="eyebrow text-[9px] text-[var(--muted)]">Full content</p>
                     <div className="mt-3 space-y-3 text-sm leading-7 text-[var(--foreground)]">
-                      {selected.body.split("\n\n").map((para, i) => (
+                      {selectedEntry.body.split("\n\n").map((para, i) => (
                         <p key={i}>{para}</p>
                       ))}
                     </div>
@@ -238,7 +252,7 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
                       These are the segments the AI searches when generating drafts.
                     </p>
                     <div className="mt-3 space-y-2">
-                      {selected.chunks.map((chunk, i) => (
+                      {selectedEntry.chunks.map((chunk, i) => (
                         <div
                           key={chunk.id}
                           className="rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-3.5"
@@ -260,7 +274,7 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
                   <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
                     <p className="eyebrow text-[9px] text-[var(--muted)]">Tags</p>
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      {selected.tags.map((tag) => (
+                      {selectedEntry.tags.map((tag) => (
                         <span
                           key={tag}
                           className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]"
@@ -277,7 +291,7 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
                       <div>
                         <p className="text-[var(--muted)]">Used in drafts</p>
                         <p className="mt-1 text-2xl font-semibold">
-                          {selected.usedInDrafts}
+                          {selectedEntry.usedInDrafts}
                         </p>
                       </div>
                       <p className="text-xs leading-5 text-[var(--muted)]">
@@ -329,7 +343,7 @@ export function KnowledgeShell({ selectedEntryId, activeCategory = "all" }: Know
               </h2>
               <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
                 SOPs, policies, and tone guides live here. The AI reads these when
-                generating drafts — so the quality of what's in here directly
+                generating drafts — so the quality of what&apos;s in here directly
                 determines draft quality.
               </p>
             </div>

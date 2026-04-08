@@ -42,7 +42,7 @@ export type InboxConversation = {
   companyName: string;
   subject: string;
   preview: string;
-  status: "waiting_on_customer" | "waiting_on_internal" | "resolved" | "archived";
+  status: "open" | "waiting_on_customer" | "waiting_on_internal" | "resolved" | "archived";
   channel: "email";
   riskLevel: RiskLevel;
   aiConfidence: RiskLevel;
@@ -1012,6 +1012,7 @@ export function filterKnowledgeEntries(category: KnowledgeCategory | "all") {
 // ─── Display helpers ──────────────────────────────────────────────────────────
 
 export const conversationStatusLabel: Record<InboxConversation["status"], string> = {
+  open: "Open",
   waiting_on_customer: "Waiting on customer",
   waiting_on_internal: "Waiting on team",
   resolved: "Resolved",
