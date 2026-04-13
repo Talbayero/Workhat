@@ -2,24 +2,28 @@
 
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
+import { Topbar } from "./topbar";
 
-const NO_SIDEBAR_ROUTES = ["/login", "/signup", "/onboarding"];
+const NO_SIDEBAR_ROUTES = ["/login", "/signup", "/onboarding", "/pricing", "/auth", "/checkout"];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const showSidebar = !NO_SIDEBAR_ROUTES.some((route) =>
-    pathname.startsWith(route),
-  );
+  const showSidebar =
+    pathname !== "/" &&
+    !NO_SIDEBAR_ROUTES.some((route) => pathname.startsWith(route));
 
   if (!showSidebar) {
     return <>{children}</>;
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-[var(--background)]">
       <Sidebar />
-      <div className="flex-1 min-w-0 overflow-hidden">
-        {children}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Topbar />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {children}
+        </div>
       </div>
     </div>
   );

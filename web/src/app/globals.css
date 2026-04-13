@@ -66,6 +66,17 @@ select {
   box-shadow: var(--shadow);
 }
 
+.surface-panel {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+}
+
+.surface-subtle {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+}
+
 .eyebrow {
   font-family: "IBM Plex Mono", "SFMono-Regular", "Cascadia Code", monospace;
   letter-spacing: 0.12em;

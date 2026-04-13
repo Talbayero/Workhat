@@ -67,11 +67,6 @@ const CONTEXT_SIGNALS = [
   "history", "previous", "last time", "your record",
 ];
 
-const TONE_SIGNALS = [
-  "understand", "apolog", "frustrat", "sorry", "thank", "appreciate",
-  "absolutely", "of course", "happy to",
-];
-
 function hasSignal(text: string, signals: string[]): boolean {
   const lower = text.toLowerCase();
   return signals.some((s) => lower.includes(s));

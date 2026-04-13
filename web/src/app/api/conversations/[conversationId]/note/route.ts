@@ -1,40 +1,86 @@
-// POST /api/conversations/:conversationId/note
-// Phase 1: stub that validates and returns 200.
-// Phase 2: insert into messages table with senderType='internal', no sent_reply record.
+/**
+ * POST /api/conversations/:conversationId/note
+ *
+ * Inserts an internal note — visible to the team only, never sent to the customer.
+ * Creates a message row with direction = 'internal', no sent_reply record.
+ */
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 type NotePayload = {
   body: string;
-  agentId: string;
 };
+
+function validateBody(raw: unknown): NotePayload | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.body !== "string" || !obj.body.trim()) return null;
+  return { body: obj.body.trim() };
+}
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ conversationId: string }> },
+  { params }: { params: Promise<{ conversationId: string }> }
 ) {
   const { conversationId } = await params;
+  const supabase = await createClient();
 
-  let payload: NotePayload;
+  // Authenticate
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Get app user + org
+  const { data: appUser, error: userErr } = await supabase
+    .from("users")
+    .select("id, org_id, full_name")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (userErr || !appUser) {
+    return NextResponse.json({ error: "App user not found" }, { status: 403 });
+  }
+
+  const { id: userId, org_id: orgId, full_name: fullName } =
+    appUser as { id: string; org_id: string; full_name: string };
+
+  // Validate body
+  let payload: NotePayload | null;
   try {
-    payload = await req.json();
+    payload = validateBody(await req.json());
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-
-  if (!payload.body?.trim()) {
-    return NextResponse.json({ error: "Note body is required" }, { status: 422 });
+  if (!payload) {
+    return NextResponse.json({ error: "body is required" }, { status: 422 });
   }
 
-  // Phase 2: insert into Supabase
-  // const supabase = createServerSupabaseClient();
-  // await supabase.from("messages").insert({ senderType: "internal", ... });
+  // Insert internal message
+  const { data: message, error: msgErr } = await supabase
+    .from("messages")
+    .insert({
+      org_id: orgId,
+      conversation_id: conversationId,
+      sender_type: "agent",
+      sender_user_id: userId,
+      author_name: fullName ?? "Agent",
+      direction: "internal",
+      body_text: payload.body,
+      metadata_json: {},
+    })
+    .select("id")
+    .single();
 
-  console.info(`[note] conv=${conversationId} agent=${payload.agentId} len=${payload.body.length}`);
+  if (msgErr || !message) {
+    console.error("[note] message insert failed:", msgErr?.message);
+    return NextResponse.json({ error: "Failed to persist note" }, { status: 500 });
+  }
 
   return NextResponse.json({
     ok: true,
     conversationId,
-    messageId: `msg-${Date.now()}`,
+    messageId: (message as { id: string }).id,
   });
 }

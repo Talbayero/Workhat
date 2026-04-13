@@ -83,6 +83,9 @@ const navItems = [
   },
 ];
 
+const primaryItems = navItems.slice(0, 5);
+const configItems = navItems.slice(5);
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -122,35 +125,70 @@ export function Sidebar() {
   const initials = displayName.slice(0, 1).toUpperCase();
 
   return (
-    <aside className="grain-panel flex h-full w-[215px] shrink-0 flex-col border-r border-[var(--line)]">
-      {/* Wordmark */}
+    <aside className="grain-panel flex h-full w-[228px] shrink-0 flex-col border-r border-[var(--line)]">
       <div className="shrink-0 border-b border-[var(--line)] px-5 py-5">
-        <p className="eyebrow text-[10px] text-[var(--muted)]">Work Hat</p>
-        <p className="mt-0.5 text-sm font-semibold tracking-tight">Support OS</p>
+        <p className="eyebrow text-[10px] text-[var(--muted)]">Work Hat OS</p>
+        <p className="mt-1 text-sm font-semibold tracking-tight">Support operations</p>
+        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+          Conversation-first CRM for measurable AI improvement.
+        </p>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex flex-col gap-0.5 p-3">
-        {navItems.map((item) => {
-          const isActive = pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors ${
-                isActive
-                  ? "bg-[var(--moss)] text-white"
-                  : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
-              }`}
-            >
-              <span className="shrink-0">{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
+      <nav className="flex flex-1 flex-col overflow-y-auto scroll-soft px-3 py-4">
+        <div>
+          <p className="eyebrow px-3 pb-2 text-[9px] text-[var(--muted)]">Workspace</p>
+          <div className="flex flex-col gap-0.5">
+            {primaryItems.map((item) => {
+              const isActive = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors ${
+                    isActive
+                      ? "bg-[var(--moss)] text-white shadow-[0_0_0_1px_rgba(144,50,61,0.35)]"
+                      : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <span className="shrink-0">{item.icon}</span>
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <p className="eyebrow px-3 pb-2 text-[9px] text-[var(--muted)]">Configure</p>
+          <div className="flex flex-col gap-0.5">
+            {configItems.map((item) => {
+              const isActive = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors ${
+                    isActive
+                      ? "bg-[var(--moss)] text-white shadow-[0_0_0_1px_rgba(144,50,61,0.35)]"
+                      : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  <span className="shrink-0">{item.icon}</span>
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-3 py-3">
+          <p className="eyebrow text-[9px] text-[var(--muted)]">Operating lens</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+            Keep the workspace fast, compact, and connected. Surface context where work happens.
+          </p>
+        </div>
       </nav>
 
-      {/* Footer — real user from Supabase auth */}
       <div className="mt-auto shrink-0 border-t border-[var(--line)] px-4 py-4">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--moss)] text-[11px] font-semibold text-white">

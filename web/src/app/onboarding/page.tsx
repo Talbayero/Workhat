@@ -3,12 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type Step = {
-  id: string;
-  title: string;
-  description: string;
-  content: React.ReactNode;
+// ── Shared form state (lifted to parent) ──────────────────────────────────────
+
+type OrgFields = {
+  orgName: string;
+  supportEmail: string;
+  timezone: string;
 };
+
+type InviteFields = {
+  emails: string;
+  role: "agent" | "manager" | "qa_reviewer";
+};
+
+// ── Reusable input components ─────────────────────────────────────────────────
 
 function InputField({
   label,
@@ -37,43 +45,71 @@ function InputField({
   );
 }
 
-function StepOrg() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [tz, setTz] = useState("America/New_York");
+// ── Step components (receive state as props) ──────────────────────────────────
+
+function StepOrg({ fields, onChange }: { fields: OrgFields; onChange: (f: Partial<OrgFields>) => void }) {
   return (
     <div className="space-y-4 mt-5">
-      <InputField label="Organization name" placeholder="Acme Support" value={name} onChange={setName} />
-      <InputField label="Support email" placeholder="support@acme.com" type="email" value={email} onChange={setEmail} />
-      <InputField label="Timezone" placeholder="America/New_York" value={tz} onChange={setTz} />
+      <InputField
+        label="Organization name"
+        placeholder="Acme Support"
+        value={fields.orgName}
+        onChange={(v) => onChange({ orgName: v })}
+      />
+      <InputField
+        label="Support email"
+        placeholder="support@acme.com"
+        type="email"
+        value={fields.supportEmail}
+        onChange={(v) => onChange({ supportEmail: v })}
+      />
+      <InputField
+        label="Timezone"
+        placeholder="America/New_York"
+        value={fields.timezone}
+        onChange={(v) => onChange({ timezone: v })}
+      />
     </div>
   );
 }
 
-function StepInbox() {
-  const [address, setAddress] = useState("");
+function StepInbox({ orgSlug }: { orgSlug: string }) {
+  const inboundAddress = orgSlug
+    ? `inbound+${orgSlug}@work-hat.com`
+    : "inbound@work-hat.com";
+
   return (
     <div className="space-y-4 mt-5">
       <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Email channel</p>
-        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-          Forward your support mailbox to the address below. New emails route
-          directly into the inbox as conversations.
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Your inbound email address</p>
+        <p className="mt-2 text-xs leading-6 text-[var(--muted)]">
+          Forward your support mailbox to this address. Every email creates a
+          conversation in your inbox automatically.
         </p>
-        <div className="mt-3 rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-3 font-mono text-sm">
-          inbound@work-hat.com
+        <div
+          className="mt-3 flex items-center justify-between gap-3 rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-3 font-mono text-sm cursor-pointer"
+          onClick={() => navigator.clipboard?.writeText(inboundAddress)}
+          title="Click to copy"
+        >
+          <span>{inboundAddress}</span>
+          <span className="text-[10px] text-[var(--muted)]">click to copy</span>
         </div>
       </div>
-      <InputField
-        label="Your current support email (to forward from)"
-        placeholder="support@yourdomain.com"
-        type="email"
-        value={address}
-        onChange={setAddress}
-      />
+      <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4 space-y-2 text-sm">
+        <p className="eyebrow text-[9px] text-[var(--muted)]">How to set up forwarding</p>
+        <p className="text-[var(--muted)]">
+          1. Go to your email provider (Gmail, Google Workspace, Outlook, etc.)
+        </p>
+        <p className="text-[var(--muted)]">
+          2. Find "Forwarding" in settings and add the address above
+        </p>
+        <p className="text-[var(--muted)]">
+          3. Confirm the verification email that arrives in your inbox
+        </p>
+      </div>
       <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
         <p className="text-xs text-[var(--muted)]">
-          WhatsApp, SMS, and live chat channels are coming in the next release.
+          WhatsApp, SMS, and live chat are coming in the next release.
         </p>
       </div>
     </div>
@@ -95,10 +131,9 @@ function StepKnowledge() {
     <div className="space-y-4 mt-5">
       <p className="text-sm leading-6 text-[var(--muted)]">
         Upload your SOPs, return policies, tone guides, and product docs. The AI
-        reads these to generate accurate drafts. You can always add more in
+        reads these before drafting replies. You can always add more in
         Settings → Knowledge later.
       </p>
-
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
@@ -109,15 +144,12 @@ function StepKnowledge() {
             : "border-[var(--line)] bg-[var(--panel-strong)]"
         }`}
       >
-        <p className="text-sm text-[var(--muted)]">
-          Drop .txt, .md, or .pdf files here
-        </p>
+        <p className="text-sm text-[var(--muted)]">Drop .txt, .md, or .pdf files here</p>
         <p className="mt-1 text-xs text-[var(--muted)]">or</p>
         <button className="mt-3 rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium">
           Browse files
         </button>
       </div>
-
       {uploaded.length > 0 && (
         <div className="space-y-2">
           {uploaded.map((name) => (
@@ -131,71 +163,96 @@ function StepKnowledge() {
           ))}
         </div>
       )}
-
-      <button
-        onClick={() => setUploaded((p) => [...p, "return-policy.md", "tone-guide.md"])}
-        className="text-xs text-[var(--moss)]"
-      >
-        Load example files instead →
-      </button>
+      <p className="text-xs text-[var(--muted)]">
+        You can skip this and add knowledge entries after setup.
+      </p>
     </div>
   );
 }
 
-function StepInvite() {
-  const [emails, setEmails] = useState("");
+function StepInvite({
+  fields,
+  onChange,
+}: {
+  fields: InviteFields;
+  onChange: (f: Partial<InviteFields>) => void;
+}) {
   return (
     <div className="space-y-4 mt-5">
       <p className="text-sm leading-6 text-[var(--muted)]">
-        Invite your agents and managers. Each person gets an email with a magic
-        link to set up their account.
+        Invite your agents and managers. Each person gets a magic link to set up
+        their account. You can add more from Settings → Team any time.
       </p>
       <div>
         <label className="eyebrow text-[10px] text-[var(--muted)]">
           Email addresses (comma-separated)
         </label>
         <textarea
-          value={emails}
-          onChange={(e) => setEmails(e.target.value)}
+          value={fields.emails}
+          onChange={(e) => onChange({ emails: e.target.value })}
           placeholder="agent@yourteam.com, manager@yourteam.com"
           rows={3}
           className="mt-1.5 w-full rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors resize-none"
         />
       </div>
+      <div>
+        <label className="eyebrow text-[10px] text-[var(--muted)]">Role for all invitees</label>
+        <div className="mt-2 flex gap-2">
+          {(["agent", "manager", "qa_reviewer"] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => onChange({ role: r })}
+              className={`rounded-full border px-3.5 py-2 text-xs font-medium transition-colors ${
+                fields.role === r
+                  ? "border-[var(--moss)] bg-[rgba(120,161,122,0.1)] text-[var(--foreground)]"
+                  : "border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              {r === "qa_reviewer" ? "QA reviewer" : r.charAt(0).toUpperCase() + r.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4 space-y-2 text-sm">
         <p className="eyebrow text-[9px] text-[var(--muted)]">Roles</p>
-        <p className="text-[var(--muted)]"><span className="text-[var(--foreground)]">Agent</span> — handles conversations, uses AI drafts</p>
-        <p className="text-[var(--muted)]"><span className="text-[var(--foreground)]">Manager</span> — plus dashboard, edit analyzer, QA queue</p>
-        <p className="text-[var(--muted)]"><span className="text-[var(--foreground)]">QA reviewer</span> — read-only access + review comments</p>
+        <p className="text-[var(--muted)]">
+          <span className="text-[var(--foreground)]">Agent</span> — handles conversations, uses AI drafts
+        </p>
+        <p className="text-[var(--muted)]">
+          <span className="text-[var(--foreground)]">Manager</span> — plus dashboard, edit analyzer, QA queue
+        </p>
+        <p className="text-[var(--muted)]">
+          <span className="text-[var(--foreground)]">QA reviewer</span> — read-only + review comments
+        </p>
       </div>
     </div>
   );
 }
 
-const steps: Step[] = [
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+type StepId = "org" | "inbox" | "knowledge" | "invite";
+
+const STEP_META: { id: StepId; title: string; description: string }[] = [
   {
     id: "org",
     title: "Create your organization",
     description: "Name your workspace and set your support email.",
-    content: <StepOrg />,
   },
   {
     id: "inbox",
     title: "Connect your inbox",
     description: "Forward your support mailbox to start routing emails.",
-    content: <StepInbox />,
   },
   {
     id: "knowledge",
     title: "Upload your SOPs",
     description: "Policies and tone guides the AI reads before drafting.",
-    content: <StepKnowledge />,
   },
   {
     id: "invite",
     title: "Invite your team",
     description: "Add agents, managers, and QA reviewers.",
-    content: <StepInvite />,
   },
 ];
 
@@ -203,18 +260,116 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [completed, setCompleted] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function advance() {
-    setCompleted((prev) => new Set([...prev, currentStep]));
-    if (currentStep < steps.length - 1) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      router.push("/inbox");
+  // Shared form state across steps
+  const [orgFields, setOrgFields] = useState<OrgFields>({
+    orgName: "",
+    supportEmail: "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "America/New_York",
+  });
+  const [orgSlug, setOrgSlug] = useState("");
+  const [inviteFields, setInviteFields] = useState<InviteFields>({
+    emails: "",
+    role: "agent",
+  });
+
+  const step = STEP_META[currentStep];
+  const isLast = currentStep === STEP_META.length - 1;
+
+  // ── Step advance logic ────────────────────────────────────────────────────
+
+  async function advance() {
+    setError(null);
+    setLoading(true);
+
+    try {
+      if (currentStep === 0) {
+        // Step 1: create the org
+        if (!orgFields.orgName.trim()) {
+          setError("Organization name is required.");
+          return;
+        }
+
+        const res = await fetch("/api/org/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(orgFields),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Failed to create organization");
+        }
+
+        const data = await res.json();
+        setOrgSlug(data.org?.slug ?? "");
+      }
+
+      if (isLast) {
+        // Step 4: send invites if any emails were entered
+        const emailList = inviteFields.emails
+          .split(/[,\n]+/)
+          .map((e) => e.trim())
+          .filter((e) => e.includes("@"));
+
+        if (emailList.length > 0) {
+          const res = await fetch("/api/invite", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ emails: emailList, role: inviteFields.role }),
+          });
+
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            // Non-fatal — log but proceed to inbox
+            console.warn("[onboarding] invite error:", data.error);
+          }
+        }
+
+        router.push("/inbox");
+        return;
+      }
+
+      // Mark step complete and advance
+      setCompleted((prev) => new Set([...prev, currentStep]));
+      setCurrentStep((s) => s + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  const step = steps[currentStep];
-  const isLast = currentStep === steps.length - 1;
+  function skip() {
+    setError(null);
+    setCompleted((prev) => new Set([...prev, currentStep]));
+    if (isLast) {
+      router.push("/inbox");
+    } else {
+      setCurrentStep((s) => s + 1);
+    }
+  }
+
+  // ── Step content ──────────────────────────────────────────────────────────
+
+  const stepContent = {
+    org: (
+      <StepOrg
+        fields={orgFields}
+        onChange={(f) => setOrgFields((prev) => ({ ...prev, ...f }))}
+      />
+    ),
+    inbox: <StepInbox orgSlug={orgSlug} />,
+    knowledge: <StepKnowledge />,
+    invite: (
+      <StepInvite
+        fields={inviteFields}
+        onChange={(f) => setInviteFields((prev) => ({ ...prev, ...f }))}
+      />
+    ),
+  };
 
   return (
     <main className="flex min-h-screen items-start justify-center p-6 lg:p-10">
@@ -229,10 +384,15 @@ export default function OnboardingPage() {
 
         {/* Step progress */}
         <div className="mb-6 flex gap-2">
-          {steps.map((s, i) => (
+          {STEP_META.map((s, i) => (
             <button
               key={s.id}
-              onClick={() => i <= Math.max(...completed, currentStep) && setCurrentStep(i)}
+              onClick={() => {
+                if (i <= Math.max(currentStep, ...completed)) {
+                  setCurrentStep(i);
+                  setError(null);
+                }
+              }}
               className={`h-1.5 flex-1 rounded-full transition-colors ${
                 i === currentStep
                   ? "bg-[var(--moss)]"
@@ -240,7 +400,7 @@ export default function OnboardingPage() {
                   ? "bg-[var(--moss)] opacity-40"
                   : "bg-[var(--sage)]"
               }`}
-              aria-label={`Go to step ${i + 1}`}
+              aria-label={`Go to step ${i + 1}: ${s.title}`}
             />
           ))}
         </div>
@@ -248,39 +408,55 @@ export default function OnboardingPage() {
         {/* Step card */}
         <section className="grain-panel rounded-[28px] border border-[var(--line)] p-7">
           <p className="eyebrow text-[10px] text-[var(--muted)]">
-            Step {currentStep + 1} of {steps.length}
+            Step {currentStep + 1} of {STEP_META.length}
           </p>
           <h2 className="mt-2 text-xl font-semibold">{step.title}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{step.description}</p>
 
-          {step.content}
+          {stepContent[step.id]}
 
+          {/* Error */}
+          {error && (
+            <div className="mt-4 rounded-[14px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Navigation */}
           <div className="mt-7 flex items-center justify-between gap-4">
             <button
-              onClick={() => currentStep > 0 && setCurrentStep(currentStep - 1)}
+              onClick={() => { setCurrentStep((s) => s - 1); setError(null); }}
               disabled={currentStep === 0}
               className="text-sm text-[var(--muted)] disabled:opacity-0 transition-opacity"
             >
               ← Back
             </button>
             <div className="flex gap-2">
+              {/* Skip is always available except on step 1 (org creation is required) */}
+              {currentStep !== 0 && (
+                <button
+                  onClick={skip}
+                  disabled={loading}
+                  className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                >
+                  Skip
+                </button>
+              )}
               <button
                 onClick={advance}
-                className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                disabled={loading}
+                className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60 transition-opacity min-w-[120px]"
               >
-                Skip
-              </button>
-              <button
-                onClick={advance}
-                className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-sm font-medium text-white"
-              >
-                {isLast ? "Go to inbox →" : "Continue →"}
+                {loading
+                  ? "Working…"
+                  : isLast
+                  ? "Go to inbox →"
+                  : "Continue →"}
               </button>
             </div>
           </div>
         </section>
 
-        {/* Already have an account */}
         <p className="mt-5 text-center text-xs text-[var(--muted)]">
           Already set up?{" "}
           <button onClick={() => router.push("/login")} className="text-[var(--moss)]">

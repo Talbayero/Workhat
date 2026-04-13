@@ -2,6 +2,31 @@
 
 import { useState } from "react";
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type OrgRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  crm_plan: string;
+  ai_plan: string;
+};
+
+type ChannelRecord = {
+  supportEmail: string;
+  fromName: string;
+  timezone: string;
+  inboundAddress: string;
+};
+
+type TeamMember = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  status: string;
+};
+
 type SettingsTab = "organization" | "team" | "channels" | "ai" | "billing";
 
 const tabs: { id: SettingsTab; label: string }[] = [
@@ -12,19 +37,14 @@ const tabs: { id: SettingsTab; label: string }[] = [
   { id: "billing", label: "Billing" },
 ];
 
-const mockTeam = [
-  { id: "u1", name: "Marcos", email: "marcos@work-hat.com", role: "agent", status: "active" },
-  { id: "u2", name: "Anika", email: "anika@work-hat.com", role: "agent", status: "active" },
-  { id: "u3", name: "Jordan", email: "jordan@work-hat.com", role: "manager", status: "active" },
-  { id: "u4", name: "Casey", email: "casey@work-hat.com", role: "qa_reviewer", status: "invited" },
-];
-
 const roleLabel: Record<string, string> = {
   agent: "Agent",
   manager: "Manager",
   qa_reviewer: "QA reviewer",
   admin: "Admin",
 };
+
+// ── Shared UI components ───────────────────────────────────────────────────────
 
 function SectionCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -34,36 +54,23 @@ function SectionCard({ children, className = "" }: { children: React.ReactNode; 
   );
 }
 
-function FieldRow({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
+function FieldRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-6 py-4 border-b border-[var(--line)] last:border-0">
       <div className="min-w-0 max-w-xs">
         <p className="text-sm font-medium">{label}</p>
-        {description && (
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{description}</p>
-        )}
+        {description && <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{description}</p>}
       </div>
       <div className="shrink-0">{children}</div>
     </div>
   );
 }
 
-function TextInput({
-  value,
-  onChange,
-  placeholder,
-}: {
+function TextInput({ value, onChange, placeholder, disabled }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
     <input
@@ -71,41 +78,51 @@ function TextInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-64 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
+      disabled={disabled}
+      className="w-64 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors disabled:opacity-50"
     />
   );
 }
 
-function Toggle({ defaultChecked = false }: { defaultChecked?: boolean }) {
-  const [on, setOn] = useState(defaultChecked);
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
-      onClick={() => setOn(!on)}
-      className={`relative h-6 w-10 rounded-full transition-colors ${
-        on ? "bg-[var(--moss)]" : "bg-[var(--sage)]"
-      }`}
-      aria-checked={on}
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-10 rounded-full transition-colors ${checked ? "bg-[var(--moss)]" : "bg-[var(--sage)]"}`}
+      aria-checked={checked}
       role="switch"
     >
-      <span
-        className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
-          on ? "translate-x-5" : "translate-x-1"
-        }`}
-      />
+      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${checked ? "translate-x-5" : "translate-x-1"}`} />
     </button>
   );
 }
 
-// ── Tab content ────────────────────────────────────────────────────────────────
+// ── Organization tab ──────────────────────────────────────────────────────────
 
-function OrgTab({ onDirty }: { onDirty: () => void }) {
-  const [orgName, setOrgName] = useState("Work Hat");
-  const [supportEmail, setSupportEmail] = useState("support@work-hat.com");
-  const [timezone, setTimezone] = useState("America/New_York");
-  const [language, setLanguage] = useState("English (US)");
+function OrgTab({
+  org,
+  channel,
+  canEdit,
+  onDirty,
+  onSaveFields,
+}: {
+  org: OrgRecord | null;
+  channel: ChannelRecord | null;
+  canEdit: boolean;
+  onDirty: () => void;
+  onSaveFields: (fields: Record<string, string>) => void;
+}) {
+  const [name, setName] = useState(org?.name ?? "");
+  const [supportEmail, setSupportEmail] = useState(channel?.supportEmail ?? "");
+  const [fromName, setFromName] = useState(channel?.fromName ?? "");
+  const [timezone, setTimezone] = useState(channel?.timezone ?? "America/New_York");
 
-  function field(setter: (v: string) => void) {
-    return (v: string) => { setter(v); onDirty(); };
+  function field<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      onDirty();
+      onSaveFields({ name, supportEmail, fromName, timezone });
+    };
   }
 
   return (
@@ -114,102 +131,267 @@ function OrgTab({ onDirty }: { onDirty: () => void }) {
         <p className="eyebrow text-[9px] text-[var(--muted)]">Workspace</p>
         <div className="mt-1 divide-y divide-[var(--line)]">
           <FieldRow label="Organization name" description="Shown on invoices and team notifications.">
-            <TextInput value={orgName} onChange={field(setOrgName)} />
+            <TextInput value={name} onChange={field(setName)} disabled={!canEdit} />
           </FieldRow>
           <FieldRow label="Support email" description="Replies go out from this address.">
-            <TextInput value={supportEmail} onChange={field(setSupportEmail)} />
+            <TextInput value={supportEmail} onChange={field(setSupportEmail)} disabled={!canEdit} />
           </FieldRow>
-          <FieldRow label="Timezone" description="Used for SLA calculations and queue scheduling.">
-            <TextInput value={timezone} onChange={field(setTimezone)} />
+          <FieldRow label="From name" description="Shown in the customer's inbox.">
+            <TextInput value={fromName} onChange={field(setFromName)} disabled={!canEdit} />
           </FieldRow>
-          <FieldRow label="Default language" description="Language used for AI draft generation.">
-            <TextInput value={language} onChange={field(setLanguage)} />
+          <FieldRow label="Timezone" description="Used for SLA calculations.">
+            <TextInput value={timezone} onChange={field(setTimezone)} disabled={!canEdit} />
           </FieldRow>
         </div>
       </SectionCard>
 
-      <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Danger zone</p>
-        <div className="mt-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium">Delete organization</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Permanently removes all data, agents, and conversation history.
-            </p>
+      {org && (
+        <SectionCard>
+          <p className="eyebrow text-[9px] text-[var(--muted)]">Account details</p>
+          <div className="mt-3 space-y-2 text-sm text-[var(--muted)]">
+            <p>Org slug: <span className="font-mono text-[var(--foreground)]">{org.slug}</span></p>
+            <p>CRM plan: <span className="text-[var(--foreground)] capitalize">{org.crm_plan}</span></p>
+            <p>AI plan: <span className="text-[var(--foreground)] capitalize">{org.ai_plan}</span></p>
           </div>
-          <button className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[var(--moss)] transition-colors hover:bg-[rgba(144,50,61,0.12)]">
-            Delete org
-          </button>
-        </div>
-      </SectionCard>
+        </SectionCard>
+      )}
+
+      {canEdit && (
+        <SectionCard>
+          <p className="eyebrow text-[9px] text-[var(--muted)]">Danger zone</p>
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Delete organization</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                Permanently removes all data, agents, and conversation history.
+              </p>
+            </div>
+            <button className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[var(--moss)] transition-colors hover:bg-[rgba(144,50,61,0.12)]">
+              Delete org
+            </button>
+          </div>
+        </SectionCard>
+      )}
     </div>
   );
 }
 
-function TeamTab({ onDirty: _onDirty }: { onDirty: () => void }) {
+// ── Team tab ──────────────────────────────────────────────────────────────────
+
+function TeamTab({
+  initialMembers,
+  callerId,
+  canManage,
+}: {
+  initialMembers: TeamMember[];
+  callerId: string;
+  canManage: boolean;
+}) {
+  const [members, setMembers] = useState<TeamMember[]>(initialMembers);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"agent" | "manager" | "qa_reviewer">("agent");
+  const [inviting, setInviting] = useState(false);
+  const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  async function sendInvite() {
+    if (!inviteEmail.trim() || !inviteEmail.includes("@")) return;
+    setInviting(true);
+    setInviteMsg(null);
+    try {
+      const res = await fetch("/api/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: [inviteEmail.trim()], role: inviteRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Invite failed");
+      setInviteMsg(`Invite sent to ${inviteEmail.trim()}.`);
+      setInviteEmail("");
+      // Optimistically add to list
+      setMembers((prev) => [
+        ...prev,
+        {
+          id: `pending-${Date.now()}`,
+          full_name: inviteEmail.split("@")[0],
+          email: inviteEmail.trim(),
+          role: inviteRole,
+          status: "pending",
+        },
+      ]);
+    } catch (err) {
+      setInviteMsg(err instanceof Error ? err.message : "Invite failed");
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function changeRole(userId: string, role: string) {
+    const res = await fetch(`/api/settings/team?userId=${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+    if (res.ok) {
+      setMembers((prev) => prev.map((m) => (m.id === userId ? { ...m, role } : m)));
+    }
+    setEditingId(null);
+  }
+
+  async function removeMember(userId: string) {
+    if (!confirm("Remove this person from the org?")) return;
+    const res = await fetch(`/api/settings/team?userId=${userId}`, { method: "DELETE" });
+    if (res.ok) {
+      setMembers((prev) => prev.filter((m) => m.id !== userId));
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold">Team members</h2>
-          <p className="mt-1 text-xs text-[var(--muted)]">{mockTeam.length} members</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">{members.length} member{members.length !== 1 ? "s" : ""}</p>
         </div>
-        <button className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white">
-          Invite member
-        </button>
       </div>
 
-      <SectionCard className="p-0 overflow-hidden">
-        {mockTeam.map((member, i) => (
-          <div
-            key={member.id}
-            className={`flex items-center justify-between gap-4 px-5 py-4 ${
-              i < mockTeam.length - 1 ? "border-b border-[var(--line)]" : ""
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--sage)] text-xs font-semibold">
-                {member.name[0]}
-              </div>
-              <div>
-                <p className="text-sm font-medium">{member.name}</p>
-                <p className="text-xs text-[var(--muted)]">{member.email}</p>
-              </div>
+      {/* Invite row */}
+      {canManage && (
+        <SectionCard>
+          <p className="eyebrow text-[9px] text-[var(--muted)]">Invite a team member</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendInvite()}
+              placeholder="teammate@company.com"
+              className="flex-1 min-w-[200px] rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
+            />
+            <div className="flex gap-1">
+              {(["agent", "manager", "qa_reviewer"] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setInviteRole(r)}
+                  className={`rounded-full border px-3 py-2 text-xs font-medium transition-colors ${
+                    inviteRole === r
+                      ? "border-[var(--moss)] bg-[rgba(120,161,122,0.1)] text-[var(--foreground)]"
+                      : "border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {r === "qa_reviewer" ? "QA" : r.charAt(0).toUpperCase() + r.slice(1)}
+                </button>
+              ))}
             </div>
-
-            <div className="flex items-center gap-3">
-              <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]">
-                {roleLabel[member.role]}
-              </span>
-              {member.status === "invited" ? (
-                <span className="rounded-full bg-[rgba(169,146,125,0.15)] border border-[rgba(169,146,125,0.3)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
-                  Invited
-                </span>
-              ) : (
-                <span className="status-dot status-dot-green" />
-              )}
-              <button className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">
-                Edit
-              </button>
-            </div>
+            <button
+              onClick={sendInvite}
+              disabled={inviting || !inviteEmail.includes("@")}
+              className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white disabled:opacity-50 transition-opacity"
+            >
+              {inviting ? "Sending…" : "Send invite"}
+            </button>
           </div>
-        ))}
+          {inviteMsg && (
+            <p className="mt-2 text-xs text-[var(--muted)]">{inviteMsg}</p>
+          )}
+        </SectionCard>
+      )}
+
+      {/* Member list */}
+      <SectionCard className="p-0 overflow-hidden">
+        {members.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm text-[var(--muted)]">No team members yet.</div>
+        ) : (
+          members.map((member, i) => (
+            <div
+              key={member.id}
+              className={`flex items-center justify-between gap-4 px-5 py-4 ${
+                i < members.length - 1 ? "border-b border-[var(--line)]" : ""
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--sage)] text-xs font-semibold">
+                  {member.full_name?.[0]?.toUpperCase() ?? "?"}
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{member.full_name}</p>
+                  <p className="text-xs text-[var(--muted)]">{member.email}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {editingId === member.id ? (
+                  <div className="flex gap-1">
+                    {["agent", "manager", "qa_reviewer", "admin"].map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => changeRole(member.id, r)}
+                        className={`rounded-full border px-2.5 py-1 text-[10px] transition-colors ${
+                          member.role === r
+                            ? "border-[var(--moss)] bg-[rgba(120,161,122,0.1)]"
+                            : "border-[var(--line-strong)] text-[var(--muted)]"
+                        }`}
+                      >
+                        {roleLabel[r]}
+                      </button>
+                    ))}
+                    <button onClick={() => setEditingId(null)} className="text-[10px] text-[var(--muted)] ml-1">✕</button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]">
+                      {roleLabel[member.role] ?? member.role}
+                    </span>
+                    {member.status === "pending" ? (
+                      <span className="rounded-full bg-[rgba(169,146,125,0.15)] border border-[rgba(169,146,125,0.3)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
+                        Invited
+                      </span>
+                    ) : (
+                      <span className="status-dot status-dot-green" />
+                    )}
+                    {canManage && member.id !== callerId && (
+                      <>
+                        <button
+                          onClick={() => setEditingId(member.id)}
+                          className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                        >
+                          Role
+                        </button>
+                        <button
+                          onClick={() => removeMember(member.id)}
+                          className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </SectionCard>
 
+      {/* Role reference */}
       <SectionCard>
         <p className="eyebrow text-[9px] text-[var(--muted)]">Roles</p>
         <div className="mt-3 space-y-3 text-sm">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]">Agent</span>
+            <span className="mt-0.5 rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px] shrink-0">Agent</span>
             <p className="text-[var(--muted)]">Handles conversations, uses AI drafts, posts internal notes. Cannot access analytics or QA review.</p>
           </div>
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]">Manager</span>
+            <span className="mt-0.5 rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px] shrink-0">Manager</span>
             <p className="text-[var(--muted)]">All agent permissions plus Dashboard, edit analyzer, QA queue, and knowledge base editing.</p>
           </div>
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]">QA reviewer</span>
+            <span className="mt-0.5 rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px] shrink-0">QA reviewer</span>
             <p className="text-[var(--muted)]">Read-only access to threads and edit analysis. Can add review comments and flag patterns.</p>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px] shrink-0">Admin</span>
+            <p className="text-[var(--muted)]">Full access including org settings, team management, billing, and channel configuration.</p>
           </div>
         </div>
       </SectionCard>
@@ -217,13 +399,11 @@ function TeamTab({ onDirty: _onDirty }: { onDirty: () => void }) {
   );
 }
 
-function ChannelsTab({ onDirty }: { onDirty: () => void }) {
-  const [inbound, setInbound] = useState("support@work-hat.com");
-  const [fromName, setFromName] = useState("Work Hat Support");
+// ── Channels tab ──────────────────────────────────────────────────────────────
 
-  function field(setter: (v: string) => void) {
-    return (v: string) => { setter(v); onDirty(); };
-  }
+function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | null; canEdit: boolean; onDirty: () => void }) {
+  const [fromName, setFromName] = useState(channel?.fromName ?? "");
+  const [autoAssign, setAutoAssign] = useState(true);
 
   return (
     <div className="space-y-5">
@@ -240,13 +420,17 @@ function ChannelsTab({ onDirty }: { onDirty: () => void }) {
         </div>
         <div className="mt-4 divide-y divide-[var(--line)]">
           <FieldRow label="Inbound address" description="Forward your support mailbox here.">
-            <TextInput value={inbound} onChange={field(setInbound)} />
+            <div className="flex items-center gap-2">
+              <code className="rounded-[10px] border border-[var(--line)] bg-[var(--sage)] px-3 py-2 text-xs font-mono">
+                {channel?.inboundAddress || "set up via onboarding"}
+              </code>
+            </div>
           </FieldRow>
           <FieldRow label="From name" description="Shown in the customer's inbox.">
-            <TextInput value={fromName} onChange={field(setFromName)} />
+            <TextInput value={fromName} onChange={(v) => { setFromName(v); onDirty(); }} disabled={!canEdit} />
           </FieldRow>
           <FieldRow label="Auto-assign new threads" description="Round-robin to active agents.">
-            <Toggle defaultChecked />
+            <Toggle checked={autoAssign} onChange={(v) => { setAutoAssign(v); onDirty(); }} />
           </FieldRow>
         </div>
       </SectionCard>
@@ -255,10 +439,7 @@ function ChannelsTab({ onDirty }: { onDirty: () => void }) {
         <p className="eyebrow text-[9px] text-[var(--muted)]">Coming soon</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {["WhatsApp", "SMS / Twilio", "Live chat widget", "Slack connect"].map((ch) => (
-            <div
-              key={ch}
-              className="rounded-[16px] border border-[var(--line)] px-4 py-3.5 opacity-50"
-            >
+            <div key={ch} className="rounded-[16px] border border-[var(--line)] px-4 py-3.5 opacity-50">
               <p className="text-sm font-medium">{ch}</p>
               <p className="mt-1 text-xs text-[var(--muted)]">Not yet available</p>
             </div>
@@ -269,13 +450,16 @@ function ChannelsTab({ onDirty }: { onDirty: () => void }) {
   );
 }
 
-function AiTab({ onDirty }: { onDirty: () => void }) {
-  const [model, setModel] = useState("gpt-4o");
-  const [maxTokens, setMaxTokens] = useState("400");
+// ── AI tab ────────────────────────────────────────────────────────────────────
 
-  function field(setter: (v: string) => void) {
-    return (v: string) => { setter(v); onDirty(); };
-  }
+function AiTab({ onDirty }: { onDirty: () => void }) {
+  const [autoDraft, setAutoDraft] = useState(true);
+  const [showAgents, setShowAgents] = useState(true);
+  const [requireConfirm, setRequireConfirm] = useState(true);
+  const [showAnalyzer, setShowAnalyzer] = useState(false);
+  const [model, setModel] = useState("gpt-4o");
+
+  const toggle = (setter: (v: boolean) => void) => (v: boolean) => { setter(v); onDirty(); };
 
   return (
     <div className="space-y-5">
@@ -283,16 +467,16 @@ function AiTab({ onDirty }: { onDirty: () => void }) {
         <p className="eyebrow text-[9px] text-[var(--muted)]">Draft generation</p>
         <div className="mt-1 divide-y divide-[var(--line)]">
           <FieldRow label="Generate drafts automatically" description="AI prepares a draft for every new inbound message.">
-            <Toggle defaultChecked />
+            <Toggle checked={autoDraft} onChange={toggle(setAutoDraft)} />
           </FieldRow>
           <FieldRow label="Show drafts to agents" description="Agents see the draft before deciding to use it.">
-            <Toggle defaultChecked />
+            <Toggle checked={showAgents} onChange={toggle(setShowAgents)} />
           </FieldRow>
           <FieldRow label="Require confirmation before send" description="No AI reply goes out without explicit agent approval.">
-            <Toggle defaultChecked />
+            <Toggle checked={requireConfirm} onChange={toggle(setRequireConfirm)} />
           </FieldRow>
-          <FieldRow label="Show edit analyzer to agents" description="Agents see edit type and intensity after sending. Always visible to managers.">
-            <Toggle />
+          <FieldRow label="Show edit analyzer to agents" description="Agents see edit type and intensity after sending.">
+            <Toggle checked={showAnalyzer} onChange={toggle(setShowAnalyzer)} />
           </FieldRow>
         </div>
       </SectionCard>
@@ -300,103 +484,32 @@ function AiTab({ onDirty }: { onDirty: () => void }) {
       <SectionCard>
         <p className="eyebrow text-[9px] text-[var(--muted)]">Model</p>
         <div className="mt-1 divide-y divide-[var(--line)]">
-          <FieldRow label="Draft model" description="Used for reply generation and edit classification.">
-            <TextInput value={model} onChange={field(setModel)} />
+          <FieldRow label="Draft model" description="Used for reply generation.">
+            <TextInput value={model} onChange={(v) => { setModel(v); onDirty(); }} />
           </FieldRow>
-          <FieldRow label="Retrieval" description="Knowledge base entries injected into every draft prompt.">
-            <Toggle defaultChecked />
-          </FieldRow>
-          <FieldRow label="Max draft tokens" description="Keeps replies concise.">
-            <TextInput value={maxTokens} onChange={field(setMaxTokens)} />
-          </FieldRow>
-        </div>
-      </SectionCard>
-
-      <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">AI actions</p>
-        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-          Each AI draft generation, edit classification, and knowledge retrieval
-          costs one AI Action. Actions reset monthly with your plan.
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          {[
-            { label: "Used this month", value: "312" },
-            { label: "Included in plan", value: "2,000" },
-            { label: "Resets in", value: "26 days" },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-4 py-3.5"
-            >
-              <p className="text-xs text-[var(--muted)]">{stat.label}</p>
-              <p className="mt-1.5 text-xl font-semibold">{stat.value}</p>
-            </div>
-          ))}
         </div>
       </SectionCard>
     </div>
   );
 }
 
-function BillingTab() {
+// ── Billing tab ───────────────────────────────────────────────────────────────
+
+function BillingTab({ org }: { org: OrgRecord | null }) {
   return (
     <div className="space-y-5">
       <SectionCard>
         <p className="eyebrow text-[9px] text-[var(--muted)]">Current plan</p>
         <div className="mt-3 flex items-start justify-between gap-4">
           <div>
-            <p className="text-xl font-semibold">Growth</p>
+            <p className="text-xl font-semibold capitalize">{org?.crm_plan ?? "Starter"}</p>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              2,000 AI Actions / month · 5 seats · $149/mo
+              Manage your plan and billing in the billing portal.
             </p>
           </div>
           <button className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]">
-            Upgrade plan
+            Manage billing
           </button>
-        </div>
-
-        <div className="mt-4">
-          <div className="flex items-center justify-between text-xs text-[var(--muted)] mb-2">
-            <span>AI Actions used</span>
-            <span>312 / 2,000</span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--sage)]">
-            <div
-              className="h-full rounded-full bg-[var(--moss)]"
-              style={{ width: "15.6%" }}
-            />
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Payment method</p>
-        <div className="mt-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-[10px] border border-[var(--line)] bg-[var(--sage)] px-3 py-2 text-xs font-mono">
-              Visa •••• 4242
-            </div>
-            <p className="text-xs text-[var(--muted)]">Expires 12/27</p>
-          </div>
-          <button className="text-xs text-[var(--moss)]">Update</button>
-        </div>
-      </SectionCard>
-
-      <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Invoices</p>
-        <div className="mt-3 space-y-2 text-sm">
-          {[
-            { date: "Apr 1, 2026", amount: "$149.00", status: "Paid" },
-            { date: "Mar 1, 2026", amount: "$149.00", status: "Paid" },
-            { date: "Feb 1, 2026", amount: "$149.00", status: "Paid" },
-          ].map((inv) => (
-            <div key={inv.date} className="flex items-center justify-between gap-4 py-2 border-b border-[var(--line)] last:border-0">
-              <span className="text-[var(--muted)]">{inv.date}</span>
-              <span>{inv.amount}</span>
-              <span className="text-xs text-[var(--muted)]">{inv.status}</span>
-              <button className="text-xs text-[var(--moss)]">Download</button>
-            </div>
-          ))}
         </div>
       </SectionCard>
     </div>
@@ -405,10 +518,26 @@ function BillingTab() {
 
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
-export function SettingsShell() {
+export function SettingsShell({
+  org,
+  channel,
+  team,
+  callerRole,
+  callerId,
+}: {
+  org: OrgRecord | null;
+  channel: ChannelRecord | null;
+  team: TeamMember[];
+  callerRole: string;
+  callerId: string;
+}) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("organization");
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [pendingFields, setPendingFields] = useState<Record<string, string>>({});
+
+  const isAdmin = callerRole === "admin";
+  const canManageTeam = isAdmin || callerRole === "manager";
 
   function handleDirty() {
     setIsDirty(true);
@@ -417,32 +546,49 @@ export function SettingsShell() {
 
   async function handleSave() {
     setSaveStatus("saving");
-    // Phase 2: PATCH /api/settings with form state
-    await new Promise((r) => setTimeout(r, 600));
-    setSaveStatus("saved");
-    setIsDirty(false);
-    setTimeout(() => setSaveStatus("idle"), 2500);
-  }
-
-  function handleCancel() {
-    setIsDirty(false);
-    setSaveStatus("idle");
+    try {
+      const res = await fetch("/api/settings/org", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pendingFields),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setSaveStatus("saved");
+      setIsDirty(false);
+      setTimeout(() => setSaveStatus("idle"), 2500);
+    } catch {
+      setSaveStatus("idle");
+    }
   }
 
   const tabContent: Record<SettingsTab, React.ReactNode> = {
-    organization: <OrgTab onDirty={handleDirty} />,
-    team: <TeamTab onDirty={handleDirty} />,
-    channels: <ChannelsTab onDirty={handleDirty} />,
+    organization: (
+      <OrgTab
+        org={org}
+        channel={channel}
+        canEdit={isAdmin}
+        onDirty={handleDirty}
+        onSaveFields={setPendingFields}
+      />
+    ),
+    team: (
+      <TeamTab
+        initialMembers={team}
+        callerId={callerId}
+        canManage={canManageTeam}
+      />
+    ),
+    channels: <ChannelsTab channel={channel} canEdit={isAdmin} onDirty={handleDirty} />,
     ai: <AiTab onDirty={handleDirty} />,
-    billing: <BillingTab />,
+    billing: <BillingTab org={org} />,
   };
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Settings sidebar */}
       <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-[var(--line)] p-3">
         <div className="px-3 py-3">
           <h1 className="text-sm font-semibold">Settings</h1>
+          {org && <p className="mt-0.5 text-xs text-[var(--muted)] truncate">{org.name}</p>}
         </div>
         <nav className="flex flex-col gap-0.5">
           {tabs.map((tab) => (
@@ -461,46 +607,37 @@ export function SettingsShell() {
         </nav>
       </aside>
 
-      {/* Content */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="scroll-soft flex-1 overflow-y-auto px-6 py-6">
-          <div className="mx-auto max-w-2xl">
-            {tabContent[activeTab]}
-          </div>
+          <div className="mx-auto max-w-2xl">{tabContent[activeTab]}</div>
         </div>
 
-        {/* Save bar */}
-        <div
-          className={`shrink-0 border-t border-[var(--line)] px-6 py-4 transition-opacity ${
-            isDirty || saveStatus === "saved" ? "opacity-100" : "opacity-40 pointer-events-none"
-          }`}
-        >
-          <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
-            <p className="text-xs text-[var(--muted)]">
-              {saveStatus === "saved"
-                ? "All changes saved."
-                : isDirty
-                ? "You have unsaved changes."
-                : "No unsaved changes."}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={handleCancel}
-                disabled={!isDirty || saveStatus === "saving"}
-                className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium disabled:opacity-40 transition-opacity"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={!isDirty || saveStatus === "saving"}
-                className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white disabled:opacity-50 transition-opacity min-w-[96px]"
-              >
-                {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : "Save changes"}
-              </button>
+        {/* Save bar — only shown for tabs with editable fields */}
+        {activeTab !== "team" && activeTab !== "billing" && (
+          <div className={`shrink-0 border-t border-[var(--line)] px-6 py-4 transition-opacity ${isDirty || saveStatus === "saved" ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
+            <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
+              <p className="text-xs text-[var(--muted)]">
+                {saveStatus === "saved" ? "All changes saved." : isDirty ? "You have unsaved changes." : "No unsaved changes."}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setIsDirty(false); setSaveStatus("idle"); }}
+                  disabled={!isDirty || saveStatus === "saving"}
+                  className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium disabled:opacity-40 transition-opacity"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={!isDirty || saveStatus === "saving"}
+                  className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white disabled:opacity-50 transition-opacity min-w-[96px]"
+                >
+                  {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : "Save changes"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

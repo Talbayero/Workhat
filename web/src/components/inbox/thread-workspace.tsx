@@ -1,16 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
 import { conversationStatusLabel } from "@/lib/mock-data";
 import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
+import type { ConfidenceLevel } from "@/lib/ai/types";
 
 type LocalMessage = InboxConversation["messages"][number];
 type ConversationStatus = InboxConversation["status"];
 
 type ActivePanel = "ai" | "profile" | null;
 type ComposerMode = "reply" | "note";
+
+// Shape returned by POST /api/ai/draft
+type LiveDraft = {
+  id: string | null;
+  draftText: string;
+  rationale: string;
+  confidenceLevel: ConfidenceLevel;
+  riskFlags: string[];
+  missingContext: string[];
+  recommendedTags: string[];
+  latencyMs: number;
+};
 
 const confidenceLabel: Record<RiskLevel, string> = {
   green: "High confidence",
@@ -59,6 +72,11 @@ export function ThreadWorkspace({
   const [status, setStatus] = useState<ConversationStatus>(conversation.status);
   const [assignee, setAssignee] = useState(conversation.assignee);
 
+  // Live AI draft state
+  const [liveDraft, setLiveDraft] = useState<LiveDraft | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom whenever messages change
@@ -66,13 +84,46 @@ export function ThreadWorkspace({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [localMessages]);
 
+  // Call the real API to generate a draft
+  const generateDraft = useCallback(async () => {
+    if (draftLoading) return;
+    setDraftLoading(true);
+    setDraftError(null);
+    try {
+      const res = await fetch(`/api/ai/draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: conversation.id }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setLiveDraft(data.draft as LiveDraft);
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : "Draft generation failed");
+    } finally {
+      setDraftLoading(false);
+    }
+  }, [conversation.id, draftLoading]);
+
   function togglePanel(panel: ActivePanel) {
     setActivePanel((prev) => (prev === panel ? null : panel));
   }
 
+  // Open AI panel and auto-generate if no draft yet
+  function openAIPanel() {
+    setActivePanel("ai");
+    if (!liveDraft && !draftLoading) {
+      generateDraft();
+    }
+  }
+
   function useDraft() {
+    const text = liveDraft?.draftText ?? conversation.aiDraft.draftText;
     setComposerMode("reply");
-    setReplyText(conversation.aiDraft.draftText);
+    setReplyText(text);
     setActivePanel(null);
   }
 
@@ -92,7 +143,7 @@ export function ThreadWorkspace({
     const now = new Date();
     const timestamp = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
 
-    // Optimistically append the message to the thread
+    // Optimistically append the message to the thread immediately
     const newMessage: LocalMessage = {
       id: `local-${Date.now()}`,
       sender: composerMode === "note" ? "Internal note" : "You (agent)",
@@ -103,16 +154,36 @@ export function ThreadWorkspace({
     setLocalMessages((prev) => [...prev, newMessage]);
 
     if (composerMode === "reply") {
-      // Capture the edit: compare what the agent sent vs the AI draft
+      // In-memory edit capture (for session-level dashboard while on this page)
       const record = recordEdit(
         conversation.id,
-        conversation.aiDraft.draftText,
+        liveDraft?.draftText ?? conversation.aiDraft.draftText,
         replyText,
       );
       setLastEditRecord(record);
+
+      // Persist to Supabase via reply API (fire-and-forget — UI already updated)
+      fetch(`/api/conversations/${conversation.id}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          body: replyText,
+          aiDraftId: liveDraft?.id ?? null,
+        }),
+      }).catch((err: unknown) =>
+        console.error("[thread] reply persist failed:", err)
+      );
+    } else {
+      // Internal note
+      fetch(`/api/conversations/${conversation.id}/note`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: replyText }),
+      }).catch((err: unknown) =>
+        console.error("[thread] note persist failed:", err)
+      );
     }
 
-    // Phase 2: POST /api/conversations/:id/reply (or /note for internal notes)
     setReplyText("");
     setPendingSend(false);
     setActivePanel(null);
@@ -355,14 +426,14 @@ export function ThreadWorkspace({
                   Send
                 </button>
                 <button
-                  onClick={() => togglePanel("ai")}
+                  onClick={openAIPanel}
                   className={`rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${
                     activePanel === "ai"
                       ? "border-[var(--moss)] bg-[rgba(144,50,61,0.12)] text-[var(--foreground)]"
                       : "border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
                   }`}
                 >
-                  AI Draft
+                  {draftLoading ? "Drafting…" : liveDraft ? "AI Draft ✓" : "AI Draft"}
                 </button>
               </div>
             </div>
@@ -380,11 +451,10 @@ export function ThreadWorkspace({
         {/* AI Draft panel */}
         {activePanel === "ai" && (
           <div className="flex h-full w-[320px] flex-col overflow-hidden">
+            {/* Panel header */}
             <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
               <div className="flex items-center justify-between">
-                <p className="eyebrow text-[10px] text-[var(--muted)]">
-                  AI Draft
-                </p>
+                <p className="eyebrow text-[10px] text-[var(--muted)]">AI Draft</p>
                 <button
                   onClick={() => setActivePanel(null)}
                   className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
@@ -393,77 +463,132 @@ export function ThreadWorkspace({
                   <CloseIcon />
                 </button>
               </div>
-              <div className="mt-2 flex items-center gap-2">
-                <span
-                  className={`status-dot ${confidenceDot[conversation.aiConfidence]}`}
-                />
-                <span className="text-xs text-[var(--muted)] capitalize">
-                  {conversation.aiConfidence} confidence
-                </span>
-              </div>
+              {liveDraft && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className={`status-dot ${confidenceDot[liveDraft.confidenceLevel]}`} />
+                  <span className="text-xs text-[var(--muted)] capitalize">
+                    {liveDraft.confidenceLevel} confidence
+                  </span>
+                  <span className="ml-auto text-[9px] text-[var(--muted)]">
+                    {liveDraft.latencyMs}ms
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto scroll-soft p-4 space-y-3">
-              {/* Draft text */}
-              <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-                <p className="text-sm leading-6">{conversation.aiDraft.draftText}</p>
-              </div>
 
-              {/* Use this draft */}
-              <button
-                onClick={useDraft}
-                className="w-full rounded-full bg-[var(--moss)] px-4 py-2.5 text-sm font-medium text-white"
-              >
-                Use this draft
-              </button>
-
-              {/* Rationale */}
-              <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-                <p className="eyebrow text-[9px] text-[var(--muted)]">
-                  Why this response
-                </p>
-                <p className="mt-2 text-sm leading-6">
-                  {conversation.aiDraft.rationale}
-                </p>
-              </div>
-
-              {/* Missing context */}
-              {conversation.aiDraft.missingContext.length > 0 && (
-                <div className="rounded-[16px] border border-[rgba(169,146,125,0.25)] bg-[rgba(169,146,125,0.05)] p-4">
-                  <p className="eyebrow text-[9px] text-[var(--amber)]">
-                    Missing context
-                  </p>
-                  <ul className="mt-2 space-y-1.5">
-                    {conversation.aiDraft.missingContext.map((item) => (
-                      <li
-                        key={item}
-                        className="flex gap-2 text-sm leading-5"
-                      >
-                        <span className="shrink-0 text-[var(--muted)]">·</span>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
+              {/* Loading state */}
+              {draftLoading && (
+                <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--moss)] border-t-transparent" />
+                  <p className="text-xs text-[var(--muted)]">Generating draft…</p>
                 </div>
               )}
 
-              {/* Suggestions */}
-              {conversation.aiDraft.suggestions.length > 0 && (
-                <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-                  <p className="eyebrow text-[9px] text-[var(--muted)]">
-                    Suggestions
-                  </p>
-                  <ul className="mt-2 space-y-1.5">
-                    {conversation.aiDraft.suggestions.map((item) => (
-                      <li
-                        key={item}
-                        className="flex gap-2 text-sm leading-5"
-                      >
-                        <span className="shrink-0 text-[var(--muted)]">·</span>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
+              {/* Error state */}
+              {draftError && !draftLoading && (
+                <div className="rounded-[16px] border border-[rgba(144,50,61,0.3)] bg-[rgba(73,17,28,0.1)] p-4">
+                  <p className="eyebrow text-[9px] text-[var(--rose)]">Generation failed</p>
+                  <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">{draftError}</p>
+                  <button
+                    onClick={generateDraft}
+                    className="mt-3 rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] hover:text-[var(--moss)]"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {/* Live draft content */}
+              {liveDraft && !draftLoading && (
+                <>
+                  {/* Draft text */}
+                  <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                    <p className="text-sm leading-6 whitespace-pre-wrap">{liveDraft.draftText}</p>
+                  </div>
+
+                  {/* Use this draft */}
+                  <button
+                    onClick={useDraft}
+                    className="w-full rounded-full bg-[var(--moss)] px-4 py-2.5 text-sm font-medium text-white"
+                  >
+                    Use this draft
+                  </button>
+
+                  {/* Regenerate */}
+                  <button
+                    onClick={generateDraft}
+                    className="w-full rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+                  >
+                    Regenerate
+                  </button>
+
+                  {/* Rationale */}
+                  <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                    <p className="eyebrow text-[9px] text-[var(--muted)]">Why this response</p>
+                    <p className="mt-2 text-sm leading-6">{liveDraft.rationale}</p>
+                  </div>
+
+                  {/* Risk flags */}
+                  {liveDraft.riskFlags.length > 0 && (
+                    <div className="rounded-[16px] border border-[rgba(144,50,61,0.25)] bg-[rgba(73,17,28,0.08)] p-4">
+                      <p className="eyebrow text-[9px] text-[var(--rose)]">Risk flags</p>
+                      <ul className="mt-2 space-y-1.5">
+                        {liveDraft.riskFlags.map((flag) => (
+                          <li key={flag} className="flex gap-2 text-xs leading-5 font-mono text-[var(--muted)]">
+                            <span className="shrink-0">·</span>
+                            {flag}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Missing context */}
+                  {liveDraft.missingContext.length > 0 && (
+                    <div className="rounded-[16px] border border-[rgba(169,146,125,0.25)] bg-[rgba(169,146,125,0.05)] p-4">
+                      <p className="eyebrow text-[9px] text-[var(--amber)]">Missing context</p>
+                      <ul className="mt-2 space-y-1.5">
+                        {liveDraft.missingContext.map((item) => (
+                          <li key={item} className="flex gap-2 text-sm leading-5">
+                            <span className="shrink-0 text-[var(--muted)]">·</span>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Recommended tags */}
+                  {liveDraft.recommendedTags.length > 0 && (
+                    <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                      <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended tags</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {liveDraft.recommendedTags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full border border-[var(--line-strong)] px-2.5 py-1 text-[10px] text-[var(--muted)]"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Empty state — no draft yet and not loading */}
+              {!liveDraft && !draftLoading && !draftError && (
+                <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+                  <p className="text-xs text-[var(--muted)]">No draft generated yet.</p>
+                  <button
+                    onClick={generateDraft}
+                    className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white"
+                  >
+                    Generate draft
+                  </button>
                 </div>
               )}
             </div>

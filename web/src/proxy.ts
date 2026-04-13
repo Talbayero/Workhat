@@ -1,9 +1,35 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+/**
+ * Next.js 16 proxy (replaces middleware.ts).
+ *
+ * Public routes pass through freely.
+ * All other routes require a valid Supabase session:
+ *   - Unauthenticated API requests → 401 JSON
+ *   - Unauthenticated page requests → redirect to /login?next=<pathname>
+ * Already-signed-in users hitting /login → redirect to /inbox
+ */
+
 type CookieItem = { name: string; value: string; options?: Record<string, unknown> };
 
+// Exact public paths
+const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/onboarding", "/pricing"]);
+
+function isPublic(pathname: string): boolean {
+  if (PUBLIC_PATHS.has(pathname)) return true;
+  if (pathname.startsWith("/auth/")) return true;
+  if (pathname.startsWith("/api/inbound/")) return true;
+  if (pathname.startsWith("/api/waitlist")) return true;
+  if (pathname.startsWith("/checkout/")) return true;
+  if (pathname.startsWith("/_next/")) return true;
+  if (pathname.startsWith("/favicon")) return true;
+  return false;
+}
+
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -20,37 +46,42 @@ export async function proxy(request: NextRequest) {
           );
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options as Parameters<typeof supabaseResponse.cookies.set>[2])
+            supabaseResponse.cookies.set(
+              name,
+              value,
+              options as Parameters<typeof supabaseResponse.cookies.set>[2]
+            )
           );
         },
       },
     }
   );
 
-  // IMPORTANT: always call getUser() — never getSession() — to validate the
-  // session against Supabase Auth server on every request.
+  // Always use getUser() — validates against the Supabase Auth server
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-
-  // Public routes that don't require auth
-  const publicRoutes = ["/login", "/auth/callback"];
-  const isPublic = publicRoutes.some((r) => pathname.startsWith(r));
-
-  if (!user && !isPublic) {
-    // Redirect unauthenticated users to login
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+  // Always let public routes through
+  if (isPublic(pathname)) {
+    // Redirect already-signed-in users away from /login
+    if (user && pathname === "/login") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/inbox";
+      return NextResponse.redirect(url);
+    }
+    return supabaseResponse;
   }
 
-  if (user && pathname === "/login") {
-    // Already signed in — send to inbox
-    const url = request.nextUrl.clone();
-    url.pathname = "/inbox";
-    return NextResponse.redirect(url);
+  // Protected route — no session
+  if (!user) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   return supabaseResponse;
@@ -58,13 +89,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico, sitemap.xml, robots.txt
-     * - public folder assets
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

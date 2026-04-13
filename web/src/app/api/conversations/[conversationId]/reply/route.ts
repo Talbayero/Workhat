@@ -1,43 +1,223 @@
-// POST /api/conversations/:conversationId/reply
-// Phase 1: stub that validates the payload and returns 200.
-// Phase 2: insert into messages + sent_replies tables, trigger edit analysis.
+/**
+ * POST /api/conversations/:conversationId/reply
+ *
+ * Sends an outbound agent reply. Flow:
+ *   1. Authenticate + get app user / org
+ *   2. Validate body
+ *   3. Insert outbound message into `messages`
+ *   4. Insert into `sent_replies` (linked to ai_draft if one was used)
+ *   5. Update conversation last_message_at
+ *   6. Emit usage event
+ *   7. Trigger edit analysis async (fire-and-forget) if a draft was linked
+ *   8. Return message + sent_reply IDs
+ */
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { runEditAnalysis } from "@/lib/ai/analysis";
 
 type ReplyPayload = {
   body: string;
-  agentId: string;
-  aiDraftText?: string; // present when agent used or modified a draft
+  aiDraftId?: string | null; // present when agent used or modified a draft
 };
+
+function validateBody(raw: unknown): ReplyPayload | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.body !== "string" || !obj.body.trim()) return null;
+  return {
+    body: obj.body.trim(),
+    aiDraftId: typeof obj.aiDraftId === "string" ? obj.aiDraftId : null,
+  };
+}
+
+// ── Edit analysis (fire-and-forget) ──────────────────────────────────────────
+
+async function triggerEditAnalysis(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orgId: string,
+  conversationId: string,
+  aiDraftId: string,
+  sentReplyId: string,
+  finalText: string
+) {
+  try {
+    // Fetch the original AI draft text
+    const { data: draft, error } = await supabase
+      .from("ai_drafts")
+      .select("id, draft_text")
+      .eq("id", aiDraftId)
+      .single();
+
+    if (error || !draft) {
+      console.warn("[reply] ai_draft not found for analysis:", aiDraftId);
+      return;
+    }
+
+    const analysis = await runEditAnalysis(
+      (draft as { id: string; draft_text: string }).draft_text,
+      finalText
+    );
+
+    await supabase.from("edit_analyses").insert({
+      org_id: orgId,
+      conversation_id: conversationId,
+      ai_draft_id: aiDraftId,
+      sent_reply_id: sentReplyId,
+      edit_distance_score: analysis.editDistanceScore,
+      change_percent: analysis.changePercent,
+      categories: analysis.categories,
+      likely_reason_summary: analysis.likelyReasonSummary,
+      classification_confidence: analysis.classificationConfidence,
+      raw_diff_json: analysis.rawDiffJson,
+      raw_analysis_json: {
+        categories: analysis.categories,
+        likelyReasonSummary: analysis.likelyReasonSummary,
+        classificationConfidence: analysis.classificationConfidence,
+        shouldEscalate: analysis.shouldEscalate,
+      },
+    });
+  } catch (err) {
+    console.error(
+      "[reply] edit analysis failed:",
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
+// ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ conversationId: string }> },
+  { params }: { params: Promise<{ conversationId: string }> }
 ) {
   const { conversationId } = await params;
+  const supabase = await createClient();
 
-  let payload: ReplyPayload;
+  // Authenticate
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Get app user + org
+  const { data: appUser, error: userErr } = await supabase
+    .from("users")
+    .select("id, org_id, full_name, email")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (userErr || !appUser) {
+    return NextResponse.json({ error: "App user not found" }, { status: 403 });
+  }
+
+  const { id: userId, org_id: orgId, full_name: fullName } =
+    appUser as { id: string; org_id: string; full_name: string; email: string };
+
+  // Validate body
+  let payload: ReplyPayload | null;
   try {
-    payload = await req.json();
+    payload = validateBody(await req.json());
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-
-  if (!payload.body?.trim()) {
-    return NextResponse.json({ error: "Reply body is required" }, { status: 422 });
+  if (!payload) {
+    return NextResponse.json({ error: "body is required" }, { status: 422 });
   }
 
-  // Phase 2: insert into Supabase
-  // const supabase = createServerSupabaseClient();
-  // await supabase.from("messages").insert({ ... });
-  // await supabase.from("sent_replies").insert({ ... });
-  // if (payload.aiDraftText) { trigger edit analysis }
+  const { body, aiDraftId } = payload;
 
-  console.info(`[reply] conv=${conversationId} agent=${payload.agentId} len=${payload.body.length}`);
+  // 1. Insert outbound message
+  const { data: message, error: msgErr } = await supabase
+    .from("messages")
+    .insert({
+      org_id: orgId,
+      conversation_id: conversationId,
+      sender_type: "agent",
+      sender_user_id: userId,
+      author_name: fullName ?? "Agent",
+      direction: "outbound",
+      body_text: body,
+      metadata_json: aiDraftId ? { source_ai_draft_id: aiDraftId } : {},
+    })
+    .select("id")
+    .single();
+
+  if (msgErr || !message) {
+    console.error("[reply] message insert failed:", msgErr?.message);
+    return NextResponse.json(
+      { error: "Failed to persist message" },
+      { status: 500 }
+    );
+  }
+
+  const messageId = (message as { id: string }).id;
+
+  // 2. Insert sent_reply
+  const { data: sentReply, error: replyErr } = await supabase
+    .from("sent_replies")
+    .insert({
+      org_id: orgId,
+      conversation_id: conversationId,
+      source_ai_draft_id: aiDraftId ?? null,
+      sent_by_user_id: userId,
+      message_id: messageId,
+      body_text: body,
+      sent_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (replyErr || !sentReply) {
+    console.error("[reply] sent_reply insert failed:", replyErr?.message);
+    // Non-fatal — message is already persisted
+  }
+
+  const sentReplyId = sentReply ? (sentReply as { id: string }).id : null;
+
+  // 3. Update conversation last_message_at
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: new Date().toISOString() })
+    .eq("id", conversationId)
+    .eq("org_id", orgId);
+
+  // 4. Emit usage event
+  supabase
+    .from("usage_events")
+    .insert({
+      org_id: orgId,
+      user_id: userId,
+      event_type: "email_sent",
+      units: 1,
+      metadata_json: {
+        conversation_id: conversationId,
+        has_ai_draft: Boolean(aiDraftId),
+      },
+    })
+    .then(({ error: e }) => {
+      if (e) console.warn("[reply] usage event failed:", e.message);
+    });
+
+  // 5. Trigger edit analysis if a draft was linked
+  if (aiDraftId && sentReplyId) {
+    triggerEditAnalysis(
+      supabase,
+      orgId,
+      conversationId,
+      aiDraftId,
+      sentReplyId,
+      body
+    ).catch((e: unknown) =>
+      console.warn("[reply] analysis trigger error:", e instanceof Error ? e.message : e)
+    );
+  }
 
   return NextResponse.json({
     ok: true,
     conversationId,
-    messageId: `msg-${Date.now()}`,
+    messageId,
+    sentReplyId,
+    analysisQueued: Boolean(aiDraftId && sentReplyId),
   });
 }
