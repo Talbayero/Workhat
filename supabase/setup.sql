@@ -162,17 +162,26 @@ create table if not exists public.companies (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   name text not null,
+  domain text null,
   industry text null,
+  account_owner text not null default '',       -- denormalized owner name for display
+  tier text not null default 'standard',        -- standard | pro | enterprise | vip
+  health_score integer not null default 100 check (health_score between 0 and 100),
+  open_conversations integer not null default 0,
+  active_contacts integer not null default 0,
+  arr numeric(12,2) null,
   notes text null,
   tags jsonb not null default '[]'::jsonb,
-  active_contacts integer not null default 0,
-  open_conversations integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists companies_org_name_idx
   on public.companies (org_id, name);
+
+create index if not exists companies_org_domain_idx
+  on public.companies (org_id, domain)
+  where domain is not null;
 
 create table if not exists public.contacts (
   id uuid primary key default gen_random_uuid(),
@@ -185,7 +194,7 @@ create table if not exists public.contacts (
   phone text null,
   notes text null,
   tags jsonb not null default '[]'::jsonb,
-  status text not null default 'active',
+  status text not null default 'active',        -- active | watch | vip
   tier text null,
   preferred_channel text null,
   location text null,
@@ -202,13 +211,16 @@ create index if not exists contacts_org_email_idx
   on public.contacts (org_id, email)
   where email is not null;
 
+create index if not exists contacts_org_last_activity_idx
+  on public.contacts (org_id, last_activity_at desc);
+
 create table if not exists public.channels (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   type public.channel_type not null,
   provider text not null default 'postmark',
   status public.channel_status not null default 'active',
-  inbound_address text null,
+  inbound_address text null,                    -- direct column for fast lookup by inbound webhook
   config_json jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -240,16 +252,12 @@ for each row execute function public.set_updated_at();
 -- ════════════════════════════════
 -- 0004_enrich_companies_contacts_channels.sql
 -- ════════════════════════════════
--- Migration 0004: Enrich companies, contacts, channels
--- Uses ADD COLUMN IF NOT EXISTS throughout so it's safe to run
--- even if 0003 already included these columns.
+-- Migration 0004: Add relational ownership columns
+-- All display/denormalized columns are already in 0003.
+-- This adds foreign-key ownership columns that reference users (created in 0002).
 
 alter table public.companies
-  add column if not exists domain text null,
-  add column if not exists account_owner_user_id uuid null references public.users(id) on delete set null,
-  add column if not exists tier text not null default 'standard',
-  add column if not exists health_score integer not null default 100 check (health_score between 0 and 100),
-  add column if not exists arr numeric(12,2) null;
+  add column if not exists account_owner_user_id uuid null references public.users(id) on delete set null;
 
 create index if not exists companies_org_owner_idx
   on public.companies (org_id, account_owner_user_id);
@@ -259,9 +267,6 @@ alter table public.contacts
 
 create index if not exists contacts_org_owner_idx
   on public.contacts (org_id, owner_user_id);
-
-create index if not exists contacts_org_last_activity_idx
-  on public.contacts (org_id, last_activity_at desc);
 
 
 -- ════════════════════════════════
@@ -277,12 +282,13 @@ create table if not exists public.conversations (
   status public.conversation_status not null default 'open',
   priority text not null default 'normal',
   assigned_user_id uuid null references public.users(id) on delete set null,
+  assigned_to_name text not null default '',   -- denormalized for fast display
   risk_level public.risk_level not null default 'green',
-  ai_confidence public.risk_level not null default 'green',
-  sentiment_customer public.risk_level not null default 'green',
-  sentiment_agent public.risk_level not null default 'green',
+  ai_confidence public.risk_level not null default 'yellow',
   tags jsonb not null default '[]'::jsonb,
-  external_thread_id text null,
+  preview text not null default '',             -- first 160 chars of latest inbound message
+  intent text not null default 'general',       -- classified: billing|support|escalation|…
+  external_thread_id text null,                 -- email Message-ID for threading
   last_message_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -299,6 +305,9 @@ create index if not exists conversations_org_contact_last_message_idx
 
 create index if not exists conversations_org_company_last_message_idx
   on public.conversations (org_id, company_id, last_message_at desc);
+
+create index if not exists conversations_org_risk_last_message_idx
+  on public.conversations (org_id, risk_level, last_message_at desc);
 
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),

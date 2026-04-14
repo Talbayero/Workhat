@@ -8,12 +8,13 @@ create table if not exists public.conversations (
   status public.conversation_status not null default 'open',
   priority text not null default 'normal',
   assigned_user_id uuid null references public.users(id) on delete set null,
+  assigned_to_name text not null default '',   -- denormalized for fast display
   risk_level public.risk_level not null default 'green',
-  ai_confidence public.risk_level not null default 'green',
-  sentiment_customer public.risk_level not null default 'green',
-  sentiment_agent public.risk_level not null default 'green',
+  ai_confidence public.risk_level not null default 'yellow',
   tags jsonb not null default '[]'::jsonb,
-  external_thread_id text null,
+  preview text not null default '',             -- first 160 chars of latest inbound message
+  intent text not null default 'general',       -- classified: billing|support|escalation|…
+  external_thread_id text null,                 -- email Message-ID for threading
   last_message_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -30,6 +31,9 @@ create index if not exists conversations_org_contact_last_message_idx
 
 create index if not exists conversations_org_company_last_message_idx
   on public.conversations (org_id, company_id, last_message_at desc);
+
+create index if not exists conversations_org_risk_last_message_idx
+  on public.conversations (org_id, risk_level, last_message_at desc);
 
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),

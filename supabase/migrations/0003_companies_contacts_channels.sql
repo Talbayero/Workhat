@@ -2,17 +2,26 @@ create table if not exists public.companies (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   name text not null,
+  domain text null,
   industry text null,
+  account_owner text not null default '',       -- denormalized owner name for display
+  tier text not null default 'standard',        -- standard | pro | enterprise | vip
+  health_score integer not null default 100 check (health_score between 0 and 100),
+  open_conversations integer not null default 0,
+  active_contacts integer not null default 0,
+  arr numeric(12,2) null,
   notes text null,
   tags jsonb not null default '[]'::jsonb,
-  active_contacts integer not null default 0,
-  open_conversations integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists companies_org_name_idx
   on public.companies (org_id, name);
+
+create index if not exists companies_org_domain_idx
+  on public.companies (org_id, domain)
+  where domain is not null;
 
 create table if not exists public.contacts (
   id uuid primary key default gen_random_uuid(),
@@ -25,7 +34,7 @@ create table if not exists public.contacts (
   phone text null,
   notes text null,
   tags jsonb not null default '[]'::jsonb,
-  status text not null default 'active',
+  status text not null default 'active',        -- active | watch | vip
   tier text null,
   preferred_channel text null,
   location text null,
@@ -42,13 +51,16 @@ create index if not exists contacts_org_email_idx
   on public.contacts (org_id, email)
   where email is not null;
 
+create index if not exists contacts_org_last_activity_idx
+  on public.contacts (org_id, last_activity_at desc);
+
 create table if not exists public.channels (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
   type public.channel_type not null,
   provider text not null default 'postmark',
   status public.channel_status not null default 'active',
-  inbound_address text null,
+  inbound_address text null,                    -- direct column for fast lookup by inbound webhook
   config_json jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
