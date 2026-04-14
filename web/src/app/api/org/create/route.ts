@@ -129,16 +129,18 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. Create default email channel
+  const inboundAddress = `inbound+${slug}@work-hat.com`;
   await supabase.from("channels").insert({
     org_id: orgId,
     type: "email",
     provider: "postmark",
     status: "active",
+    inbound_address: inboundAddress,
     config_json: {
       support_email: body.supportEmail ?? "",
       from_name: body.orgName,
       timezone: body.timezone ?? "America/New_York",
-      inbound_address: `inbound+${slug}@work-hat.com`,
+      inbound_address: inboundAddress,
     },
   });
 
