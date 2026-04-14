@@ -518,3 +518,159 @@ export async function getKnowledgeEntryById(
   if (error || !data) return null;
   return dbKnowledgeToFrontend(data as unknown as DbKnowledgeEntry);
 }
+
+// ── Dashboard analytics ───────────────────────────────────────────────────────
+
+export type EditTypeKey =
+  | "accepted"
+  | "tone"
+  | "policy"
+  | "missing_context"
+  | "factual"
+  | "structure"
+  | "full_rewrite";
+
+export type DashboardStats = {
+  totalEdits: number;
+  acceptanceRate: number;        // 0-100
+  avgEditIntensity: number;      // 0-100
+  topEditType: EditTypeKey | null;
+  byType: Record<EditTypeKey, number>;
+};
+
+export type EditLogEntry = {
+  id: string;
+  conversationId: string;
+  editType: EditTypeKey;
+  editIntensity: number;
+  finalText: string;
+  createdAt: string;
+};
+
+const EDIT_TYPE_KEYS: EditTypeKey[] = [
+  "accepted", "tone", "policy", "missing_context",
+  "factual", "structure", "full_rewrite",
+];
+
+function emptyByType(): Record<EditTypeKey, number> {
+  return Object.fromEntries(EDIT_TYPE_KEYS.map((k) => [k, 0])) as Record<EditTypeKey, number>;
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("edit_analyses")
+    .select("id, change_percent, categories, conversation_id")
+    .order("created_at", { ascending: false })
+    .limit(500); // cap for perf — enough for stats
+
+  if (error || !data || data.length === 0) {
+    return {
+      totalEdits: 0,
+      acceptanceRate: 0,
+      avgEditIntensity: 0,
+      topEditType: null,
+      byType: emptyByType(),
+    };
+  }
+
+  const byType = emptyByType();
+  let totalIntensity = 0;
+  let accepted = 0;
+
+  for (const row of data) {
+    const intensity = Number(row.change_percent ?? 0);
+    totalIntensity += intensity;
+
+    const cats = (row.categories ?? []) as string[];
+    if (intensity < 10 || cats.includes("accepted")) {
+      accepted++;
+      byType.accepted++;
+    } else {
+      // First non-accepted category wins for the breakdown
+      const editCat = cats.find((c) =>
+        EDIT_TYPE_KEYS.includes(c as EditTypeKey) && c !== "accepted"
+      ) as EditTypeKey | undefined;
+      if (editCat) byType[editCat]++;
+    }
+  }
+
+  const total = data.length;
+  const topEditType =
+    (Object.entries(byType) as [EditTypeKey, number][])
+      .filter(([k]) => k !== "accepted")
+      .sort(([, a], [, b]) => b - a)[0]?.[0] ?? null;
+
+  return {
+    totalEdits: total,
+    acceptanceRate: Math.round((accepted / total) * 100),
+    avgEditIntensity: Math.round(totalIntensity / total),
+    topEditType,
+    byType,
+  };
+}
+
+export async function getRecentEditLog(limit = 8): Promise<EditLogEntry[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("edit_analyses")
+    .select(
+      `id, conversation_id, change_percent, categories,
+       sent_replies(body_text)`
+    )
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error || !data) return [];
+
+  return data.map((row) => {
+    const cats = (row.categories ?? []) as string[];
+    const intensity = Number(row.change_percent ?? 0);
+
+    let editType: EditTypeKey = "accepted";
+    if (intensity >= 10) {
+      const found = cats.find(
+        (c) => EDIT_TYPE_KEYS.includes(c as EditTypeKey) && c !== "accepted"
+      ) as EditTypeKey | undefined;
+      editType = found ?? "structure";
+    }
+
+    const replyRaw = row.sent_replies as
+      | { body_text: string }
+      | { body_text: string }[]
+      | null;
+    const finalText = Array.isArray(replyRaw)
+      ? (replyRaw[0]?.body_text ?? "")
+      : (replyRaw?.body_text ?? "");
+
+    return {
+      id: row.id,
+      conversationId: row.conversation_id,
+      editType,
+      editIntensity: Math.round(intensity),
+      finalText,
+      createdAt: "",
+    };
+  });
+}
+
+export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .select(
+      `id, subject, status, priority, contact_id, company_id, assigned_to_name,
+       risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       contacts(full_name, email, phone, tier, notes, tags),
+       companies(name)`
+    )
+    .or("risk_level.eq.red,ai_confidence.eq.red,ai_confidence.eq.yellow")
+    .order("last_message_at", { ascending: false })
+    .limit(20);
+
+  if (error) return [];
+  return ((data ?? []) as unknown as DbConversation[]).map(dbConvToFrontend);
+}
