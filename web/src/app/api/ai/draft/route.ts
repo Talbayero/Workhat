@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateDraft, PROMPT_VERSION } from "@/lib/ai";
+import { generateEmbedding } from "@/lib/embeddings";
 import type { ConversationContext, MessageContext, KnowledgeSnippet } from "@/lib/ai/types";
 
 // ── Request validation ────────────────────────────────────────────────────────
@@ -44,46 +45,75 @@ function validateBody(raw: unknown): DraftRequestBody | null {
 
 /**
  * Retrieve the top-k knowledge chunks relevant to a conversation.
- * V1: keyword search using plainto_tsquery against content_tsv.
- * Phase 2: replace or augment with vector similarity search.
+ * Primary: semantic search via pgvector (match_knowledge_chunks RPC).
+ * Fallback: full-text search on content_tsv (if embeddings unavailable).
  */
 async function fetchKnowledgeSnippets(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  orgId: string,
   subject: string,
   lastMessageBody: string,
-  limit = 4
+  limit = 5
 ): Promise<KnowledgeSnippet[]> {
-  const searchTerms = `${subject} ${lastMessageBody}`.slice(0, 500);
+  const queryText = `${subject} ${lastMessageBody}`.slice(0, 1000);
 
+  // ── 1. Try semantic search ──────────────────────────────────────────────
   try {
+    const queryEmbedding = await generateEmbedding(queryText);
+
+    const { data: semanticData, error: semanticErr } = await supabase.rpc(
+      "match_knowledge_chunks",
+      {
+        query_embedding: JSON.stringify(queryEmbedding),
+        p_org_id: orgId,
+        match_count: limit,
+        min_similarity: 0.45,
+      }
+    );
+
+    if (!semanticErr && semanticData && semanticData.length > 0) {
+      // Fetch entry titles for matched chunks
+      const entryIds = [...new Set((semanticData as { entry_id: string }[]).map((r) => r.entry_id))];
+      const { data: entries } = await supabase
+        .from("knowledge_entries")
+        .select("id, title, category")
+        .in("id", entryIds);
+
+      const entryMap = Object.fromEntries(
+        (entries ?? []).map((e: { id: string; title: string; category: string }) => [e.id, e])
+      );
+
+      return (semanticData as { id: string; entry_id: string; text: string; similarity: number }[]).map((row) => ({
+        id: row.id,
+        title: entryMap[row.entry_id]?.title ?? "Knowledge entry",
+        excerpt: row.text.slice(0, 400),
+        entryType: entryMap[row.entry_id]?.category ?? "sop",
+      }));
+    }
+  } catch (e) {
+    console.warn("[ai/draft] semantic search failed, falling back to full-text:", e instanceof Error ? e.message : e);
+  }
+
+  // ── 2. Fallback: full-text search ───────────────────────────────────────
+  try {
+    const searchTerms = queryText.split(/\s+/).slice(0, 10).join(" ");
+
     const { data, error } = await supabase
       .from("knowledge_chunks")
-      .select(`
-        id,
-        content,
-        knowledge_entries (
-          id,
-          title,
-          entry_type,
-          is_active
-        )
-      `)
-      .textSearch("content_tsv", searchTerms, {
-        type: "plain",
-        config: "english",
-      })
-      .eq("knowledge_entries.is_active", true)
+      .select(`id, text, entry_id, knowledge_entries:entry_id (id, title, category)`)
+      .textSearch("content_tsv", searchTerms, { type: "plain", config: "english" })
+      .eq("org_id", orgId)
       .limit(limit);
 
     if (error || !data) return [];
 
-    // Supabase returns the joined relation as an array; we cast to access it.
     type RawChunk = {
       id: string;
-      content: string;
+      text: string;
+      entry_id: string;
       knowledge_entries:
-        | { id: string; title: string; entry_type: string; is_active: boolean }[]
-        | { id: string; title: string; entry_type: string; is_active: boolean }
+        | { id: string; title: string; category: string }[]
+        | { id: string; title: string; category: string }
         | null;
     };
 
@@ -96,13 +126,12 @@ async function fetchKnowledgeSnippets(
         return {
           id: row.id,
           title: entry.title ?? "Knowledge entry",
-          excerpt: row.content.slice(0, 400),
-          entryType: entry.entry_type ?? "rule",
+          excerpt: row.text.slice(0, 400),
+          entryType: entry.category ?? "sop",
         };
       })
       .filter((s): s is KnowledgeSnippet => s !== null);
   } catch {
-    // Knowledge retrieval is non-fatal — log and continue
     console.warn("[ai/draft] knowledge retrieval failed — continuing without snippets");
     return [];
   }
@@ -190,9 +219,15 @@ async function assembleContext(
   const lastInbound = [...messages].reverse().find((m) => m.role === "customer");
   const lastBody = lastInbound?.body ?? conv.subject ?? "";
 
-  // Fetch knowledge snippets
+  // Fetch knowledge snippets (semantic → full-text fallback)
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+  const { data: appUserForOrg } = authUser
+    ? await supabase.from("users").select("org_id").eq("auth_user_id", authUser.id).single()
+    : { data: null };
+
   const knowledgeSnippets = await fetchKnowledgeSnippets(
     supabase,
+    (appUserForOrg as { org_id: string } | null)?.org_id ?? "",
     conv.subject ?? "",
     lastBody
   );
