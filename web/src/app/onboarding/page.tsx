@@ -384,8 +384,9 @@ export default function OnboardingPage() {
             router.replace("/login?next=/onboarding");
             return;
           }
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error ?? "Failed to create organization");
+          const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string; hint?: string };
+          const detail = [data.error, data.hint].filter(Boolean).join(" — ");
+          throw new Error(detail || "Failed to create organization");
         }
 
         const data = await res.json();
