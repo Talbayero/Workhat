@@ -1,8 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
+type SupabaseAdminClient = ReturnType<typeof createAdminClient>;
+
 export type AdminClientResult =
-  | { client: ReturnType<typeof createClient>; reason: "service_role_key_valid"; keyRole: "service_role" }
-  | { client: ReturnType<typeof createClient>; reason: "secret_key_valid"; keyRole: "secret" }
+  | { client: SupabaseAdminClient; reason: "service_role_key_valid"; keyRole: "service_role" }
+  | { client: SupabaseAdminClient; reason: "secret_key_valid"; keyRole: "secret" }
   | { client: null; reason: "missing_env" | "invalid_service_role_key" | "client_init_failed"; keyRole?: string };
 
 /**
@@ -60,9 +62,26 @@ export function createOptionalAdminClient(): AdminClientResult {
   }
 
   const isSecretKey = key.startsWith("sb_secret_");
-  const keyRole = isSecretKey ? "secret" : decodeSupabaseJwtRole(key);
-  if (!isSecretKey && keyRole !== "service_role") {
-    return { client: null, reason: "invalid_service_role_key", keyRole };
+  const jwtRole = isSecretKey ? undefined : decodeSupabaseJwtRole(key);
+  if (!isSecretKey && jwtRole !== "service_role") {
+    return { client: null, reason: "invalid_service_role_key", keyRole: jwtRole };
+  }
+
+  if (isSecretKey) {
+    try {
+      return {
+        client: createClient(url, key, {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        }),
+        reason: "secret_key_valid",
+        keyRole: "secret",
+      };
+    } catch {
+      return { client: null, reason: "client_init_failed", keyRole: "secret" };
+    }
   }
 
   try {
@@ -73,10 +92,10 @@ export function createOptionalAdminClient(): AdminClientResult {
           persistSession: false,
         },
       }),
-      reason: isSecretKey ? "secret_key_valid" : "service_role_key_valid",
-      keyRole,
+      reason: "service_role_key_valid",
+      keyRole: "service_role",
     };
   } catch {
-    return { client: null, reason: "client_init_failed", keyRole };
+    return { client: null, reason: "client_init_failed", keyRole: "service_role" };
   }
 }
