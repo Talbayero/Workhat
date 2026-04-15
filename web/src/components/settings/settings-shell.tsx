@@ -401,47 +401,265 @@ function TeamTab({
 
 // ── Channels tab ──────────────────────────────────────────────────────────────
 
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  return (
+    <button
+      onClick={copy}
+      className="shrink-0 rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-[10px] font-medium transition-colors hover:border-[var(--moss)]"
+    >
+      {copied ? "Copied!" : "Copy"}
+    </button>
+  );
+}
+
 function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | null; canEdit: boolean; onDirty: () => void }) {
   const [fromName, setFromName] = useState(channel?.fromName ?? "");
-  const [autoAssign, setAutoAssign] = useState(true);
+  const [setupPath, setSetupPath] = useState<"gmail" | "direct" | null>(null);
+  const [testSending, setTestSending] = useState(false);
+  const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
+
+  const inboundAddress = channel?.inboundAddress || "";
+  const hasAddress = Boolean(inboundAddress);
+
+  async function sendTestEmail() {
+    setTestSending(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactEmail: "test@example.com",
+          contactName: "Test Customer",
+          subject: "Test conversation — channel verification",
+          firstMessage: "This is an automated test message to verify your Work Hat inbox is configured correctly. You can delete this conversation.",
+          intent: "support",
+        }),
+      });
+      setTestResult(res.ok ? "success" : "error");
+    } catch {
+      setTestResult("error");
+    }
+    setTestSending(false);
+  }
 
   return (
     <div className="space-y-5">
+
+      {/* Your inbound address */}
       <SectionCard>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="eyebrow text-[9px] text-[var(--muted)]">Email</p>
-            <p className="mt-1 text-base font-semibold">Email channel</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Inbound emails route into the inbox. Agents reply directly from the thread.
-            </p>
-          </div>
-          <span className="status-dot status-dot-green mt-1.5 shrink-0" />
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Email channel</p>
+        <p className="mt-1 text-base font-semibold">Your inbound address</p>
+        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+          Every email sent to this address creates a conversation in your inbox.
+          You can use it directly or forward your existing support email here.
+        </p>
+
+        <div className="mt-4 flex items-center gap-2">
+          <code className="flex-1 rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-2.5 text-sm font-mono text-[var(--foreground)] overflow-x-auto">
+            {hasAddress ? inboundAddress : "Complete onboarding to get your address"}
+          </code>
+          {hasAddress && <CopyButton value={inboundAddress} />}
         </div>
-        <div className="mt-4 divide-y divide-[var(--line)]">
-          <FieldRow label="Inbound address" description="Forward your support mailbox here.">
-            <div className="flex items-center gap-2">
-              <code className="rounded-[10px] border border-[var(--line)] bg-[var(--sage)] px-3 py-2 text-xs font-mono">
-                {channel?.inboundAddress || "set up via onboarding"}
-              </code>
+
+        {hasAddress && (
+          <div className="mt-3 flex items-center gap-2 text-[10px] text-[var(--muted)]">
+            <span className="status-dot status-dot-green" />
+            Address is active — emails sent here will appear in your inbox
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Setup guide */}
+      {hasAddress && (
+        <SectionCard>
+          <p className="eyebrow text-[9px] text-[var(--muted)]">Setup guide</p>
+          <p className="mt-1 text-base font-semibold">Connect your support email</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+            Choose how you want to route emails into Work Hat. No technical setup required on your end.
+          </p>
+
+          {/* Path selector */}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => setSetupPath(setupPath === "gmail" ? null : "gmail")}
+              className={`rounded-[18px] border p-4 text-left transition-colors ${
+                setupPath === "gmail"
+                  ? "border-[var(--moss)] bg-[rgba(144,50,61,0.06)]"
+                  : "border-[var(--line)] hover:border-[var(--line-strong)]"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[var(--line)] bg-[var(--sage)] text-sm">G</div>
+                <p className="text-sm font-semibold">Gmail / Google Workspace</p>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+                Forward your existing support@ or hello@ email here. Takes 2 minutes.
+              </p>
+            </button>
+
+            <button
+              onClick={() => setSetupPath(setupPath === "direct" ? null : "direct")}
+              className={`rounded-[18px] border p-4 text-left transition-colors ${
+                setupPath === "direct"
+                  ? "border-[var(--moss)] bg-[rgba(144,50,61,0.06)]"
+                  : "border-[var(--line)] hover:border-[var(--line-strong)]"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[var(--line)] bg-[var(--sage)] text-sm">✉</div>
+                <p className="text-sm font-semibold">Use address directly</p>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+                Share your Work Hat address as your support email. Simplest setup.
+              </p>
+            </button>
+          </div>
+
+          {/* Gmail instructions */}
+          {setupPath === "gmail" && (
+            <div className="mt-4 rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
+              <p className="text-sm font-semibold">Forward Gmail to Work Hat</p>
+              <ol className="mt-4 space-y-4">
+                {[
+                  {
+                    step: "1",
+                    title: "Open Gmail Settings",
+                    body: "In Gmail, click the gear icon → See all settings → Forwarding and POP/IMAP tab.",
+                  },
+                  {
+                    step: "2",
+                    title: "Add a forwarding address",
+                    body: "Click \"Add a forwarding address\" and enter your Work Hat inbound address:",
+                    code: inboundAddress,
+                  },
+                  {
+                    step: "3",
+                    title: "Confirm the forwarding email",
+                    body: "Google sends a confirmation email. The verification link will appear as a conversation in your Work Hat inbox — open it and click the link.",
+                  },
+                  {
+                    step: "4",
+                    title: "Enable forwarding",
+                    body: "Back in Gmail settings, select \"Forward a copy of incoming mail\" and choose your Work Hat address. Save.",
+                  },
+                ].map((s) => (
+                  <li key={s.step} className="flex gap-3">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--moss)] text-[10px] font-semibold text-white">
+                      {s.step}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{s.title}</p>
+                      <p className="mt-0.5 text-xs leading-5 text-[var(--muted)]">{s.body}</p>
+                      {s.code && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <code className="flex-1 overflow-x-auto rounded-[10px] border border-[var(--line)] bg-[var(--sage)] px-3 py-2 text-xs font-mono">
+                            {s.code}
+                          </code>
+                          <CopyButton value={s.code} />
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="mt-5 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
+                <p className="text-[10px] font-medium text-[var(--muted)] uppercase tracking-widest">Google Workspace</p>
+                <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
+                  For Workspace accounts, go to Admin console → Apps → Google Workspace → Gmail → Routing →
+                  Add a routing rule to forward matching emails to your Work Hat address.
+                </p>
+              </div>
             </div>
-          </FieldRow>
-          <FieldRow label="From name" description="Shown in the customer's inbox.">
+          )}
+
+          {/* Direct use instructions */}
+          {setupPath === "direct" && (
+            <div className="mt-4 rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
+              <p className="text-sm font-semibold">Use your Work Hat address directly</p>
+              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+                Share this address anywhere customers can reach you — email signature, website, helpdesk widget, auto-replies.
+              </p>
+              <div className="mt-4 flex items-center gap-2">
+                <code className="flex-1 overflow-x-auto rounded-[10px] border border-[var(--line)] bg-[var(--sage)] px-3 py-2 text-xs font-mono">
+                  {inboundAddress}
+                </code>
+                <CopyButton value={inboundAddress} />
+              </div>
+              <div className="mt-4 space-y-2">
+                {[
+                  "Add it to your email signature as your support address",
+                  "Replace support@yourcompany.com in your website contact form",
+                  "Use it as the reply-to in your product's notification emails",
+                  "Add it to your Calendly or onboarding flows",
+                ].map((tip) => (
+                  <div key={tip} className="flex items-start gap-2 text-xs">
+                    <div className="mt-1 h-1 w-1 shrink-0 rounded-full bg-[var(--moss)]" />
+                    <span className="text-[var(--muted)]">{tip}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
+      {/* Test connection */}
+      {hasAddress && (
+        <SectionCard>
+          <p className="eyebrow text-[9px] text-[var(--muted)]">Test</p>
+          <p className="mt-1 text-base font-semibold">Verify your inbox works</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+            Create a test conversation to confirm your inbox is receiving messages and the AI draft is working.
+          </p>
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              onClick={sendTestEmail}
+              disabled={testSending}
+              className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {testSending ? "Creating test…" : "Send test conversation"}
+            </button>
+            {testResult === "success" && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400">
+                <span className="status-dot status-dot-green" />
+                Test conversation created — check your inbox
+              </div>
+            )}
+            {testResult === "error" && (
+              <p className="text-xs text-[rgba(220,80,80,0.9)]">Something went wrong. Try again.</p>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* From name */}
+      <SectionCard>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Outbound</p>
+        <div className="divide-y divide-[var(--line)]">
+          <FieldRow label="From name" description="Name shown in your customer's inbox when you reply.">
             <TextInput value={fromName} onChange={(v) => { setFromName(v); onDirty(); }} disabled={!canEdit} />
-          </FieldRow>
-          <FieldRow label="Auto-assign new threads" description="Round-robin to active agents.">
-            <Toggle checked={autoAssign} onChange={(v) => { setAutoAssign(v); onDirty(); }} />
           </FieldRow>
         </div>
       </SectionCard>
 
+      {/* Roadmap */}
       <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Coming soon</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {["WhatsApp", "SMS / Twilio", "Live chat widget", "Slack connect"].map((ch) => (
-            <div key={ch} className="rounded-[16px] border border-[var(--line)] px-4 py-3.5 opacity-50">
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Roadmap</p>
+        <p className="mt-1 text-sm font-semibold">More channels coming</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {["SMS / Twilio", "Live chat widget", "Outlook / Microsoft 365", "Slack Connect"].map((ch) => (
+            <div key={ch} className="rounded-[14px] border border-[var(--line)] px-4 py-3 opacity-50">
               <p className="text-sm font-medium">{ch}</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">Not yet available</p>
+              <p className="mt-0.5 text-xs text-[var(--muted)]">On the roadmap</p>
             </div>
           ))}
         </div>
