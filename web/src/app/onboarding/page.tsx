@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 // ── Shared form state (lifted to parent) ──────────────────────────────────────
 
@@ -343,6 +344,27 @@ export default function OnboardingPage() {
   const [completed, setCompleted] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        router.replace("/login?next=/onboarding");
+      } else {
+        setAuthChecked(true);
+      }
+    });
+  }, [router]);
+
+  if (!authChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--moss)] border-t-transparent" />
+      </div>
+    );
+  }
 
   // Shared form state across steps
   const [orgFields, setOrgFields] = useState<OrgFields>({
@@ -380,6 +402,10 @@ export default function OnboardingPage() {
         });
 
         if (!res.ok) {
+          if (res.status === 401) {
+            router.replace("/login?next=/onboarding");
+            return;
+          }
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error ?? "Failed to create organization");
         }
