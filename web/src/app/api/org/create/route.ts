@@ -3,9 +3,9 @@
  *
  * Called at Step 1 of onboarding. Creates org + user + channel.
  *
- * Tries admin client first (bypasses RLS). If service role key is
- * missing or invalid, falls back to the regular authenticated client
- * with SQL policies that allow org creation.
+ * Tries the authenticated bootstrap RPC first because it matches the magic-link
+ * signup flow. Falls back to a verified admin client only if the RPC has not
+ * been installed yet.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -88,31 +88,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Organization name is required" }, { status: 422 });
     }
 
-    // Use a verified admin client if available, otherwise try the safe DB RPC.
+    // Prefer the magic-link-aware bootstrap RPC. It is idempotent and runs as
+    // SECURITY DEFINER, so it can create or repair the user's org/channel while
+    // still requiring a real authenticated Supabase user.
+    const rpcAttempt = await tryBootstrapRpc(supabase, body);
+    if (rpcAttempt.data) {
+      return NextResponse.json(rpcAttempt.data);
+    }
+
     const adminState = createOptionalAdminClient();
     const admin = adminState.client;
     const db = admin ?? supabase;
     const usingAdmin = Boolean(admin);
 
-    if (!usingAdmin) {
-      const rpcAttempt = await tryBootstrapRpc(supabase, body);
-      if (rpcAttempt.data) {
-        return NextResponse.json(rpcAttempt.data);
-      }
-
-      if (rpcAttempt.error && !rpcAttempt.missing) {
-        console.error(
-          "[org/create] bootstrap RPC failed:",
-          rpcAttempt.error.message,
-          rpcAttempt.error.code
-        );
-        return NextResponse.json({
-          error: `Failed to create organization: ${rpcAttempt.error.message}`,
-          hint: adminHint(adminState.reason),
-          code: rpcAttempt.error.code,
-          method: "rpc",
-        }, { status: 500 });
-      }
+    if (rpcAttempt.error && !rpcAttempt.missing) {
+      console.warn(
+        "[org/create] bootstrap RPC failed, trying admin fallback:",
+        rpcAttempt.error.message,
+        rpcAttempt.error.code
+      );
     }
 
     // Check if user already has an org (idempotency)
@@ -180,9 +174,10 @@ export async function POST(req: NextRequest) {
 
     if (!usingAdmin) {
       return NextResponse.json({
-        error: "Failed to create organization: no existing app user was found and no verified admin client is available.",
-        hint: adminHint(adminState.reason),
+        error: "Failed to create organization: bootstrap RPC is unavailable and no verified admin client is available.",
+        hint: `${adminHint(adminState.reason)} Apply supabase/migrations/0013_harden_onboarding_bootstrap.sql in Supabase if it has not been applied yet.`,
         code: "missing_verified_admin",
+        rpcError: rpcAttempt.error?.message,
       }, { status: 500 });
     }
 
@@ -211,8 +206,9 @@ export async function POST(req: NextRequest) {
       console.error("[org/create] org insert failed:", orgErr?.message, orgErr?.code, orgErr?.details);
       return NextResponse.json({
         error: `Failed to create organization: ${orgErr?.message ?? "unknown error"}`,
-        hint: adminHint(adminState.reason),
+        hint: `${adminHint(adminState.reason)} If this still says permission denied, apply migration 0014 service-role grants and confirm the key belongs to the same Supabase project as NEXT_PUBLIC_SUPABASE_URL.`,
         code: orgErr?.code,
+        rpcError: rpcAttempt.error?.message,
       }, { status: 500 });
     }
 
