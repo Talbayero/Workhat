@@ -122,7 +122,7 @@ export default function PricingPage() {
   const [annual, setAnnual] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  async function handleUpgrade(planId: string) {
+  async function handleUpgrade() {
     // During early access, all plans route to the waitlist
     router.push("/#waitlist");
     return;
@@ -254,7 +254,7 @@ export default function PricingPage() {
                 </div>
 
                 <button
-                  onClick={() => handleUpgrade(plan.id)}
+                  onClick={handleUpgrade}
                   className={`mt-6 w-full rounded-full py-3 text-center text-sm font-medium transition-opacity hover:opacity-90 ${
                     plan.highlight
                       ? "bg-[var(--moss)] text-white"

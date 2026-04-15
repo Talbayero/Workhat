@@ -20,6 +20,7 @@ function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
   if (pathname.startsWith("/auth/")) return true;
   if (pathname.startsWith("/api/inbound/")) return true;
+  if (pathname.startsWith("/api/stripe/webhook")) return true;
   if (pathname.startsWith("/api/waitlist")) return true;
   if (pathname.startsWith("/checkout/")) return true;
   if (pathname.startsWith("/_next/")) return true;

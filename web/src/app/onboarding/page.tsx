@@ -101,7 +101,7 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
           1. Go to your email provider (Gmail, Google Workspace, Outlook, etc.)
         </p>
         <p className="text-[var(--muted)]">
-          2. Find "Forwarding" in settings and add the address above
+          2. Find &quot;Forwarding&quot; in settings and add the address above
         </p>
         <p className="text-[var(--muted)]">
           3. Confirm the verification email that arrives in your inbox

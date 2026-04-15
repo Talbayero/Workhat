@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createOptionalAdminClient } from "@/lib/supabase/admin";
 
 type CreateOrgBody = {
   orgName: string;
@@ -36,21 +37,35 @@ function slugify(name: string): string {
     .slice(0, 50);
 }
 
-/** Try to create an admin client; return null if service role key is missing. */
-function tryAdminClient() {
-  try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) return null;
-
-    // Dynamic import to avoid throwing at module level
-    const { createClient: createSBClient } = require("@supabase/supabase-js");
-    return createSBClient(url, key, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-  } catch {
-    return null;
+function adminHint(reason: string): string {
+  if (reason === "service_role_key_valid") return "Verified service role admin client active.";
+  if (reason === "invalid_service_role_key") {
+    return "SUPABASE_SERVICE_ROLE_KEY is set but is not a service_role key. In Vercel, replace it with the Supabase Project Settings > API > service_role secret.";
   }
+  if (reason === "missing_env") {
+    return "SUPABASE_SERVICE_ROLE_KEY is missing. Add the Supabase service_role secret in Vercel or apply the bootstrap RPC migration.";
+  }
+  return "Supabase admin client could not be initialized.";
+}
+
+async function tryBootstrapRpc(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  body: CreateOrgBody
+) {
+  const { data, error } = await supabase.rpc("bootstrap_user_organization", {
+    p_org_name: body.orgName,
+    p_support_email: body.supportEmail ?? "",
+    p_timezone: body.timezone ?? "America/New_York",
+  });
+
+  if (!error) return { data, error: null, missing: false };
+
+  const missing =
+    error.code === "PGRST202" ||
+    error.message.toLowerCase().includes("could not find the function") ||
+    error.message.toLowerCase().includes("schema cache");
+
+  return { data: null, error, missing };
 }
 
 export async function POST(req: NextRequest) {
@@ -61,11 +76,6 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized — please sign in first" }, { status: 401 });
     }
-
-    // Use admin client if available, otherwise fall back to regular client
-    const admin = tryAdminClient();
-    const db = admin ?? supabase;
-    const usingAdmin = Boolean(admin);
 
     // Validate body
     let body: CreateOrgBody | null;
@@ -78,12 +88,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Organization name is required" }, { status: 422 });
     }
 
+    // Use a verified admin client if available, otherwise try the safe DB RPC.
+    const adminState = createOptionalAdminClient();
+    const admin = adminState.client;
+    const db = admin ?? supabase;
+    const usingAdmin = Boolean(admin);
+
+    if (!usingAdmin) {
+      const rpcAttempt = await tryBootstrapRpc(supabase, body);
+      if (rpcAttempt.data) {
+        return NextResponse.json(rpcAttempt.data);
+      }
+
+      if (rpcAttempt.error && !rpcAttempt.missing) {
+        console.error(
+          "[org/create] bootstrap RPC failed:",
+          rpcAttempt.error.message,
+          rpcAttempt.error.code
+        );
+        return NextResponse.json({
+          error: `Failed to create organization: ${rpcAttempt.error.message}`,
+          hint: adminHint(adminState.reason),
+          code: rpcAttempt.error.code,
+          method: "rpc",
+        }, { status: 500 });
+      }
+    }
+
     // Check if user already has an org (idempotency)
-    const { data: existingUser } = await db
+    const { data: existingUser, error: existingUserErr } = await db
       .from("users")
       .select("id, org_id, role")
       .eq("auth_user_id", user.id)
       .single();
+
+    if (existingUserErr && existingUserErr.code !== "PGRST116") {
+      console.warn(
+        "[org/create] existing user lookup failed:",
+        existingUserErr.message,
+        existingUserErr.code,
+        adminState.reason
+      );
+    }
 
     if (existingUser) {
       // User/org already exists — update org name and ensure channel exists
@@ -128,7 +174,16 @@ export async function POST(req: NextRequest) {
         user: { id: existingUser.id, role: existingUser.role },
         created: false,
         method: usingAdmin ? "admin" : "client",
+        adminStatus: adminState.reason,
       });
+    }
+
+    if (!usingAdmin) {
+      return NextResponse.json({
+        error: "Failed to create organization: no existing app user was found and no verified admin client is available.",
+        hint: adminHint(adminState.reason),
+        code: "missing_verified_admin",
+      }, { status: 500 });
     }
 
     // ── Fresh org creation ──────────────────────────────────────────────────
@@ -156,7 +211,7 @@ export async function POST(req: NextRequest) {
       console.error("[org/create] org insert failed:", orgErr?.message, orgErr?.code, orgErr?.details);
       return NextResponse.json({
         error: `Failed to create organization: ${orgErr?.message ?? "unknown error"}`,
-        hint: usingAdmin ? "Admin client active" : "SUPABASE_SERVICE_ROLE_KEY not set — using regular client. RLS INSERT policy on organizations may be missing.",
+        hint: adminHint(adminState.reason),
         code: orgErr?.code,
       }, { status: 500 });
     }
@@ -183,7 +238,7 @@ export async function POST(req: NextRequest) {
       await db.from("organizations").delete().eq("id", orgId);
       return NextResponse.json({
         error: `Failed to create user record: ${userErr?.message ?? "unknown error"}`,
-        hint: usingAdmin ? "Admin client active" : "RLS INSERT policy on users may be missing.",
+        hint: adminHint(adminState.reason),
         code: userErr?.code,
       }, { status: 500 });
     }
@@ -214,6 +269,7 @@ export async function POST(req: NextRequest) {
       user: appUser as { id: string; role: string },
       created: true,
       method: usingAdmin ? "admin" : "client",
+      adminStatus: adminState.reason,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
