@@ -1,8 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState } from "react";
 
 // ── Shared form state (lifted to parent) ──────────────────────────────────────
 
@@ -344,27 +343,6 @@ export default function OnboardingPage() {
   const [completed, setCompleted] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        router.replace("/login?next=/onboarding");
-      } else {
-        setAuthChecked(true);
-      }
-    });
-  }, [router]);
-
-  if (!authChecked) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--moss)] border-t-transparent" />
-      </div>
-    );
-  }
 
   // Shared form state across steps
   const [orgFields, setOrgFields] = useState<OrgFields>({
