@@ -11,6 +11,7 @@ import {
 } from "@/lib/mock-data";
 import { getConversations, getConversationById } from "@/lib/supabase/queries";
 import { ThreadWorkspace } from "./thread-workspace";
+import { NewConversationButton } from "./new-conversation-button";
 
 type InboxWorkspaceProps = {
   selectedConversationId?: string;
@@ -56,9 +57,12 @@ export async function InboxWorkspace({
               <p className="eyebrow text-[9px] text-[var(--muted)]">Queue</p>
               <h2 className="mt-1 text-base font-semibold">Conversations</h2>
             </div>
-            <span className="rounded-full bg-[var(--sage)] px-2.5 py-1 text-[11px] font-medium">
-              {filtered.length} {activeView === "all" ? "open" : "filtered"}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-[var(--sage)] px-2.5 py-1 text-[11px] font-medium">
+                {filtered.length} {activeView === "all" ? "open" : "filtered"}
+              </span>
+              <NewConversationButton />
+            </div>
           </div>
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
             Keep the queue compact, scan risk quickly, and open the next thread without losing context.
@@ -99,9 +103,18 @@ export async function InboxWorkspace({
 
         <div className="flex-1 overflow-y-auto scroll-soft p-3">
           {filtered.length === 0 && (
-            <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">
-              No conversations match this filter.
-            </p>
+            <div className="px-3 py-8 text-center">
+              <p className="text-xs text-[var(--muted)]">
+                {activeView === "all"
+                  ? "No conversations yet. Create one to test the AI draft flow."
+                  : "No conversations match this filter."}
+              </p>
+              {activeView === "all" && (
+                <div className="mt-4">
+                  <NewConversationButton />
+                </div>
+              )}
+            </div>
           )}
           {filtered.map((conversation) => {
             const isSelected = selected?.id === conversation.id;
@@ -163,10 +176,25 @@ export async function InboxWorkspace({
           <div className="flex h-full items-center justify-center px-8">
             <div className="max-w-sm rounded-[24px] border border-[var(--line)] bg-[var(--panel-strong)] p-8 text-center">
               <p className="eyebrow text-[10px] text-[var(--muted)]">Inbox</p>
-              <h2 className="mt-3 text-xl font-semibold">No conversations yet</h2>
+              <h2 className="mt-3 text-xl font-semibold">
+                {allConversations.length === 0 ? "Inbox is empty" : "Select a conversation"}
+              </h2>
               <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
-                Once customers reach out, their threads will appear here.
+                {allConversations.length === 0
+                  ? "Create a conversation to test the full AI draft → edit → analysis flow, or set up your inbound email channel to receive real messages."
+                  : "Choose a thread from the list to open it in the workspace."}
               </p>
+              {allConversations.length === 0 && (
+                <div className="mt-5 flex flex-col items-center gap-3">
+                  <NewConversationButton />
+                  <Link
+                    href="/settings"
+                    className="text-xs text-[var(--muted)] underline underline-offset-4 decoration-[var(--line-strong)] transition-colors hover:text-[var(--foreground)]"
+                  >
+                    Set up inbound email →
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         )}
