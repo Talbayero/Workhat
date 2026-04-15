@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export type AdminClientResult =
   | { client: ReturnType<typeof createClient>; reason: "service_role_key_valid"; keyRole: "service_role" }
+  | { client: ReturnType<typeof createClient>; reason: "secret_key_valid"; keyRole: "secret" }
   | { client: null; reason: "missing_env" | "invalid_service_role_key" | "client_init_failed"; keyRole?: string };
 
 /**
@@ -47,7 +48,8 @@ function decodeSupabaseJwtRole(token: string | undefined): string | undefined {
  *
  * A common production setup mistake is pasting the anon key into
  * SUPABASE_SERVICE_ROLE_KEY. That key exists, but it is not admin and will still
- * be denied by RLS. Validate the JWT role before using it.
+ * be denied by RLS. Validate legacy JWT keys by role, and accept Supabase's
+ * newer opaque secret keys (`sb_secret_...`) for server-side admin calls.
  */
 export function createOptionalAdminClient(): AdminClientResult {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -57,8 +59,9 @@ export function createOptionalAdminClient(): AdminClientResult {
     return { client: null, reason: "missing_env" };
   }
 
-  const keyRole = decodeSupabaseJwtRole(key);
-  if (keyRole !== "service_role") {
+  const isSecretKey = key.startsWith("sb_secret_");
+  const keyRole = isSecretKey ? "secret" : decodeSupabaseJwtRole(key);
+  if (!isSecretKey && keyRole !== "service_role") {
     return { client: null, reason: "invalid_service_role_key", keyRole };
   }
 
@@ -70,8 +73,8 @@ export function createOptionalAdminClient(): AdminClientResult {
           persistSession: false,
         },
       }),
-      reason: "service_role_key_valid",
-      keyRole: "service_role",
+      reason: isSecretKey ? "secret_key_valid" : "service_role_key_valid",
+      keyRole,
     };
   } catch {
     return { client: null, reason: "client_init_failed", keyRole };

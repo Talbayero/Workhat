@@ -39,11 +39,12 @@ function slugify(name: string): string {
 
 function adminHint(reason: string): string {
   if (reason === "service_role_key_valid") return "Verified service role admin client active.";
+  if (reason === "secret_key_valid") return "Verified Supabase secret key admin client active.";
   if (reason === "invalid_service_role_key") {
-    return "SUPABASE_SERVICE_ROLE_KEY is set but is not a service_role key. In Vercel, replace it with the Supabase Project Settings > API > service_role secret.";
+    return "SUPABASE_SERVICE_ROLE_KEY is set but is not a privileged Supabase key. In Vercel, use either the new sb_secret_... Secret key or the legacy service_role secret from the same Supabase project.";
   }
   if (reason === "missing_env") {
-    return "SUPABASE_SERVICE_ROLE_KEY is missing. Add the Supabase service_role secret in Vercel or apply the bootstrap RPC migration.";
+    return "SUPABASE_SERVICE_ROLE_KEY is missing. Add the Supabase sb_secret_... Secret key or legacy service_role secret in Vercel, or apply the bootstrap RPC migration.";
   }
   return "Supabase admin client could not be initialized.";
 }
