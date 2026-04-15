@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -27,9 +28,10 @@ type TeamMember = {
   status: string;
 };
 
-type SettingsTab = "organization" | "team" | "channels" | "ai" | "billing";
+type SettingsTab = "setup" | "organization" | "team" | "channels" | "ai" | "billing";
 
 const tabs: { id: SettingsTab; label: string }[] = [
+  { id: "setup", label: "Setup wizard" },
   { id: "organization", label: "Organization" },
   { id: "team", label: "Team members" },
   { id: "channels", label: "Channels" },
@@ -97,6 +99,145 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
+// ── Setup tab ────────────────────────────────────────────────────────────────
+
+function SetupTab({
+  org,
+  channel,
+  team,
+  onOpenTab,
+}: {
+  org: OrgRecord | null;
+  channel: ChannelRecord | null;
+  team: TeamMember[];
+  onOpenTab: (tab: SettingsTab) => void;
+}) {
+  const hasOrg = Boolean(org);
+  const hasInboundAddress = Boolean(channel?.inboundAddress);
+  const hasKnowledgePath = true;
+  const hasTeam = team.length > 0;
+
+  const steps = [
+    {
+      label: "Create workspace",
+      description: hasOrg
+        ? `Workspace ready: ${org?.name}`
+        : "Create the organization record that anchors settings, people, and channels.",
+      complete: hasOrg,
+      action: () => onOpenTab("organization"),
+      actionLabel: "Review organization",
+    },
+    {
+      label: "Connect email channel",
+      description: hasInboundAddress
+        ? `Inbound address active: ${channel?.inboundAddress}`
+        : "Generate the Work Hat forwarding address used to create inbox conversations.",
+      complete: hasInboundAddress,
+      action: () => onOpenTab("channels"),
+      actionLabel: "Review channels",
+    },
+    {
+      label: "Add knowledge",
+      description: "Upload SOPs, tone rules, and policies so AI drafts have useful context.",
+      complete: hasKnowledgePath,
+      href: "/knowledge",
+      actionLabel: "Open knowledge",
+    },
+    {
+      label: "Invite your team",
+      description: hasTeam
+        ? `${team.length} team member${team.length === 1 ? "" : "s"} connected.`
+        : "Invite agents, managers, and reviewers so work can move through the queue.",
+      complete: hasTeam,
+      action: () => onOpenTab("team"),
+      actionLabel: "Manage team",
+    },
+  ];
+
+  const completedCount = steps.filter((step) => step.complete).length;
+  const isBlocked = !hasOrg || !hasInboundAddress;
+
+  return (
+    <div className="space-y-5">
+      <SectionCard className="relative overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,var(--moss),rgba(144,50,61,0.1))]" />
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Workspace setup</p>
+        <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Finish your setup wizard</h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--muted)]">
+              This is the guided path for getting a new client workspace ready:
+              organization, email channel, knowledge, then team access.
+            </p>
+          </div>
+          <div className="shrink-0 rounded-[18px] border border-[var(--line)] bg-[var(--sage)] px-4 py-3 text-center">
+            <p className="text-2xl font-semibold">{completedCount}/{steps.length}</p>
+            <p className="eyebrow mt-0.5 text-[9px] text-[var(--muted)]">complete</p>
+          </div>
+        </div>
+
+        {isBlocked && (
+          <div className="mt-5 rounded-[18px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] p-4">
+            <p className="text-sm font-semibold">Your setup is not complete yet</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              The email channel is missing, so Work Hat cannot create conversations from inbound mail yet.
+              Run the onboarding wizard to generate the forwarding address.
+            </p>
+            <Link
+              href="/onboarding"
+              className="mt-3 inline-flex rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--moss-strong)]"
+            >
+              Open onboarding wizard
+            </Link>
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard className="p-0 overflow-hidden">
+        {steps.map((step, index) => (
+          <div
+            key={step.label}
+            className={`flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${
+              index < steps.length - 1 ? "border-b border-[var(--line)]" : ""
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <span
+                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold ${
+                  step.complete
+                    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                    : "border-[var(--line-strong)] bg-[var(--sage)] text-[var(--muted)]"
+                }`}
+              >
+                {step.complete ? "✓" : index + 1}
+              </span>
+              <div>
+                <p className="text-sm font-semibold">{step.label}</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{step.description}</p>
+              </div>
+            </div>
+            {step.href ? (
+              <Link
+                href={step.href}
+                className="shrink-0 rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]"
+              >
+                {step.actionLabel}
+              </Link>
+            ) : (
+              <button
+                onClick={step.action}
+                className="shrink-0 rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]"
+              >
+                {step.actionLabel}
+              </button>
+            )}
+          </div>
+        ))}
+      </SectionCard>
+    </div>
+  );
+}
+
 // ── Organization tab ──────────────────────────────────────────────────────────
 
 function OrgTab({
@@ -117,12 +258,14 @@ function OrgTab({
   const [fromName, setFromName] = useState(channel?.fromName ?? "");
   const [timezone, setTimezone] = useState(channel?.timezone ?? "America/New_York");
 
-  function field<T>(setter: (v: T) => void) {
-    return (v: T) => {
-      setter(v);
-      onDirty();
-      onSaveFields({ name, supportEmail, fromName, timezone });
-    };
+  function updateField(fieldName: "name" | "supportEmail" | "fromName" | "timezone", value: string) {
+    const next = { name, supportEmail, fromName, timezone, [fieldName]: value };
+    if (fieldName === "name") setName(value);
+    if (fieldName === "supportEmail") setSupportEmail(value);
+    if (fieldName === "fromName") setFromName(value);
+    if (fieldName === "timezone") setTimezone(value);
+    onDirty();
+    onSaveFields(next);
   }
 
   return (
@@ -131,16 +274,16 @@ function OrgTab({
         <p className="eyebrow text-[9px] text-[var(--muted)]">Workspace</p>
         <div className="mt-1 divide-y divide-[var(--line)]">
           <FieldRow label="Organization name" description="Shown on invoices and team notifications.">
-            <TextInput value={name} onChange={field(setName)} disabled={!canEdit} />
+            <TextInput value={name} onChange={(v) => updateField("name", v)} disabled={!canEdit} />
           </FieldRow>
           <FieldRow label="Support email" description="Replies go out from this address.">
-            <TextInput value={supportEmail} onChange={field(setSupportEmail)} disabled={!canEdit} />
+            <TextInput value={supportEmail} onChange={(v) => updateField("supportEmail", v)} disabled={!canEdit} />
           </FieldRow>
           <FieldRow label="From name" description="Shown in the customer's inbox.">
-            <TextInput value={fromName} onChange={field(setFromName)} disabled={!canEdit} />
+            <TextInput value={fromName} onChange={(v) => updateField("fromName", v)} disabled={!canEdit} />
           </FieldRow>
           <FieldRow label="Timezone" description="Used for SLA calculations.">
-            <TextInput value={timezone} onChange={field(setTimezone)} disabled={!canEdit} />
+            <TextInput value={timezone} onChange={(v) => updateField("timezone", v)} disabled={!canEdit} />
           </FieldRow>
         </div>
       </SectionCard>
@@ -469,6 +612,21 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           {hasAddress && <CopyButton value={inboundAddress} />}
         </div>
 
+        {!hasAddress && (
+          <div className="mt-4 rounded-[16px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] p-4">
+            <p className="text-sm font-semibold">No setup wizard has been completed yet</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              Run onboarding to create or repair the email channel and generate your inbound forwarding address.
+            </p>
+            <Link
+              href="/onboarding"
+              className="mt-3 inline-flex rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--moss-strong)]"
+            >
+              Open setup wizard
+            </Link>
+          </div>
+        )}
+
         {hasAddress && (
           <div className="mt-3 flex items-center gap-2 text-[10px] text-[var(--muted)]">
             <span className="status-dot status-dot-green" />
@@ -749,7 +907,9 @@ export function SettingsShell({
   callerRole: string;
   callerId: string;
 }) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("organization");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    org && channel?.inboundAddress ? "organization" : "setup"
+  );
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [pendingFields, setPendingFields] = useState<Record<string, string>>({});
@@ -780,6 +940,14 @@ export function SettingsShell({
   }
 
   const tabContent: Record<SettingsTab, React.ReactNode> = {
+    setup: (
+      <SetupTab
+        org={org}
+        channel={channel}
+        team={team}
+        onOpenTab={setActiveTab}
+      />
+    ),
     organization: (
       <OrgTab
         org={org}

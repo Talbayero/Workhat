@@ -44,8 +44,8 @@ const routeMeta: Record<string, RouteMeta> = {
   settings: {
     label: "Settings",
     description: "Control workspace structure, channels, team access, and AI rules.",
-    actionLabel: "Open settings",
-    actionHref: "/settings",
+    actionLabel: "Setup wizard",
+    actionHref: "/onboarding",
   },
 };
 
