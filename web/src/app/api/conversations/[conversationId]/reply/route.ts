@@ -77,6 +77,16 @@ async function triggerEditAnalysis(
         shouldEscalate: analysis.shouldEscalate,
       },
     });
+
+    // Act on escalation flag — bump conversation risk to red
+    if (analysis.shouldEscalate) {
+      await supabase
+        .from("conversations")
+        .update({ risk_level: "red", ai_confidence: "red" })
+        .eq("id", conversationId)
+        .eq("org_id", orgId);
+      console.log(`[reply] Escalation flag set — conversation ${conversationId} risk → red`);
+    }
   } catch (err) {
     console.error(
       "[reply] edit analysis failed:",

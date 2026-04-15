@@ -109,7 +109,7 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
       </div>
       <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
         <p className="text-xs text-[var(--muted)]">
-          WhatsApp, SMS, and live chat are coming in the next release.
+          Additional channels (SMS, live chat) are on the roadmap. Email is the full-featured channel at launch.
         </p>
       </div>
     </div>
@@ -117,54 +117,135 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
 }
 
 function StepKnowledge() {
-  const [dragging, setDragging] = useState(false);
-  const [uploaded, setUploaded] = useState<string[]>([]);
+  const [saved, setSaved] = useState<string[]>([]);
+  const [form, setForm] = useState({ title: "", category: "policy", body: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-    const names = Array.from(e.dataTransfer.files).map((f) => f.name);
-    setUploaded((prev) => [...prev, ...names]);
+  async function handleSave() {
+    if (!form.title.trim() || !form.body.trim()) {
+      setError("Title and content are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title.trim(),
+          body: form.body.trim(),
+          category: form.category,
+          summary: form.title.trim(),
+          tags: [],
+        }),
+      });
+      if (res.ok) {
+        setSaved((prev) => [...prev, form.title.trim()]);
+        setForm({ title: "", category: "policy", body: "" });
+        setShowForm(false);
+      } else {
+        const data = await res.json() as { error?: string };
+        setError(data.error ?? "Failed to save entry.");
+      }
+    } catch {
+      setError("Network error. Try again.");
+    }
+    setSaving(false);
   }
 
   return (
     <div className="space-y-4 mt-5">
       <p className="text-sm leading-6 text-[var(--muted)]">
-        Upload your SOPs, return policies, tone guides, and product docs. The AI
-        reads these before drafting replies. You can always add more in
-        Settings → Knowledge later.
+        Add your first knowledge entry — a return policy, SOP, or tone guide. The AI
+        reads these before drafting replies. You can add more any time in the Knowledge base.
       </p>
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        className={`rounded-[20px] border-2 border-dashed px-6 py-10 text-center transition-colors ${
-          dragging
-            ? "border-[var(--moss)] bg-[rgba(144,50,61,0.06)]"
-            : "border-[var(--line)] bg-[var(--panel-strong)]"
-        }`}
-      >
-        <p className="text-sm text-[var(--muted)]">Drop .txt, .md, or .pdf files here</p>
-        <p className="mt-1 text-xs text-[var(--muted)]">or</p>
-        <button className="mt-3 rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium">
-          Browse files
-        </button>
-      </div>
-      {uploaded.length > 0 && (
+
+      {saved.length > 0 && (
         <div className="space-y-2">
-          {uploaded.map((name) => (
-            <div
-              key={name}
-              className="flex items-center justify-between rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3"
-            >
-              <span className="text-sm">{name}</span>
-              <span className="status-dot status-dot-green" />
+          {saved.map((title) => (
+            <div key={title} className="flex items-center justify-between rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
+              <span className="text-sm font-medium">{title}</span>
+              <span className="flex items-center gap-1.5 text-[10px] text-emerald-400">
+                <span className="status-dot status-dot-green" />
+                Saved
+              </span>
             </div>
           ))}
         </div>
       )}
+
+      {showForm ? (
+        <div className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-5 space-y-3">
+          <div>
+            <label className="eyebrow text-[10px] text-[var(--muted)]">Title</label>
+            <input
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              placeholder="e.g. Refund policy — standard tier"
+              className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--background)] px-3 py-2.5 text-sm outline-none focus:border-[var(--moss)] transition-colors"
+            />
+          </div>
+          <div>
+            <label className="eyebrow text-[10px] text-[var(--muted)]">Category</label>
+            <div className="mt-1.5 flex gap-2 flex-wrap">
+              {(["policy", "sop", "tone", "product"] as const).map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, category: cat }))}
+                  className={`rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                    form.category === cat
+                      ? "bg-[var(--moss)] text-white"
+                      : "border border-[var(--line-strong)] text-[var(--muted)]"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="eyebrow text-[10px] text-[var(--muted)]">Content</label>
+            <textarea
+              value={form.body}
+              onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+              placeholder={"Standard refund policy:\n\nCustomers can request a full refund within 30 days of purchase..."}
+              rows={6}
+              className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--background)] px-3 py-2.5 text-sm font-mono leading-6 outline-none focus:border-[var(--moss)] transition-colors resize-none"
+            />
+          </div>
+          {error && <p className="text-xs text-[rgba(220,80,80,0.9)]">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-full bg-[var(--moss)] px-5 py-2 text-xs font-medium text-white disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save entry"}
+            </button>
+            <button
+              onClick={() => { setShowForm(false); setError(null); }}
+              className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full rounded-[20px] border-2 border-dashed border-[var(--line)] bg-[var(--panel-strong)] px-6 py-8 text-center transition-colors hover:border-[var(--moss)]"
+        >
+          <p className="text-sm font-medium">+ Add a knowledge entry</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">Policy, SOP, tone guide, or product docs</p>
+        </button>
+      )}
+
       <p className="text-xs text-[var(--muted)]">
-        You can skip this and add knowledge entries after setup.
+        You can skip this and add entries after setup in the Knowledge base.
       </p>
     </div>
   );
