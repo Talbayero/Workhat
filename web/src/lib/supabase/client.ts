@@ -6,7 +6,7 @@ import { createBrowserClient } from "@supabase/ssr";
  *
  * Usage:
  *   const supabase = createClient();
- *   await supabase.auth.signInWithOtp({ email });
+ *   await supabase.auth.signInWithPassword({ email, password });
  */
 export function createClient() {
   return createBrowserClient(
@@ -14,9 +14,6 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       auth: {
-        // Implicit flow: tokens arrive in the URL hash, no PKCE
-        // code-verifier storage needed. Reliable for same-browser flows.
-        flowType: "implicit",
         detectSessionInUrl: true,
         persistSession: true,
       },
