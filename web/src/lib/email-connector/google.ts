@@ -49,6 +49,11 @@ export type GmailMessage = {
   };
 };
 
+export type GmailWatchResponse = {
+  historyId: string;
+  expiration: string;
+};
+
 export function getAppBaseUrl(req: NextRequest) {
   return (
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -192,6 +197,34 @@ export async function fetchGmailMessage(accessToken: string, messageId: string) 
   }
 
   return (await response.json()) as GmailMessage;
+}
+
+export async function watchGmailInbox({
+  accessToken,
+  topicName,
+}: {
+  accessToken: string;
+  topicName: string;
+}) {
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/watch", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      topicName,
+      labelIds: ["INBOX"],
+      labelFilterBehavior: "include",
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Gmail watch registration failed: ${body}`);
+  }
+
+  return (await response.json()) as GmailWatchResponse;
 }
 
 export function tokenExpiryDate(expiresInSeconds: number) {

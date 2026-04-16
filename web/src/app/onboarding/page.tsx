@@ -23,6 +23,7 @@ type EmailConnection = {
   status: "connected" | "needs_reconnect" | "disabled" | "error";
   sync_status: "idle" | "syncing" | "watching" | "error";
   last_history_id: string | null;
+  watch_expires_at: string | null;
   error_message: string | null;
 };
 
@@ -89,6 +90,7 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [urlMessage, setUrlMessage] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [watching, setWatching] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
   useEffect(() => {
@@ -165,6 +167,30 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
     }
   }
 
+  async function enableGmailWatch() {
+    setWatching(true);
+    setSyncResult(null);
+    setConnectionError(null);
+
+    try {
+      const response = await fetch("/api/email/gmail/watch", { method: "POST" });
+      const data = await response.json().catch(() => ({})) as {
+        expiration?: string;
+        error?: string;
+      };
+
+      if (!response.ok) throw new Error(data.error ?? "Failed to enable Gmail live watch.");
+
+      setSyncResult(
+        `Live Gmail watch enabled${data.expiration ? ` until ${new Date(data.expiration).toLocaleString()}` : ""}.`
+      );
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : "Failed to enable Gmail live watch.");
+    } finally {
+      setWatching(false);
+    }
+  }
+
   return (
     <div className="space-y-4 mt-5">
       <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
@@ -189,6 +215,14 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
               <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-300">
                 Connected
               </div>
+              <button
+                type="button"
+                onClick={enableGmailWatch}
+                disabled={watching}
+                className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] disabled:opacity-50"
+              >
+                {watching ? "Starting watch..." : "Start live watch"}
+              </button>
             </div>
           ) : (
             <a
@@ -206,6 +240,9 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
             <p className="mt-1 text-[var(--muted)]">
               Status: {gmailConnection.status} · Sync: {gmailConnection.sync_status}
               {gmailConnection.last_history_id ? ` · History ${gmailConnection.last_history_id}` : ""}
+              {gmailConnection.watch_expires_at
+                ? ` · Watch until ${new Date(gmailConnection.watch_expires_at).toLocaleDateString()}`
+                : ""}
             </p>
           </div>
         )}
