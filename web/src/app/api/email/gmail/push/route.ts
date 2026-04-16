@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  importGmailHistory,
+  importRecentGmailInbox,
+  markGmailSyncError,
+  markGmailSyncSuccess,
+  type EmailConnection,
+} from "@/lib/email-connector/gmail-importer";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type PubSubPushPayload = {
@@ -48,7 +55,7 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
   const { data: connection } = await supabase
     .from("email_connections")
-    .select("id, provider_metadata")
+    .select("id, org_id, provider_account_email, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, last_history_id, provider_metadata")
     .eq("provider", "gmail")
     .eq("provider_account_email", emailAddress)
     .in("status", ["connected", "error"])
@@ -63,7 +70,7 @@ export async function POST(req: NextRequest) {
   await supabase
     .from("email_connections")
     .update({
-      sync_status: "watching",
+      sync_status: "syncing",
       status: "connected",
       error_message: null,
       provider_metadata: {
@@ -78,5 +85,35 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", (connection as { id: string }).id);
 
-  return NextResponse.json({ ok: true });
+  try {
+    const typedConnection = connection as EmailConnection;
+    const result = typedConnection.last_history_id
+      ? await importGmailHistory({
+          db: supabase,
+          connection: typedConnection,
+          startHistoryId: typedConnection.last_history_id,
+        })
+      : await importRecentGmailInbox({
+          db: supabase,
+          connection: typedConnection,
+          maxResults: 10,
+        });
+
+    await markGmailSyncSuccess({
+      db: supabase,
+      connectionId: typedConnection.id,
+      result,
+    });
+
+    return NextResponse.json({ ok: true, historyId, result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Gmail history sync failed.";
+    await markGmailSyncError({
+      db: supabase,
+      connectionId: (connection as { id: string }).id,
+      message,
+    });
+
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }

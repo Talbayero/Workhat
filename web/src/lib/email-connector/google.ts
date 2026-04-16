@@ -54,6 +54,17 @@ export type GmailWatchResponse = {
   expiration: string;
 };
 
+export type GmailHistoryResponse = {
+  history?: Array<{
+    id: string;
+    messagesAdded?: Array<{
+      message?: GmailMessageListItem;
+    }>;
+  }>;
+  historyId?: string;
+  nextPageToken?: string;
+};
+
 export function getAppBaseUrl(req: NextRequest) {
   return (
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -197,6 +208,35 @@ export async function fetchGmailMessage(accessToken: string, messageId: string) 
   }
 
   return (await response.json()) as GmailMessage;
+}
+
+export async function listGmailHistory({
+  accessToken,
+  startHistoryId,
+  pageToken,
+}: {
+  accessToken: string;
+  startHistoryId: string;
+  pageToken?: string;
+}) {
+  const params = new URLSearchParams({
+    startHistoryId,
+    labelId: "INBOX",
+  });
+  params.append("historyTypes", "messageAdded");
+  if (pageToken) params.set("pageToken", pageToken);
+
+  const response = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/history?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Gmail history sync failed: ${body}`);
+  }
+
+  return (await response.json()) as GmailHistoryResponse;
 }
 
 export async function watchGmailInbox({
