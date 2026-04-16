@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 // ── Shared form state (lifted to parent) ──────────────────────────────────────
 
@@ -23,9 +23,26 @@ type EmailConnection = {
   status: "connected" | "needs_reconnect" | "disabled" | "error";
   sync_status: "idle" | "syncing" | "watching" | "error";
   last_history_id: string | null;
+  last_sync_at: string | null;
   watch_expires_at: string | null;
   error_message: string | null;
 };
+
+type SettingsOrgResponse = {
+  org?: {
+    name?: string;
+    slug?: string;
+  };
+  channel?: {
+    supportEmail?: string;
+    timezone?: string;
+    inboundAddress?: string;
+  };
+};
+
+function fallbackInboundAddress(slug: string) {
+  return slug ? `inbound+${slug}@work-hat.com` : "inbound@work-hat.com";
+}
 
 // ── Reusable input components ─────────────────────────────────────────────────
 
@@ -84,7 +101,7 @@ function StepOrg({ fields, onChange }: { fields: OrgFields; onChange: (f: Partia
   );
 }
 
-function StepInbox({ orgSlug }: { orgSlug: string }) {
+function StepInbox({ inboundAddress }: { inboundAddress: string }) {
   const [connections, setConnections] = useState<EmailConnection[]>([]);
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -106,40 +123,29 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadConnections() {
-      setLoadingConnections(true);
-      setConnectionError(null);
-      try {
-        const response = await fetch("/api/email/connections");
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({})) as { error?: string };
-          throw new Error(data.error ?? "Unable to load email connections.");
-        }
-
-        const data = await response.json() as { connections?: EmailConnection[] };
-        if (!cancelled) setConnections(data.connections ?? []);
-      } catch (error) {
-        if (!cancelled) {
-          setConnectionError(error instanceof Error ? error.message : "Unable to load email connections.");
-        }
-      } finally {
-        if (!cancelled) setLoadingConnections(false);
-      }
-    }
-
-    loadConnections();
-
-    return () => {
-      cancelled = true;
-    };
+    void loadConnections();
   }, []);
 
-  const inboundAddress = orgSlug
-    ? `inbound+${orgSlug}@work-hat.com`
-    : "inbound@work-hat.com";
   const gmailConnection = connections.find((connection) => connection.provider === "gmail");
+
+  async function loadConnections() {
+    setLoadingConnections(true);
+    setConnectionError(null);
+    try {
+      const response = await fetch("/api/email/connections");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? "Unable to load email connections.");
+      }
+
+      const data = await response.json() as { connections?: EmailConnection[] };
+      setConnections(data.connections ?? []);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : "Unable to load email connections.");
+    } finally {
+      setLoadingConnections(false);
+    }
+  }
 
   async function syncGmail() {
     setSyncing(true);
@@ -160,6 +166,7 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
       setSyncResult(
         `Synced ${data.imported ?? 0} new conversations from ${data.scanned ?? 0} recent inbox messages. ${data.skipped ?? 0} duplicates skipped.`
       );
+      await loadConnections();
     } catch (error) {
       setConnectionError(error instanceof Error ? error.message : "Gmail sync failed.");
     } finally {
@@ -184,6 +191,7 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
       setSyncResult(
         `Live Gmail watch enabled${data.expiration ? ` until ${new Date(data.expiration).toLocaleString()}` : ""}.`
       );
+      await loadConnections();
     } catch (error) {
       setConnectionError(error instanceof Error ? error.message : "Failed to enable Gmail live watch.");
     } finally {
@@ -239,6 +247,7 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
             <p className="font-medium">{gmailConnection.provider_account_email}</p>
             <p className="mt-1 text-[var(--muted)]">
               Status: {gmailConnection.status} · Sync: {gmailConnection.sync_status}
+              {gmailConnection.last_sync_at ? ` · Last sync ${new Date(gmailConnection.last_sync_at).toLocaleString()}` : ""}
               {gmailConnection.last_history_id ? ` · History ${gmailConnection.last_history_id}` : ""}
               {gmailConnection.watch_expires_at
                 ? ` · Watch until ${new Date(gmailConnection.watch_expires_at).toLocaleDateString()}`
@@ -533,7 +542,7 @@ const STEP_META: { id: StepId; title: string; description: string }[] = [
   {
     id: "inbox",
     title: "Connect your inbox",
-    description: "Forward your support mailbox to start routing emails.",
+    description: "Connect Gmail directly, then keep forwarding as a fallback.",
   },
   {
     id: "knowledge",
@@ -561,6 +570,7 @@ export default function OnboardingPage() {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "America/New_York",
   });
   const [orgSlug, setOrgSlug] = useState("");
+  const [inboundAddress, setInboundAddress] = useState("inbound@work-hat.com");
   const [inviteFields, setInviteFields] = useState<InviteFields>({
     emails: "",
     role: "agent",
@@ -576,6 +586,29 @@ export default function OnboardingPage() {
       setCompleted((prev) => new Set([...prev, 0]));
     }
   }, []);
+
+  const loadExistingWorkspace = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings/org");
+      if (!res.ok) return;
+
+      const data = await res.json() as SettingsOrgResponse;
+      const slug = data.org?.slug ?? "";
+      setOrgSlug(slug);
+      setInboundAddress(data.channel?.inboundAddress || fallbackInboundAddress(slug));
+      setOrgFields((prev) => ({
+        orgName: data.org?.name || prev.orgName,
+        supportEmail: data.channel?.supportEmail || prev.supportEmail,
+        timezone: data.channel?.timezone || prev.timezone,
+      }));
+    } catch {
+      // First-time users do not have settings yet. Step 1 creates them.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadExistingWorkspace();
+  }, [loadExistingWorkspace]);
 
   // ── Step advance logic ────────────────────────────────────────────────────
 
@@ -608,7 +641,10 @@ export default function OnboardingPage() {
         }
 
         const data = await res.json();
-        setOrgSlug(data.org?.slug ?? "");
+        const slug = data.org?.slug ?? "";
+        setOrgSlug(slug);
+        setInboundAddress(fallbackInboundAddress(slug));
+        void loadExistingWorkspace();
       }
 
       if (isLast) {
@@ -665,7 +701,7 @@ export default function OnboardingPage() {
         onChange={(f) => setOrgFields((prev) => ({ ...prev, ...f }))}
       />
     ),
-    inbox: <StepInbox orgSlug={orgSlug} />,
+    inbox: <StepInbox inboundAddress={inboundAddress || fallbackInboundAddress(orgSlug)} />,
     knowledge: <StepKnowledge />,
     invite: (
       <StepInvite
