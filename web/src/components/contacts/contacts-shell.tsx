@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  contactFilters,
   contactsListViews,
   conversationStatusLabel,
   filterContacts,
