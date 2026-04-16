@@ -153,6 +153,8 @@ function EditContactModal({ contact, onClose, onSaved }: { contact: ContactRecor
     phone: contact.phone,
     notes: contact.notes.join("\n"),
     tags: contact.tags.join(", "),
+    lifecycleStage: contact.editableFields.lifecycleStage,
+    tier: contact.tier,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -175,6 +177,8 @@ function EditContactModal({ contact, onClose, onSaved }: { contact: ContactRecor
         phone: form.phone.trim() || null,
         notes: form.notes.trim() || null,
         tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+        lifecycle_stage: form.lifecycleStage || null,
+        tier: form.tier || null,
       }),
     });
     setSaving(false);
@@ -224,6 +228,36 @@ function EditContactModal({ contact, onClose, onSaved }: { contact: ContactRecor
                 rows={3}
                 className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] transition-colors resize-none"
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="eyebrow text-[10px] text-[var(--muted)]">Lifecycle stage</label>
+                <select
+                  value={form.lifecycleStage}
+                  onChange={(e) => set("lifecycleStage", e.target.value)}
+                  className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] transition-colors"
+                >
+                  <option value="">—</option>
+                  <option value="lead">Lead</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="customer">Customer</option>
+                  <option value="churned">Churned</option>
+                </select>
+              </div>
+              <div>
+                <label className="eyebrow text-[10px] text-[var(--muted)]">Tier</label>
+                <select
+                  value={form.tier}
+                  onChange={(e) => set("tier", e.target.value)}
+                  className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] transition-colors"
+                >
+                  <option value="">—</option>
+                  <option value="standard">Standard</option>
+                  <option value="pro">Pro</option>
+                  <option value="enterprise">Enterprise</option>
+                  <option value="vip">VIP</option>
+                </select>
+              </div>
             </div>
             <div>
               <label className="eyebrow text-[10px] text-[var(--muted)]">Tags</label>
@@ -441,16 +475,17 @@ export function ContactsShell({
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-5">
                   {[
                     { label: "Company", value: selectedContact.companyName || "—" },
                     { label: "Tier", value: selectedContact.tier || "—" },
+                    { label: "Lifecycle stage", value: selectedContact.editableFields.lifecycleStage || "—" },
                     { label: "Open conversations", value: String(selectedContact.openConversationCount) },
                     { label: "Last activity", value: selectedContact.lastActivity },
                   ].map((m) => (
                     <div key={m.label} className="surface-subtle rounded-[16px] px-4 py-3">
                       <p className="text-[10px] text-[var(--muted)]">{m.label}</p>
-                      <p className="mt-1 text-sm font-medium">{m.value}</p>
+                      <p className="mt-1 text-sm font-medium capitalize">{m.value}</p>
                     </div>
                   ))}
                 </div>

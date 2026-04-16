@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
-import { conversationStatusLabel } from "@/lib/mock-data";
 import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
 import type { ConfidenceLevel } from "@/lib/ai/types";
 
@@ -60,8 +59,10 @@ function CloseIcon() {
 
 export function ThreadWorkspace({
   conversation,
+  isDemo = false,
 }: {
   conversation: InboxConversation;
+  isDemo?: boolean;
 }) {
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [composerMode, setComposerMode] = useState<ComposerMode>("reply");
@@ -74,6 +75,8 @@ export function ThreadWorkspace({
   const [status, setStatus] = useState<ConversationStatus>(conversation.status);
   const [assignee, setAssignee] = useState(conversation.assignee);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [editingAssignee, setEditingAssignee] = useState(false);
+  const [assigneeInput, setAssigneeInput] = useState(conversation.assignee);
 
   // Live AI draft state
   const [liveDraft, setLiveDraft] = useState<LiveDraft | null>(null);
@@ -93,23 +96,38 @@ export function ThreadWorkspace({
     setDraftLoading(true);
     setDraftError(null);
     try {
-      const res = await fetch(`/api/ai/draft`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: conversation.id }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(err.error ?? `HTTP ${res.status}`);
+      if (isDemo) {
+        // Mock delay for "thinking" feel
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        setLiveDraft({
+          id: "demo-draft-123",
+          draftText: conversation.aiDraft.draftText,
+          rationale: conversation.aiDraft.rationale,
+          confidenceLevel: conversation.aiConfidence as ConfidenceLevel,
+          riskFlags: ["DEMO_MODE", "MOCK_CONTEXT"],
+          missingContext: conversation.aiDraft.missingContext,
+          recommendedTags: conversation.tags,
+          latencyMs: 800,
+        });
+      } else {
+        const res = await fetch(`/api/ai/draft`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId: conversation.id }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Unknown error" }));
+          throw new Error(err.error ?? `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        setLiveDraft(data.draft as LiveDraft);
       }
-      const data = await res.json();
-      setLiveDraft(data.draft as LiveDraft);
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : "Draft generation failed");
     } finally {
       setDraftLoading(false);
     }
-  }, [conversation.id, draftLoading]);
+  }, [conversation.id, draftLoading, isDemo, conversation.aiDraft, conversation.aiConfidence, conversation.tags]);
 
   function togglePanel(panel: ActivePanel) {
     setActivePanel((prev) => (prev === panel ? null : panel));
@@ -131,6 +149,8 @@ export function ThreadWorkspace({
   }
 
   async function updateConversation(patch: Record<string, unknown>) {
+    if (isDemo) return;
+
     await fetch(`/api/conversations/${conversation.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -147,6 +167,15 @@ export function ThreadWorkspace({
 
   async function handleClaim() {
     const name = "You";
+    setAssignee(name);
+    setAssigneeInput(name);
+    await updateConversation({ assigned_to_name: name });
+  }
+
+  async function handleAssigneeSave() {
+    const name = assigneeInput.trim();
+    setEditingAssignee(false);
+    if (name === assignee) return;
     setAssignee(name);
     await updateConversation({ assigned_to_name: name });
   }
@@ -175,28 +204,32 @@ export function ThreadWorkspace({
     const textToSend = replyText;
 
     try {
-      const endpoint =
-        composerMode === "reply"
-          ? `/api/conversations/${conversation.id}/reply`
-          : `/api/conversations/${conversation.id}/note`;
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
+      if (!isDemo) {
+        const endpoint =
           composerMode === "reply"
-            ? { body: textToSend, aiDraftId: liveDraft?.id ?? null }
-            : { body: textToSend }
-        ),
-      });
+            ? `/api/conversations/${conversation.id}/reply`
+            : `/api/conversations/${conversation.id}/note`;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            composerMode === "reply"
+              ? { body: textToSend, aiDraftId: liveDraft?.id ?? null }
+              : { body: textToSend }
+          ),
+        });
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({})) as { error?: string; hint?: string };
-        throw new Error([data.error, data.hint].filter(Boolean).join(" ") || `HTTP ${response.status}`);
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({})) as { error?: string; hint?: string };
+          throw new Error([data.error, data.hint].filter(Boolean).join(" ") || `HTTP ${response.status}`);
+        }
+      } else {
+        // Mock network delay
+        await new Promise(resolve => setTimeout(resolve, 600));
       }
 
-      const data = await response.json().catch(() => ({})) as { messageId?: string };
       const newMessage: LocalMessage = {
-        id: data.messageId ?? `local-${Date.now()}`,
+        id: `local-${Date.now()}`,
         sender: composerMode === "note" ? "Internal note" : "You (agent)",
         senderType: composerMode === "note" ? "internal" : "agent",
         timestamp,
@@ -252,23 +285,49 @@ export function ThreadWorkspace({
               </p>
               {/* Status + assignee row */}
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium ${
-                  status === "resolved" || status === "archived"
-                    ? "border-[var(--line)] text-[var(--muted)]"
-                    : status === "open"
-                    ? "border-[rgba(120,161,122,0.25)] bg-[rgba(120,161,122,0.05)] text-[var(--foreground)]"
-                    : status === "waiting_on_customer"
-                    ? "border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.1)] text-[var(--foreground)]"
-                    : "border-[rgba(169,146,125,0.35)] bg-[rgba(169,146,125,0.08)] text-[var(--foreground)]"
-                }`}>
-                  {conversationStatusLabel[status]}
-                </span>
-                {assignee ? (
-                  <span className="text-[10px] text-[var(--muted)]">
-                    Assigned to {assignee}
-                  </span>
+                {/* Status dropdown */}
+                <select
+                  value={status}
+                  disabled={statusUpdating}
+                  onChange={(e) => handleStatusChange(e.target.value as ConversationStatus)}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-medium bg-transparent cursor-pointer outline-none disabled:opacity-50 ${
+                    status === "resolved" || status === "archived"
+                      ? "border-[var(--line)] text-[var(--muted)]"
+                      : status === "open"
+                      ? "border-[rgba(120,161,122,0.25)] bg-[rgba(120,161,122,0.05)] text-[var(--foreground)]"
+                      : status === "waiting_on_customer"
+                      ? "border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.1)] text-[var(--foreground)]"
+                      : "border-[rgba(169,146,125,0.35)] bg-[rgba(169,146,125,0.08)] text-[var(--foreground)]"
+                  }`}
+                >
+                  <option value="open">Open</option>
+                  <option value="waiting_on_customer">Waiting on customer</option>
+                  <option value="waiting_on_internal">Waiting on team</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="archived">Archived</option>
+                </select>
+
+                {/* Assignee */}
+                {editingAssignee ? (
+                  <input
+                    autoFocus
+                    value={assigneeInput}
+                    onChange={(e) => setAssigneeInput(e.target.value)}
+                    onBlur={handleAssigneeSave}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAssigneeSave(); if (e.key === "Escape") setEditingAssignee(false); }}
+                    placeholder="Assign to…"
+                    className="rounded-full border border-[var(--moss)] bg-transparent px-2.5 py-1 text-[10px] outline-none text-[var(--foreground)] w-28"
+                  />
+                ) : assignee ? (
+                  <button
+                    onClick={() => { setAssigneeInput(assignee); setEditingAssignee(true); }}
+                    className="text-[10px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                  >
+                    Assigned to {assignee} ✎
+                  </button>
                 ) : (
-                  <>
+                  <div className="flex items-center gap-1.5">
                     <span className="rounded-full border border-[rgba(169,146,125,0.3)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
                       Unassigned
                     </span>
@@ -278,12 +337,18 @@ export function ThreadWorkspace({
                     >
                       Claim
                     </button>
-                  </>
+                    <button
+                      onClick={() => { setAssigneeInput(""); setEditingAssignee(true); }}
+                      className="rounded-full border border-[var(--line-strong)] px-2.5 py-1 text-[10px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+                    >
+                      Assign
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Right side: AI confidence + Resolve */}
+            {/* Right side: AI confidence + quick Resolve/Reopen */}
             <div className="shrink-0 flex flex-col items-end gap-2">
               <div className="flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2">
                 <span className={`status-dot ${confidenceDot[conversation.aiConfidence]}`} />

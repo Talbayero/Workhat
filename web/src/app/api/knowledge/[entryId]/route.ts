@@ -52,6 +52,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     body?: string;
     category?: string;
     tags?: string[];
+    is_active?: boolean;
   };
 
   const admin = createAdminClient();
@@ -79,6 +80,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   if (body.body !== undefined) updates.body = body.body.trim();
   if (body.category !== undefined) updates.category = body.category.trim();
   if (body.tags !== undefined) updates.tags = body.tags;
+  if (typeof body.is_active === "boolean") updates.is_active = body.is_active;
 
   const { error: updateErr } = await admin
     .from("knowledge_entries")

@@ -850,6 +850,7 @@ export type KnowledgeEntry = {
   lastUpdated: string;
   updatedBy: string;
   usedInDrafts: number;
+  isActive?: boolean;
   chunks: { id: string; text: string }[];
 };
 

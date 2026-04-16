@@ -462,6 +462,7 @@ type DbKnowledgeEntry = {
   category: string;
   tags: string[];
   used_in_drafts: number;
+  is_active: boolean;
   last_updated: string;
   updated_by: string;
   knowledge_chunks: { id: string; chunk_index: number; text: string }[];
@@ -478,6 +479,7 @@ function dbKnowledgeToFrontend(row: DbKnowledgeEntry): KnowledgeEntry {
     lastUpdated: relativeTime(row.last_updated ? `${row.last_updated}T00:00:00Z` : null),
     updatedBy: row.updated_by,
     usedInDrafts: row.used_in_drafts,
+    isActive: row.is_active ?? true,
     chunks: (row.knowledge_chunks ?? [])
       .sort((a, b) => a.chunk_index - b.chunk_index)
       .map((c) => ({ id: c.id, text: c.text })),
@@ -492,7 +494,7 @@ export async function getKnowledgeEntries(
   let query = supabase
     .from("knowledge_entries")
     .select(
-      `id, title, summary, body, category, tags, used_in_drafts, last_updated, updated_by,
+      `id, title, summary, body, category, tags, used_in_drafts, is_active, last_updated, updated_by,
        knowledge_chunks:knowledge_chunks(id, chunk_index, text)`
     )
     .order("used_in_drafts", { ascending: false });
@@ -519,7 +521,7 @@ export async function getKnowledgeEntryById(
   const { data, error } = await supabase
     .from("knowledge_entries")
     .select(
-      `id, title, summary, body, category, tags, used_in_drafts, last_updated, updated_by,
+      `id, title, summary, body, category, tags, used_in_drafts, is_active, last_updated, updated_by,
        knowledge_chunks:knowledge_chunks(id, chunk_index, text)`
     )
     .eq("id", id)

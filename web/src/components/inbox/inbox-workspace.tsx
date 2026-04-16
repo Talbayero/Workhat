@@ -27,9 +27,14 @@ const riskDot: Record<RiskLevel, string> = {
 export async function InboxWorkspace({
   selectedConversationId,
   activeView = "all",
-}: InboxWorkspaceProps) {
+  isDemo = false,
+  staticConversations,
+}: InboxWorkspaceProps & { isDemo?: boolean; staticConversations?: InboxConversation[] }) {
   // Fetch all conversations for sidebar list + view counts
-  const allConversations = await getConversations();
+  const allConversations = isDemo && staticConversations 
+    ? staticConversations 
+    : await getConversations();
+    
   const filtered = filterConversations(allConversations, activeView);
 
   // Determine which conversation to show in the thread pane
@@ -37,7 +42,12 @@ export async function InboxWorkspace({
   let selected: InboxConversation | null = null;
 
   if (targetId) {
-    selected = await getConversationById(targetId);
+    if (isDemo && staticConversations) {
+      selected = staticConversations.find(c => c.id === targetId) ?? null;
+    } else {
+      selected = await getConversationById(targetId);
+    }
+    
     if (selectedConversationId && !selected) notFound();
     // Fall back to first in list without messages if fetch failed
     if (!selected) selected = filtered[0] ?? null;
@@ -47,6 +57,8 @@ export async function InboxWorkspace({
   const viewCounts = Object.fromEntries(
     inboxViews.map((v) => [v.id, filterConversations(allConversations, v.id).length])
   ) as Record<InboxViewId, number>;
+
+  const baseDir = isDemo ? "/demo" : "";
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -67,14 +79,13 @@ export async function InboxWorkspace({
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
             Keep the queue compact, scan risk quickly, and open the next thread without losing context.
           </p>
-
           <div className="mt-3 flex flex-col gap-0.5">
             {inboxViews.map((view) => {
               const isActive = view.id === activeView;
               return (
                 <Link
                   key={view.id}
-                  href={`/inbox?view=${view.id}`}
+                  href={`${baseDir}/inbox?view=${view.id}`}
                   className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors ${
                     isActive
                       ? "bg-[var(--sage)] text-[var(--foreground)]"
@@ -121,7 +132,7 @@ export async function InboxWorkspace({
             return (
               <Link
                 key={conversation.id}
-                href={`/inbox/${conversation.id}?view=${activeView}`}
+                href={`${baseDir}/inbox/${conversation.id}?view=${activeView}`}
                 className={`block border-b px-2 py-3 transition-colors ${
                   isSelected
                     ? "rounded-[18px] border-[var(--moss)] bg-[rgba(144,50,61,0.1)]"
@@ -171,7 +182,7 @@ export async function InboxWorkspace({
 
       <div className="flex-1 min-w-0 overflow-hidden">
         {selected ? (
-          <ThreadWorkspace key={selected.id} conversation={selected} />
+          <ThreadWorkspace key={selected.id} conversation={selected} isDemo={isDemo} />
         ) : (
           <div className="flex h-full items-center justify-center px-8">
             <div className="max-w-sm rounded-[24px] border border-[var(--line)] bg-[var(--panel-strong)] p-8 text-center">

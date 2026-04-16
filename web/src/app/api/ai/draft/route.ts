@@ -59,7 +59,7 @@ async function fetchOrgPolicyEntries(
       .select("title, body, category")
       .eq("org_id", orgId)
       .eq("is_active", true)
-      .in("category", ["tone_guide", "sop"])
+      .in("category", ["tone", "sop"])
       .order("used_in_drafts", { ascending: false })
       .limit(4);
 
@@ -481,6 +481,19 @@ export async function POST(req: NextRequest) {
     appUser.org_id as string,
     result
   );
+
+  // Increment used_in_drafts for every knowledge entry that contributed to this draft.
+  // Collect unique entry IDs from both snippet retrieval and policy/tone entries.
+  // The policy entries don't carry IDs so we look them up by title (best-effort, fire-and-forget).
+  const snippetEntryIds = [
+    ...new Set(context.knowledgeSnippets.map((s) => s.id)),
+  ];
+  if (snippetEntryIds.length > 0) {
+    supabase.rpc("increment_knowledge_used_in_drafts", { entry_ids: snippetEntryIds })
+      .then(({ error: rpcErr }) => {
+        if (rpcErr) console.warn("[ai/draft] used_in_drafts increment failed:", rpcErr.message);
+      });
+  }
 
   // Emit usage event (fire and forget)
   emitUsageEvent(

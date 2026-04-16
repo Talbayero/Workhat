@@ -20,6 +20,7 @@ const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/onboarding", "/pricing
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
   if (pathname.startsWith("/auth/")) return true;
+  if (pathname.startsWith("/demo/")) return true;
   if (pathname.startsWith("/api/inbound/")) return true;
   if (pathname.startsWith("/api/stripe/webhook")) return true;
   if (pathname.startsWith("/api/waitlist")) return true;

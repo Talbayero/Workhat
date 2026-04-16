@@ -254,6 +254,19 @@ export function KnowledgeShell({ entries, selectedEntry = null, activeCategory =
   const router = useRouter();
   const [modal, setModal] = useState<"create" | "edit" | "delete" | null>(null);
   const [query, setQuery] = useState("");
+  const [togglingActive, setTogglingActive] = useState(false);
+
+  async function handleToggleActive() {
+    if (!selectedEntry || togglingActive) return;
+    setTogglingActive(true);
+    await fetch(`/api/knowledge/${selectedEntry.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !(selectedEntry.isActive ?? true) }),
+    });
+    setTogglingActive(false);
+    router.refresh();
+  }
 
   const refresh = useCallback(() => {
     setModal(null);
@@ -380,7 +393,14 @@ export function KnowledgeShell({ entries, selectedEntry = null, activeCategory =
                   </div>
                   <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{entry.summary}</p>
                   <div className="mt-2.5 flex items-center justify-between gap-2">
-                    <CategoryPill category={entry.category} />
+                    <div className="flex items-center gap-1.5">
+                      <CategoryPill category={entry.category} />
+                      {!(entry.isActive ?? true) && (
+                        <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[9px] text-[var(--muted)]">
+                          inactive
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[10px] text-[var(--muted)]">{entry.usedInDrafts} drafts</span>
                   </div>
                 </Link>
@@ -400,12 +420,28 @@ export function KnowledgeShell({ entries, selectedEntry = null, activeCategory =
                     <h2 className="mt-1 text-xl font-semibold">{selectedEntry.title}</h2>
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
                       <CategoryPill category={selectedEntry.category} />
+                      {(selectedEntry.isActive ?? true) ? (
+                        <span className="rounded-full border border-[rgba(22,163,74,0.35)] bg-[rgba(22,163,74,0.08)] px-2 py-0.5 text-[10px] text-[rgba(22,163,74,0.9)]">active</span>
+                      ) : (
+                        <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)]">inactive — excluded from AI</span>
+                      )}
                       <span>Updated {selectedEntry.lastUpdated} by {selectedEntry.updatedBy}</span>
                       <span>•</span>
                       <span>{selectedEntry.usedInDrafts} AI draft retrievals</span>
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={handleToggleActive}
+                      disabled={togglingActive}
+                      className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)] disabled:opacity-50"
+                    >
+                      {togglingActive
+                        ? "Saving…"
+                        : (selectedEntry.isActive ?? true)
+                        ? "Deactivate"
+                        : "Activate"}
+                    </button>
                     <button onClick={() => setModal("edit")} className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]">
                       Edit entry
                     </button>

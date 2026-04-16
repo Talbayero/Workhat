@@ -32,12 +32,12 @@ function NavBar() {
           <Link href="/login" className="hidden text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)] sm:block">
             Sign in
           </Link>
-          <a
-            href="mailto:teddyalbayero@work-hat.com?subject=Work Hat demo request"
-            className="hidden rounded-full border border-[var(--line-strong)] px-4 py-2 text-sm font-medium transition-colors hover:border-[var(--moss)] sm:block"
+          <Link
+            href="/demo/inbox"
+            className="hidden rounded-full border border-[var(--moss)] px-4 py-2 text-sm font-medium text-[var(--moss)] transition-colors hover:bg-[var(--moss)] hover:text-white sm:block"
           >
-            Book a demo
-          </a>
+            Try Demo
+          </Link>
           <Link
             href="#waitlist"
             className="rounded-full bg-[var(--moss)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
@@ -101,17 +101,14 @@ function Hero() {
 
         {/* Dual CTA */}
         <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Link
+            href="/demo/inbox"
+            className="flex h-12 flex-1 items-center justify-center rounded-full bg-[var(--foreground)] px-8 text-sm font-semibold text-[var(--background)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:flex-none"
+          >
+            Open Interactive Demo
+          </Link>
           <div className="flex-1 max-w-md">
             <WaitlistForm size="hero" placeholder="your@company.com" />
-          </div>
-          <div className="flex items-center gap-3 sm:flex-col sm:items-start">
-            <span className="text-xs text-[var(--muted)] sm:hidden">or</span>
-            <a
-              href="mailto:teddyalbayero@work-hat.com?subject=Work Hat demo request"
-              className="text-sm text-[var(--muted)] underline underline-offset-4 decoration-[var(--line-strong)] transition-colors hover:text-[var(--foreground)]"
-            >
-              Book a live demo →
-            </a>
           </div>
         </div>
 

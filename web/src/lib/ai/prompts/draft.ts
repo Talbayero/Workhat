@@ -45,7 +45,10 @@ export function buildPolicyLayer(orgPolicyEntries: OrgPolicyEntry[] = []): strin
   }
 
   const formatted = orgPolicyEntries
-    .map((e) => `### ${e.title} (${e.category})\n${e.body.trim()}`)
+    .map((e) => {
+      const label = e.category === "tone" ? "tone guide" : e.category;
+      return `### ${e.title} (${label})\n${e.body.trim()}`;
+    })
     .join("\n\n");
 
   return `## Org Policy and Tone Guidelines\nThe following rules come from your organization's knowledge base and must be followed:\n\n${formatted}`;
