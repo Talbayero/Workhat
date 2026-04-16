@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 
 type RouteMeta = {
   label: string;
@@ -56,6 +57,8 @@ function getPrimarySegment(pathname: string) {
 
 export function Topbar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState("");
   const segment = getPrimarySegment(pathname);
   const meta = routeMeta[segment];
   const isDetailRoute = pathname.split("/").filter(Boolean).length > 1;
@@ -85,17 +88,26 @@ export function Topbar() {
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
-          <label className="hidden min-w-[240px] items-center gap-2 rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 lg:flex">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = searchQuery.trim();
+              if (q) router.push(`/search?q=${encodeURIComponent(q)}`);
+            }}
+            className="hidden min-w-[240px] items-center gap-2 rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 lg:flex"
+          >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <circle cx="6.25" cy="6.25" r="4.25" stroke="currentColor" strokeWidth="1.3" />
               <path d="M9.5 9.5L12 12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
             </svg>
             <input
               type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search records, threads, and knowledge"
               className="w-full bg-transparent text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none"
             />
-          </label>
+          </form>
 
           {meta.actionLabel && meta.actionHref ? (
             <Link

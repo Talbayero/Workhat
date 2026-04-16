@@ -252,6 +252,21 @@ function EditContactModal({ contact, onClose, onSaved }: { contact: ContactRecor
 
 // ── Main shell ────────────────────────────────────────────────────────────────
 
+type SortKey = "Name" | "Company" | "Last activity" | "Tags" | "Open conversations";
+
+function sortContacts(list: ContactRecord[], key: SortKey): ContactRecord[] {
+  return [...list].sort((a, b) => {
+    switch (key) {
+      case "Name": return a.fullName.localeCompare(b.fullName);
+      case "Company": return a.companyName.localeCompare(b.companyName);
+      case "Open conversations": return b.openConversationCount - a.openConversationCount;
+      case "Tags": return b.tags.length - a.tags.length;
+      case "Last activity":
+      default: return 0; // already sorted by last_activity_at from DB
+    }
+  });
+}
+
 export function ContactsShell({
   contacts,
   selectedContact = null,
@@ -262,6 +277,7 @@ export function ContactsShell({
   const router = useRouter();
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("Last activity");
 
   const refresh = useCallback(() => {
     setModal(null);
@@ -269,13 +285,14 @@ export function ContactsShell({
   }, [router]);
 
   const viewFiltered = filterContacts(contacts, activeView);
-  const filteredContacts = query.trim()
+  const searchFiltered = query.trim()
     ? viewFiltered.filter((c) =>
         [c.fullName, c.companyName, c.email, ...c.tags].some((f) =>
           f.toLowerCase().includes(query.toLowerCase())
         )
       )
     : viewFiltered;
+  const filteredContacts = sortContacts(searchFiltered, sortKey);
 
   return (
     <>
@@ -311,10 +328,18 @@ export function ContactsShell({
               className="mt-3 w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
             />
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {contactFilters.slice(0, 5).map((filter) => (
-                <span key={filter} className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
+              {(["Last activity", "Name", "Company", "Open conversations", "Tags"] as SortKey[]).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setSortKey(filter)}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] transition-colors ${
+                    sortKey === filter
+                      ? "border-[var(--moss)] bg-[rgba(120,161,122,0.1)] text-[var(--foreground)]"
+                      : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)] hover:text-[var(--foreground)]"
+                  }`}
+                >
                   {filter}
-                </span>
+                </button>
               ))}
             </div>
           </div>

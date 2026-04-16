@@ -146,6 +146,15 @@ export async function getConversationById(
 ): Promise<InboxConversation | null> {
   const supabase = await createClient();
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: appUser } = await supabase
+    .from("users")
+    .select("org_id")
+    .eq("auth_user_id", user.id)
+    .single();
+  if (!appUser) return null;
+
   const [convRes, msgRes] = await Promise.all([
     supabase
       .from("conversations")
@@ -156,6 +165,7 @@ export async function getConversationById(
          companies(name)`
       )
       .eq("id", id)
+      .eq("org_id", (appUser as { org_id: string }).org_id)
       .single(),
     supabase
       .from("messages")

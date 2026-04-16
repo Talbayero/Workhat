@@ -73,6 +73,7 @@ export function ThreadWorkspace({
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>(conversation.messages);
   const [status, setStatus] = useState<ConversationStatus>(conversation.status);
   const [assignee, setAssignee] = useState(conversation.assignee);
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   // Live AI draft state
   const [liveDraft, setLiveDraft] = useState<LiveDraft | null>(null);
@@ -127,6 +128,27 @@ export function ThreadWorkspace({
     setComposerMode("reply");
     setReplyText(text);
     setActivePanel(null);
+  }
+
+  async function updateConversation(patch: Record<string, unknown>) {
+    await fetch(`/api/conversations/${conversation.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  }
+
+  async function handleStatusChange(newStatus: ConversationStatus) {
+    setStatusUpdating(true);
+    setStatus(newStatus);
+    await updateConversation({ status: newStatus });
+    setStatusUpdating(false);
+  }
+
+  async function handleClaim() {
+    const name = "You";
+    setAssignee(name);
+    await updateConversation({ assigned_to_name: name });
   }
 
   function switchMode(mode: ComposerMode) {
@@ -251,7 +273,7 @@ export function ThreadWorkspace({
                       Unassigned
                     </span>
                     <button
-                      onClick={() => setAssignee("Marcos")}
+                      onClick={handleClaim}
                       className="rounded-full border border-[var(--moss)] px-2.5 py-1 text-[10px] font-medium text-[var(--moss)] transition-colors hover:bg-[var(--moss)] hover:text-white"
                     >
                       Claim
@@ -271,15 +293,17 @@ export function ThreadWorkspace({
               </div>
               {status !== "resolved" ? (
                 <button
-                  onClick={() => setStatus("resolved")}
-                  className="rounded-full border border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.08)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[rgba(120,161,122,0.18)]"
+                  onClick={() => handleStatusChange("resolved")}
+                  disabled={statusUpdating}
+                  className="rounded-full border border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.08)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[rgba(120,161,122,0.18)] disabled:opacity-50"
                 >
                   ✓ Resolve
                 </button>
               ) : (
                 <button
-                  onClick={() => setStatus("open")}
-                  className="rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+                  onClick={() => handleStatusChange("open")}
+                  disabled={statusUpdating}
+                  className="rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
                 >
                   Reopen
                 </button>
