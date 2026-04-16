@@ -1,50 +1,66 @@
-// POST /api/conversations/:conversationId/edit-analysis
-// Phase 1: stub that accepts and logs the edit classification payload.
-// Phase 2: insert into edit_analyses table, update ai_drafts.was_accepted flag.
+/**
+ * GET /api/conversations/:conversationId/edit-analysis
+ *
+ * Returns all edit analysis records for a conversation, ordered newest first.
+ * Used by the thread workspace to display AI improvement insights per reply.
+ *
+ * Previously a Phase 1 stub (POST, no auth, in-memory only).
+ * Now a real authenticated read endpoint backed by the edit_analyses table.
+ */
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
-type EditAnalysisPayload = {
-  aiDraftText: string;
-  finalText: string;
-  editType: string;
-  editIntensity: number; // 0–100
-  agentId: string;
-  messageId?: string;
-};
-
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ conversationId: string }> },
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ conversationId: string }> }
 ) {
   const { conversationId } = await params;
+  const supabase = await createClient();
 
-  let payload: EditAnalysisPayload;
-  try {
-    payload = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  // Authenticate
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!payload.editType || payload.editIntensity == null) {
-    return NextResponse.json({ error: "editType and editIntensity are required" }, { status: 422 });
+  // Get app user + org (ensures results are scoped to the caller's org)
+  const { data: appUser, error: userErr } = await supabase
+    .from("users")
+    .select("id, org_id")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (userErr || !appUser) {
+    return NextResponse.json({ error: "App user not found" }, { status: 403 });
   }
 
-  // Phase 2: insert into Supabase
-  // const supabase = createServerSupabaseClient();
-  // await supabase.from("edit_analyses").insert({
-  //   conversation_id: conversationId,
-  //   ai_draft_text: payload.aiDraftText,
-  //   final_text: payload.finalText,
-  //   edit_type: payload.editType,
-  //   edit_intensity: payload.editIntensity,
-  //   agent_id: payload.agentId,
-  //   message_id: payload.messageId,
-  // });
+  const { org_id: orgId } = appUser as { id: string; org_id: string };
 
-  console.info(
-    `[edit-analysis] conv=${conversationId} type=${payload.editType} intensity=${payload.editIntensity}%`
-  );
+  // Fetch analyses scoped to this org + conversation
+  const { data, error } = await supabase
+    .from("edit_analyses")
+    .select(`
+      id,
+      ai_draft_id,
+      sent_reply_id,
+      edit_distance_score,
+      change_percent,
+      categories,
+      likely_reason_summary,
+      classification_confidence,
+      raw_diff_json,
+      raw_analysis_json,
+      created_at
+    `)
+    .eq("org_id", orgId)
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false });
 
-  return NextResponse.json({ ok: true, conversationId });
+  if (error) {
+    console.error("[edit-analysis] query failed:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ analyses: data ?? [] });
 }

@@ -176,6 +176,13 @@ export function heuristicClassify(
 
 import { ANALYSIS_JSON_SCHEMA, parseAnalysisOutput } from "@/lib/ai/schemas/analysis";
 
+/**
+ * Intentionally separate from OPENAI_DEFAULT_MODEL — analysis is a cheaper,
+ * high-volume classification task. gpt-4o-mini is accurate enough and ~20x cheaper.
+ * Override with OPENAI_ANALYSIS_MODEL env var if needed.
+ */
+const OPENAI_ANALYSIS_MODEL = process.env.OPENAI_ANALYSIS_MODEL ?? "gpt-4o-mini";
+
 const ANALYSIS_SYSTEM_PROMPT = `You are an expert at analysing how human support agents edit AI-generated reply drafts.
 Your job is to classify WHY the agent changed the draft and whether the pattern suggests a knowledge gap.
 
@@ -228,7 +235,7 @@ Heuristic confidence: ${Math.round(heuristic.confidence * 100)}%
 Classify this edit. You may confirm, refine, or override the heuristic suggestion.`;
 
   const body = {
-    model: process.env.OPENAI_MODEL ?? "gpt-4o-mini", // cheaper model for analysis
+    model: OPENAI_ANALYSIS_MODEL,
     messages: [
       { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
       { role: "user", content: userPrompt },

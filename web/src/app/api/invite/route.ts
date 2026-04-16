@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type InviteBody = {
   emails: string[];
@@ -79,12 +79,19 @@ export async function POST(req: NextRequest) {
 
   const { emails, role } = body;
 
-  // Admin client needed to send Supabase invite emails
-  // (service role key bypasses RLS for the invite operation only)
-  const adminClient = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  // Use the shared admin client — includes key validation and proper error messages.
+  // Avoids silently passing undefined if SUPABASE_SERVICE_ROLE_KEY is missing.
+  let adminClient: ReturnType<typeof createAdminClient>;
+  try {
+    adminClient = createAdminClient();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Admin client unavailable";
+    console.error("[invite] admin client init failed:", message);
+    return NextResponse.json(
+      { error: "Invitations are unavailable — SUPABASE_SERVICE_ROLE_KEY is not configured." },
+      { status: 503 }
+    );
+  }
 
   const results: { email: string; status: "invited" | "already_exists" | "error" }[] = [];
 
@@ -127,12 +134,15 @@ export async function POST(req: NextRequest) {
 
     if (inviteErr) {
       console.error("[invite] supabase invite failed:", inviteErr.message);
-      // Mark the pending row as error so it can be retried
+      // Delete the pending row so the invite can be cleanly retried.
+      // user_status enum only has 'pending' | 'active' | 'disabled' — there is no
+      // error state, so removing the row is cleaner than leaving a stuck ghost record.
       await supabase
         .from("users")
-        .update({ status: "pending" })
+        .delete()
         .eq("org_id", orgId)
-        .eq("email", email);
+        .eq("email", email)
+        .eq("status", "pending");
       results.push({ email, status: "error" });
     } else {
       results.push({ email, status: "invited" });

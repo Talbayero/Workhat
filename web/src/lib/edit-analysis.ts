@@ -1,9 +1,13 @@
 "use client";
 
-// ─── Edit Analysis ─────────────────────────────────────────────────────────────
-// Captures the diff between an AI draft and the agent's final reply, then
-// classifies the edit type. Phase 1: in-memory store. Phase 2: POST to
-// /api/conversations/:id/edit-analysis → Supabase edit_analyses table.
+// ─── Client-side Edit Analysis (UI-only) ──────────────────────────────────────
+// Provides lightweight in-browser diff + heuristic classification used ONLY
+// for the immediate agent-facing toast after a reply is sent (thread-workspace).
+//
+// The authoritative edit analysis (LLM-backed, persisted to Supabase) runs
+// server-side in the reply route → triggerEditAnalysis → lib/ai/analysis.ts.
+// This module no longer maintains a persistent in-memory log — stats come
+// from GET /api/conversations/:id/edit-analysis (backed by edit_analyses table).
 
 export type EditType =
   | "accepted"        // Agent sent draft unchanged
@@ -25,12 +29,6 @@ export type EditRecord = {
   agentId: string;
 };
 
-// In-memory store — replaced by Supabase in Phase 2
-const editLog: EditRecord[] = [];
-
-export function getEditLog(): EditRecord[] {
-  return editLog;
-}
 
 // ── Diff helpers ──────────────────────────────────────────────────────────────
 
@@ -123,77 +121,5 @@ export function recordEdit(
     agentId,
   };
 
-  editLog.push(record);
   return record;
-}
-
-// ── Aggregate stats (used by Dashboard) ───────────────────────────────────────
-
-export type EditStats = {
-  totalEdits: number;
-  acceptanceRate: number;      // % of drafts sent unchanged
-  avgEditIntensity: number;    // avg intensity across non-accepted edits
-  topEditType: EditType | null;
-  byType: Record<EditType, number>;
-};
-
-export function computeEditStats(): EditStats {
-  if (editLog.length === 0) {
-    return {
-      totalEdits: 0,
-      acceptanceRate: 0,
-      avgEditIntensity: 0,
-      topEditType: null,
-      byType: {
-        accepted: 0,
-        tone: 0,
-        policy: 0,
-        missing_context: 0,
-        factual: 0,
-        structure: 0,
-        full_rewrite: 0,
-      },
-    };
-  }
-
-  const byType: Record<EditType, number> = {
-    accepted: 0,
-    tone: 0,
-    policy: 0,
-    missing_context: 0,
-    factual: 0,
-    structure: 0,
-    full_rewrite: 0,
-  };
-
-  let totalIntensity = 0;
-  let nonAccepted = 0;
-
-  for (const rec of editLog) {
-    byType[rec.editType]++;
-    if (rec.editType !== "accepted") {
-      totalIntensity += rec.editIntensity;
-      nonAccepted++;
-    }
-  }
-
-  const acceptanceRate = Math.round((byType.accepted / editLog.length) * 100);
-  const avgEditIntensity = nonAccepted > 0
-    ? Math.round(totalIntensity / nonAccepted)
-    : 0;
-
-  // Top non-accepted edit type
-  const ranked = (Object.entries(byType) as [EditType, number][])
-    .filter(([t]) => t !== "accepted")
-    .sort(([, a], [, b]) => b - a);
-
-  const topEditType = ranked[0]?.[1] > 0 ? ranked[0][0] : null;
-
-  return {
-    totalEdits: editLog.length,
-    acceptanceRate,
-    avgEditIntensity,
-    topEditType,
-    byType,
-  };
 }

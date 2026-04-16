@@ -64,7 +64,7 @@ async function fetchKnowledgeSnippets(
     const { data: semanticData, error: semanticErr } = await supabase.rpc(
       "match_knowledge_chunks",
       {
-        query_embedding: JSON.stringify(queryEmbedding),
+        query_embedding: queryEmbedding, // pass raw number[] — pgvector casts vector(1536) natively
         p_org_id: orgId,
         match_count: limit,
         min_similarity: 0.45,
@@ -173,7 +173,8 @@ function senderTypeToRole(senderType: string): MessageContext["role"] {
 
 async function assembleContext(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  conversationId: string
+  conversationId: string,
+  orgId: string
 ): Promise<ConversationContext> {
   // Fetch conversation + contact + company in one call
   const { data: convData, error: convErr } = await supabase
@@ -220,14 +221,10 @@ async function assembleContext(
   const lastBody = lastInbound?.body ?? conv.subject ?? "";
 
   // Fetch knowledge snippets (semantic → full-text fallback)
-  const { data: { user: authUser } } = await supabase.auth.getUser();
-  const { data: appUserForOrg } = authUser
-    ? await supabase.from("users").select("org_id").eq("auth_user_id", authUser.id).single()
-    : { data: null };
-
+  // orgId is passed in from the authenticated handler — no second auth call needed
   const knowledgeSnippets = await fetchKnowledgeSnippets(
     supabase,
-    (appUserForOrg as { org_id: string } | null)?.org_id ?? "",
+    orgId,
     conv.subject ?? "",
     lastBody
   );
@@ -358,7 +355,7 @@ export async function POST(req: NextRequest) {
   // Assemble context
   let context: ConversationContext;
   try {
-    context = await assembleContext(supabase, conversationId);
+    context = await assembleContext(supabase, conversationId, appUser.org_id as string);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load conversation";
     return NextResponse.json({ error: message }, { status: 404 });
