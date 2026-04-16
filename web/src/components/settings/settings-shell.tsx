@@ -36,6 +36,22 @@ type EmailConnection = {
   updated_at: string;
 };
 
+type EmailDiagnosticCheck = {
+  key: string;
+  label: string;
+  status: "pass" | "warn" | "fail";
+  message: string;
+};
+
+type EmailDiagnostics = {
+  checks: EmailDiagnosticCheck[];
+  summary: {
+    pass: number;
+    warn: number;
+    fail: number;
+  };
+};
+
 type TeamMember = {
   id: string;
   full_name: string;
@@ -588,6 +604,9 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [connectionAction, setConnectionAction] = useState<"sync" | "watch" | "disconnect" | null>(null);
+  const [diagnostics, setDiagnostics] = useState<EmailDiagnostics | null>(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
 
   const inboundAddress = channel?.inboundAddress || "";
   const hasAddress = Boolean(inboundAddress);
@@ -596,6 +615,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
 
   useEffect(() => {
     void refreshConnections();
+    void refreshDiagnostics();
   }, []);
 
   async function refreshConnections() {
@@ -612,6 +632,23 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
       setConnectionError(error instanceof Error ? error.message : "Could not load email connections.");
     } finally {
       setConnectionsLoading(false);
+    }
+  }
+
+  async function refreshDiagnostics() {
+    setDiagnosticsLoading(true);
+    setDiagnosticsError(null);
+    try {
+      const res = await fetch("/api/email/gmail/diagnostics");
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error ?? "Could not load Gmail diagnostics.");
+      }
+      setDiagnostics(payload as EmailDiagnostics);
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error ? error.message : "Could not load Gmail diagnostics.");
+    } finally {
+      setDiagnosticsLoading(false);
     }
   }
 
@@ -807,6 +844,55 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           {connectionError && (
             <div className="mt-4 rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs leading-5 text-[rgba(255,210,210,0.9)]">
               {connectionError}
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      <SectionCard>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="eyebrow text-[9px] text-[var(--muted)]">System readiness</p>
+            <p className="mt-1 text-base font-semibold">Gmail connector diagnostics</p>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
+              These checks confirm the production environment has the server-only keys needed for OAuth, encrypted token storage,
+              live Gmail push, and watch renewal.
+            </p>
+          </div>
+          <button
+            onClick={refreshDiagnostics}
+            disabled={diagnosticsLoading}
+            className="w-fit rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-50"
+          >
+            {diagnosticsLoading ? "Checking..." : "Recheck"}
+          </button>
+        </div>
+
+        <div className="mt-4">
+          {diagnosticsLoading && <p className="text-sm text-[var(--muted)]">Checking connector configuration...</p>}
+          {diagnosticsError && (
+            <div className="rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs leading-5 text-[rgba(255,210,210,0.9)]">
+              {diagnosticsError}
+            </div>
+          )}
+          {!diagnosticsLoading && diagnostics && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <DiagnosticPill status="pass" label={`${diagnostics.summary.pass} ready`} />
+                <DiagnosticPill status="warn" label={`${diagnostics.summary.warn} warnings`} />
+                <DiagnosticPill status="fail" label={`${diagnostics.summary.fail} missing`} />
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                {diagnostics.checks.map((check) => (
+                  <div key={check.key} className="rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-medium">{check.label}</p>
+                      <DiagnosticPill status={check.status} label={check.status} />
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{check.message}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -1048,6 +1134,21 @@ function ConnectorMetric({ label, value }: { label: string; value: string }) {
       <p className="eyebrow text-[8px] text-[var(--muted)]">{label}</p>
       <p className="mt-1 break-words text-xs text-[var(--foreground)]">{value}</p>
     </div>
+  );
+}
+
+function DiagnosticPill({ status, label }: { status: EmailDiagnosticCheck["status"]; label: string }) {
+  const className =
+    status === "pass"
+      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+      : status === "warn"
+      ? "border-amber-400/20 bg-amber-400/10 text-amber-200"
+      : "border-[rgba(144,50,61,0.45)] bg-[rgba(73,17,28,0.22)] text-[rgba(255,210,210,0.95)]";
+
+  return (
+    <span className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-[10px] font-medium capitalize ${className}`}>
+      {label}
+    </span>
   );
 }
 
