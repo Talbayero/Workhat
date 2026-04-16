@@ -32,11 +32,13 @@ async function search(q: string, orgId: string) {
       .limit(10),
   ]);
 
+  type RawConv = {
+    id: string; subject: string; preview: string; status: string;
+    contacts: { full_name: string }[] | { full_name: string } | null;
+  };
+
   return {
-    conversations: (convRes.data ?? []) as {
-      id: string; subject: string; preview: string; status: string;
-      contacts: { full_name: string } | null;
-    }[],
+    conversations: (convRes.data ?? []) as unknown as RawConv[],
     contacts: (contactRes.data ?? []) as {
       id: string; full_name: string; email: string | null; tier: string; status: string;
     }[],
@@ -101,7 +103,9 @@ export default async function SearchPage({
                   <span className="shrink-0 rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px] capitalize">{c.status.replace(/_/g, " ")}</span>
                 </div>
                 {c.contacts && (
-                  <p className="mt-0.5 text-xs text-[var(--muted)]">{c.contacts.full_name}</p>
+                  <p className="mt-0.5 text-xs text-[var(--muted)]">
+                    {Array.isArray(c.contacts) ? c.contacts[0]?.full_name : c.contacts.full_name}
+                  </p>
                 )}
                 <p className="mt-1.5 line-clamp-1 text-xs text-[var(--muted)]">{c.preview}</p>
               </Link>
