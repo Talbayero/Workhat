@@ -12,7 +12,7 @@
  * or A/B tested without touching the others.
  */
 
-import type { ConversationContext, KnowledgeSnippet } from "@/lib/ai/types";
+import type { ConversationContext, KnowledgeSnippet, OrgPolicyEntry } from "@/lib/ai/types";
 import { DRAFT_JSON_SCHEMA } from "@/lib/ai/schemas/draft";
 
 // ── Layer 1: System behavior ──────────────────────────────────────────────────
@@ -30,17 +30,25 @@ This means you should:
 Tone: Professional, warm, and direct. Avoid corporate filler phrases.`.trim();
 
 // ── Layer 2: Org policy and tone ─────────────────────────────────────────────
-// V1: static defaults. Phase 2: fetch from org settings / knowledge entries
-// tagged as tone_guide or sop.
+// Uses org-specific knowledge entries (category = tone_guide | sop) when available.
+// Falls back to generic defaults if the org has not configured any policy entries.
 
-export function buildPolicyLayer(): string {
-  return `## Org Policy and Tone Guidelines
-- Always acknowledge the customer's issue before offering a solution
+const DEFAULT_POLICY = `- Always acknowledge the customer's issue before offering a solution
 - Do not promise specific resolution timelines unless you have confirmed data
-- Refunds over $100 require manager approval — flag this as a risk if relevant
 - Use the customer's first name in the greeting
 - Close with a clear next step or call to action
-- Never apologize for company policies — explain them neutrally instead`.trim();
+- Never apologize for company policies — explain them neutrally instead`;
+
+export function buildPolicyLayer(orgPolicyEntries: OrgPolicyEntry[] = []): string {
+  if (orgPolicyEntries.length === 0) {
+    return `## Org Policy and Tone Guidelines\n${DEFAULT_POLICY}`;
+  }
+
+  const formatted = orgPolicyEntries
+    .map((e) => `### ${e.title} (${e.category})\n${e.body.trim()}`)
+    .join("\n\n");
+
+  return `## Org Policy and Tone Guidelines\nThe following rules come from your organization's knowledge base and must be followed:\n\n${formatted}`;
 }
 
 // ── Layer 3: Knowledge snippets ───────────────────────────────────────────────
@@ -130,7 +138,7 @@ export type DraftPrompt = {
 
 export function buildDraftPrompt(ctx: ConversationContext): DraftPrompt {
   const userPrompt = [
-    buildPolicyLayer(),
+    buildPolicyLayer(ctx.orgPolicyEntries),
     buildKnowledgeLayer(ctx.knowledgeSnippets),
     buildConversationLayer(ctx),
     buildOutputLayer(),

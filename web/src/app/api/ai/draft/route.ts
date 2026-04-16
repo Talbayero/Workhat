@@ -44,6 +44,34 @@ function validateBody(raw: unknown): DraftRequestBody | null {
 // ── Knowledge retrieval ───────────────────────────────────────────────────────
 
 /**
+ * Fetch the org's active tone and policy entries (category = tone_guide | sop).
+ * These are fed into Layer 2 of the prompt so the AI follows org-specific rules
+ * instead of the hardcoded generic defaults.
+ * Returns up to 4 entries, ordered by most-used in drafts.
+ */
+async function fetchOrgPolicyEntries(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orgId: string
+): Promise<{ title: string; body: string; category: string }[]> {
+  try {
+    const { data, error } = await supabase
+      .from("knowledge_entries")
+      .select("title, body, category")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+      .in("category", ["tone_guide", "sop"])
+      .order("used_in_drafts", { ascending: false })
+      .limit(4);
+
+    if (error || !data) return [];
+    return data as { title: string; body: string; category: string }[];
+  } catch {
+    console.warn("[ai/draft] policy entry fetch failed — using defaults");
+    return [];
+  }
+}
+
+/**
  * Retrieve the top-k knowledge chunks relevant to a conversation.
  * Primary: semantic search via pgvector (match_knowledge_chunks RPC).
  * Fallback: full-text search on content_tsv (if embeddings unavailable).
@@ -77,7 +105,8 @@ async function fetchKnowledgeSnippets(
       const { data: entries } = await supabase
         .from("knowledge_entries")
         .select("id, title, category")
-        .in("id", entryIds);
+        .in("id", entryIds)
+        .eq("is_active", true);
 
       const entryMap = Object.fromEntries(
         (entries ?? []).map((e: { id: string; title: string; category: string }) => [e.id, e])
@@ -100,7 +129,7 @@ async function fetchKnowledgeSnippets(
 
     const { data, error } = await supabase
       .from("knowledge_chunks")
-      .select(`id, text, entry_id, knowledge_entries:entry_id (id, title, category)`)
+      .select(`id, text, entry_id, knowledge_entries:entry_id (id, title, category, is_active)`)
       .textSearch("content_tsv", searchTerms, { type: "plain", config: "english" })
       .eq("org_id", orgId)
       .limit(limit);
@@ -112,8 +141,8 @@ async function fetchKnowledgeSnippets(
       text: string;
       entry_id: string;
       knowledge_entries:
-        | { id: string; title: string; category: string }[]
-        | { id: string; title: string; category: string }
+        | { id: string; title: string; category: string; is_active: boolean }[]
+        | { id: string; title: string; category: string; is_active: boolean }
         | null;
     };
 
@@ -122,7 +151,8 @@ async function fetchKnowledgeSnippets(
         const entry = Array.isArray(row.knowledge_entries)
           ? row.knowledge_entries[0]
           : row.knowledge_entries;
-        if (!entry) return null;
+        // Exclude inactive knowledge entries from AI context
+        if (!entry || entry.is_active === false) return null;
         return {
           id: row.id,
           title: entry.title ?? "Knowledge entry",
@@ -176,7 +206,9 @@ async function assembleContext(
   conversationId: string,
   orgId: string
 ): Promise<ConversationContext> {
-  // Fetch conversation + contact + company in one call
+  // Fetch conversation + contact + company in one call.
+  // org_id filter is applied at the application layer (in addition to RLS)
+  // so a user from a different org cannot generate drafts for foreign conversations.
   const { data: convData, error: convErr } = await supabase
     .from("conversations")
     .select(`
@@ -185,6 +217,7 @@ async function assembleContext(
       companies ( name, industry )
     `)
     .eq("id", conversationId)
+    .eq("org_id", orgId)
     .single();
 
   if (convErr || !convData) {
@@ -220,14 +253,11 @@ async function assembleContext(
   const lastInbound = [...messages].reverse().find((m) => m.role === "customer");
   const lastBody = lastInbound?.body ?? conv.subject ?? "";
 
-  // Fetch knowledge snippets (semantic → full-text fallback)
-  // orgId is passed in from the authenticated handler — no second auth call needed
-  const knowledgeSnippets = await fetchKnowledgeSnippets(
-    supabase,
-    orgId,
-    conv.subject ?? "",
-    lastBody
-  );
+  // Fetch knowledge snippets and org policy entries in parallel
+  const [knowledgeSnippets, orgPolicyEntries] = await Promise.all([
+    fetchKnowledgeSnippets(supabase, orgId, conv.subject ?? "", lastBody),
+    fetchOrgPolicyEntries(supabase, orgId),
+  ]);
 
   return {
     conversationId,
@@ -245,6 +275,7 @@ async function assembleContext(
       : null,
     messages,
     knowledgeSnippets,
+    orgPolicyEntries,
   };
 }
 
@@ -287,6 +318,55 @@ async function persistDraft(
   }
 
   return (data as { id: string }).id;
+}
+
+// ── AI action quota ───────────────────────────────────────────────────────────
+
+const AI_ACTION_LIMITS: Record<string, number> = {
+  free: 100,
+  starter: 2_000,
+  growth: 10_000,
+};
+
+/**
+ * Returns { allowed, used, limit } for the org's current billing month.
+ * Counts all AI-generating event types (drafts, summaries, edit analyses).
+ * Falls back to free-tier limit if the plan is unknown.
+ */
+async function checkAIQuota(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orgId: string
+): Promise<{ allowed: boolean; used: number; limit: number; plan: string }> {
+  // Get the org's current ai_plan
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("ai_plan")
+    .eq("id", orgId)
+    .single();
+
+  const plan = (org as { ai_plan?: string } | null)?.ai_plan ?? "free";
+  const limit = AI_ACTION_LIMITS[plan] ?? AI_ACTION_LIMITS.free;
+
+  // Count AI actions used in the current calendar month
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+
+  const { count, error } = await supabase
+    .from("usage_events")
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .in("event_type", ["ai_draft_generated", "ai_summary_generated", "edit_analysis_generated"])
+    .gte("created_at", monthStart.toISOString());
+
+  if (error) {
+    // On quota check failure, allow the request through rather than blocking
+    console.warn("[ai/draft] quota check failed — allowing request:", error.message);
+    return { allowed: true, used: 0, limit, plan };
+  }
+
+  const used = count ?? 0;
+  return { allowed: used < limit, used, limit, plan };
 }
 
 // ── Usage event ───────────────────────────────────────────────────────────────
@@ -351,6 +431,21 @@ export async function POST(req: NextRequest) {
   }
 
   const { conversationId, sourceMessageId } = body;
+
+  // Check AI action quota before touching OpenAI
+  const quota = await checkAIQuota(supabase, appUser.org_id as string);
+  if (!quota.allowed) {
+    return NextResponse.json(
+      {
+        error: "AI action limit reached",
+        detail: `Your ${quota.plan} plan includes ${quota.limit} AI actions per month. You have used ${quota.used}. Upgrade to continue.`,
+        used: quota.used,
+        limit: quota.limit,
+        plan: quota.plan,
+      },
+      { status: 402 }
+    );
+  }
 
   // Assemble context
   let context: ConversationContext;

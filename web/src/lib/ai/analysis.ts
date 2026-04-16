@@ -49,19 +49,43 @@ function tokenize(text: string): string[] {
 }
 
 /**
- * Word-level Levenshtein similarity: 1 = identical, 0 = nothing in common.
- * Lightweight enough to run synchronously on reply-length text.
+ * LCS (Longest Common Subsequence) length on word sequences.
+ * Unlike Jaccard set-similarity, LCS is order-aware: "A B C" and "C B A"
+ * share 3 words as a set but only 1 word as a subsequence.
+ * Uses O(min(m,n)) space via two-row DP — fast enough for reply-length text.
  */
-function wordSimilarity(a: string[], b: string[]): number {
-  const setA = new Set(a);
-  const setB = new Set(b);
-  const intersection = [...setA].filter((w) => setB.has(w)).length;
-  return intersection / Math.max(setA.size, setB.size, 1);
+function lcsLength(a: string[], b: string[]): number {
+  // Keep the shorter array as columns to minimize memory
+  const [rows, cols] = a.length >= b.length ? [a, b] : [b, a];
+  let prev = new Array<number>(cols.length + 1).fill(0);
+
+  for (const word of rows) {
+    const curr = new Array<number>(cols.length + 1).fill(0);
+    for (let j = 1; j <= cols.length; j++) {
+      curr[j] = word === cols[j - 1]
+        ? prev[j - 1] + 1
+        : Math.max(curr[j - 1], prev[j]);
+    }
+    prev = curr;
+  }
+  return prev[cols.length];
 }
 
 /**
- * Count runs of consecutive words that appear in the final but not the draft.
- * A rough proxy for "number of new ideas inserted".
+ * LCS-based sequence similarity: 1 = identical order and content, 0 = nothing in common.
+ * Score = 2 * LCS / (len(a) + len(b))  — equivalent to word-level F1 / Dice coefficient.
+ */
+function sequenceSimilarity(a: string[], b: string[]): number {
+  if (a.length === 0 && b.length === 0) return 1;
+  if (a.length === 0 || b.length === 0) return 0;
+  return (2 * lcsLength(a, b)) / (a.length + b.length);
+}
+
+/**
+ * Count runs of consecutive words in the final that are NOT in the draft set.
+ * Each run = one "span" of new content — a rough proxy for number of new ideas inserted.
+ * Note: uses set membership (order-insensitive) intentionally here — we want
+ * to flag any word the agent introduced, regardless of where it moved to.
  */
 function countChangedSpans(draftTokens: string[], finalTokens: string[]): number {
   const draftSet = new Set(draftTokens);
@@ -81,13 +105,15 @@ export function computeDiff(draftText: string, finalText: string): DiffResult {
   const draftTokens = tokenize(draftText);
   const finalTokens = tokenize(finalText);
 
-  const similarity = wordSimilarity(draftTokens, finalTokens);
+  // LCS-based: order-aware, correctly penalises reordering and substitution
+  const similarity = sequenceSimilarity(draftTokens, finalTokens);
   const changePercent = Math.round((1 - similarity) * 100);
   const editDistanceScore = Math.round(similarity * 100) / 100;
 
   const draftSet = new Set(draftTokens);
   const finalSet = new Set(finalTokens);
 
+  // inserted/deleted reported as set difference (for human readability in the UI)
   const insertedWords = [...finalSet].filter((w) => !draftSet.has(w)).slice(0, 30);
   const deletedWords = [...draftSet].filter((w) => !finalSet.has(w)).slice(0, 30);
   const changedSpanCount = countChangedSpans(draftTokens, finalTokens);
@@ -99,8 +125,10 @@ export function computeDiff(draftText: string, finalText: string): DiffResult {
     deletedWords,
     changedSpanCount,
     rawDiffJson: {
+      algorithm: "lcs-sequence-similarity",
       draftWordCount: draftTokens.length,
       finalWordCount: finalTokens.length,
+      lcsLength: lcsLength(draftTokens, finalTokens),
       insertedWords,
       deletedWords,
       changedSpanCount,

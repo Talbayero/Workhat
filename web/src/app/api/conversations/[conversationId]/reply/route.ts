@@ -8,10 +8,12 @@
  *   4. Insert into `sent_replies` (linked to ai_draft if one was used)
  *   5. Update conversation last_message_at
  *   6. Emit usage event
- *   7. Trigger edit analysis async (fire-and-forget) if a draft was linked
+ *   7. Trigger edit analysis via next/server after() — guaranteed to complete
+ *      even after the response is sent (Vercel-safe, no silent drops)
  *   8. Return message + sent_reply IDs
  */
 
+import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -240,17 +242,22 @@ export async function POST(
       if (e) console.warn("[reply] usage event failed:", e.message);
     });
 
-  // 5. Trigger edit analysis if a draft was linked
+  // 5. Trigger edit analysis if a draft was linked.
+  // after() tells Next.js / Vercel to keep the function alive until this
+  // promise settles — the analysis and its DB write are guaranteed to complete
+  // even though the HTTP response has already been returned to the client.
   if (aiDraftId && sentReplyId) {
-    triggerEditAnalysis(
-      supabase,
-      orgId,
-      conversationId,
-      aiDraftId,
-      sentReplyId,
-      body
-    ).catch((e: unknown) =>
-      console.warn("[reply] analysis trigger error:", e instanceof Error ? e.message : e)
+    after(
+      triggerEditAnalysis(
+        supabase,
+        orgId,
+        conversationId,
+        aiDraftId,
+        sentReplyId,
+        body
+      ).catch((e: unknown) =>
+        console.warn("[reply] analysis trigger error:", e instanceof Error ? e.message : e)
+      )
     );
   }
 

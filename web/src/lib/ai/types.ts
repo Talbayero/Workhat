@@ -45,6 +45,12 @@ export type KnowledgeSnippet = {
   entryType: string;
 };
 
+export type OrgPolicyEntry = {
+  title: string;
+  body: string;
+  category: string;
+};
+
 export type ConversationContext = {
   conversationId: string;
   subject: string;
@@ -62,6 +68,8 @@ export type ConversationContext = {
   } | null;
   messages: MessageContext[];
   knowledgeSnippets: KnowledgeSnippet[];
+  /** Org-specific tone guides and SOPs, used to build the Layer 2 policy prompt. */
+  orgPolicyEntries: OrgPolicyEntry[];
 };
 
 // ── Provider abstraction ──────────────────────────────────────────────────────
