@@ -17,6 +17,7 @@ export type GmailOutboundResult = {
   provider: "gmail";
   providerMessageId: string;
   providerThreadId: string;
+  rfcMessageId: string;
   sentFrom: string;
 };
 
@@ -48,19 +49,22 @@ function buildRawReply({
   body: string;
   inReplyTo?: string | null;
 }) {
-  const messageId = `<workhat-${randomUUID()}@work-hat.com>`;
+  const rfcMessageId = `<workhat-${randomUUID()}@work-hat.com>`;
   const headers = [
     `From: ${from}`,
     `To: ${to}`,
     `Subject: ${encodeHeader(normalizeSubject(subject))}`,
-    `Message-ID: ${messageId}`,
+    `Message-ID: ${rfcMessageId}`,
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",
     ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []),
   ];
 
-  return base64Url(`${headers.join("\r\n")}\r\n\r\n${body}`);
+  return {
+    raw: base64Url(`${headers.join("\r\n")}\r\n\r\n${body}`),
+    rfcMessageId,
+  };
 }
 
 function asMessageId(value: string | null) {
@@ -86,7 +90,7 @@ async function getGmailConnection(db: SupabaseDb, orgId: string) {
 async function getGmailThreadContext(db: SupabaseDb, orgId: string, conversationId: string) {
   const { data } = await db
     .from("messages")
-    .select("channel_message_id, metadata_json")
+    .select("metadata_json")
     .eq("org_id", orgId)
     .eq("conversation_id", conversationId)
     .eq("direction", "inbound")
@@ -97,17 +101,12 @@ async function getGmailThreadContext(db: SupabaseDb, orgId: string, conversation
   if (!data) return { threadId: null, messageId: null } satisfies GmailThreadContext;
 
   const metadata = (data as { metadata_json?: Record<string, unknown> }).metadata_json ?? {};
-  const channelMessageId = (data as { channel_message_id?: string | null }).channel_message_id;
   const rfcMessageId =
     typeof metadata.rfc_message_id === "string" ? metadata.rfc_message_id : null;
 
   return {
     threadId: typeof metadata.gmail_thread_id === "string" ? metadata.gmail_thread_id : null,
-    messageId: asMessageId(
-      rfcMessageId ?? (channelMessageId?.startsWith("gmail:")
-        ? channelMessageId.replace(/^gmail:/, "")
-        : channelMessageId ?? null)
-    ),
+    messageId: asMessageId(rfcMessageId),
   } satisfies GmailThreadContext;
 }
 
@@ -144,22 +143,24 @@ export async function sendConversationReplyWithGmail({
 
   const accessToken = await getFreshGmailAccessToken(db, connection);
   const thread = await getGmailThreadContext(db, orgId, conversationId);
+  const reply = buildRawReply({
+    from: connection.provider_account_email,
+    to: contactEmail,
+    subject: (conversation as { subject?: string | null }).subject ?? "(no subject)",
+    body,
+    inReplyTo: thread.messageId,
+  });
   const sent = await sendGmailMessage({
     accessToken,
     threadId: thread.threadId,
-    raw: buildRawReply({
-      from: connection.provider_account_email,
-      to: contactEmail,
-      subject: (conversation as { subject?: string | null }).subject ?? "(no subject)",
-      body,
-      inReplyTo: thread.messageId,
-    }),
+    raw: reply.raw,
   });
 
   return {
     provider: "gmail",
     providerMessageId: sent.id,
     providerThreadId: sent.threadId,
+    rfcMessageId: reply.rfcMessageId,
     sentFrom: connection.provider_account_email,
   };
 }

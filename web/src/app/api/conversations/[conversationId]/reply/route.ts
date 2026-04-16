@@ -140,12 +140,18 @@ export async function POST(
   const { body, aiDraftId } = payload;
 
   const admin = createAdminClient();
-  const outbound = await sendConversationReplyWithGmail({
-    db: admin,
-    orgId,
-    conversationId,
-    body,
-  });
+  let outbound;
+  try {
+    outbound = await sendConversationReplyWithGmail({
+      db: admin,
+      orgId,
+      conversationId,
+      body,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Gmail send failed.";
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
 
   if (!outbound) {
     return NextResponse.json({
@@ -171,6 +177,7 @@ export async function POST(
         provider: outbound.provider,
         provider_message_id: outbound.providerMessageId,
         provider_thread_id: outbound.providerThreadId,
+        rfc_message_id: outbound.rfcMessageId,
         sent_from: outbound.sentFrom,
       },
     })
