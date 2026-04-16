@@ -6,6 +6,7 @@ import {
   getGoogleRedirectUri,
   GMAIL_PROVIDER,
   tokenExpiryDate,
+  watchGmailInbox,
 } from "@/lib/email-connector/google";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,6 +17,8 @@ type AppUser = {
   org_id: string;
   role: string;
 };
+
+type ProviderMetadata = Record<string, unknown>;
 
 function onboardingRedirect(req: NextRequest, params: Record<string, string>) {
   const url = new URL("/onboarding", req.url);
@@ -98,6 +101,11 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const providerMetadata: ProviderMetadata = {
+      gmail_profile: profile,
+      token_type: token.token_type,
+    };
+
     const { data: connection, error: connectionError } = await supabase
       .from("email_connections")
       .upsert({
@@ -114,10 +122,7 @@ export async function GET(req: NextRequest) {
         scopes: token.scope?.split(" ") ?? [],
         last_history_id: profile.historyId ?? null,
         error_message: null,
-        provider_metadata: {
-          gmail_profile: profile,
-          token_type: token.token_type,
-        },
+        provider_metadata: providerMetadata,
       }, {
         onConflict: "org_id,provider,provider_account_email",
       })
@@ -160,6 +165,49 @@ export async function GET(req: NextRequest) {
         status: "active",
         config_json: channelConfig,
       });
+    }
+
+    const topicName = process.env.GOOGLE_PUBSUB_TOPIC;
+    if (topicName) {
+      try {
+        const watch = await watchGmailInbox({ accessToken: token.access_token, topicName });
+        const expiration = new Date(Number(watch.expiration)).toISOString();
+        await supabase
+          .from("email_connections")
+          .update({
+            sync_status: "watching",
+            watch_expires_at: expiration,
+            last_history_id: watch.historyId,
+            error_message: null,
+            provider_metadata: {
+              ...providerMetadata,
+              gmail_watch: {
+                topic_name: topicName,
+                registered_at: new Date().toISOString(),
+                expiration,
+                source: "oauth_callback",
+              },
+            },
+          })
+          .eq("id", connection.id);
+      } catch (watchError) {
+        const watchMessage = watchError instanceof Error ? watchError.message : "Gmail live watch setup failed.";
+        await supabase
+          .from("email_connections")
+          .update({
+            sync_status: "idle",
+            error_message: `Gmail connected, but live watch setup failed: ${watchMessage}`,
+            provider_metadata: {
+              ...providerMetadata,
+              gmail_watch_error: {
+                message: watchMessage,
+                occurred_at: new Date().toISOString(),
+                source: "oauth_callback",
+              },
+            },
+          })
+          .eq("id", connection.id);
+      }
     }
 
     return onboardingRedirect(req, { connected: GMAIL_PROVIDER });
