@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -18,6 +18,22 @@ type ChannelRecord = {
   fromName: string;
   timezone: string;
   inboundAddress: string;
+};
+
+type EmailConnection = {
+  id: string;
+  provider: string;
+  provider_account_email: string | null;
+  display_name: string | null;
+  status: string;
+  sync_status: string | null;
+  token_expires_at: string | null;
+  last_history_id: string | null;
+  watch_expires_at: string | null;
+  last_sync_at: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type TeamMember = {
@@ -567,9 +583,84 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
   const [setupPath, setSetupPath] = useState<"gmail" | "direct" | null>(null);
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
+  const [connections, setConnections] = useState<EmailConnection[]>([]);
+  const [connectionsLoading, setConnectionsLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
+  const [connectionAction, setConnectionAction] = useState<"sync" | "watch" | "disconnect" | null>(null);
 
   const inboundAddress = channel?.inboundAddress || "";
   const hasAddress = Boolean(inboundAddress);
+  const primaryConnection = connections.find((connection) => connection.status === "connected") ?? connections[0] ?? null;
+  const isConnected = primaryConnection?.status === "connected";
+
+  useEffect(() => {
+    void refreshConnections();
+  }, []);
+
+  async function refreshConnections() {
+    setConnectionsLoading(true);
+    setConnectionError(null);
+    try {
+      const res = await fetch("/api/email/connections");
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error ?? "Could not load email connections.");
+      }
+      setConnections(Array.isArray(payload.connections) ? payload.connections : []);
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : "Could not load email connections.");
+    } finally {
+      setConnectionsLoading(false);
+    }
+  }
+
+  async function runConnectionAction(action: "sync" | "watch") {
+    setConnectionAction(action);
+    setConnectionError(null);
+    setConnectionNotice(null);
+    try {
+      const res = await fetch(action === "sync" ? "/api/email/gmail/sync" : "/api/email/gmail/watch", { method: "POST" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error ?? `Could not ${action === "sync" ? "sync Gmail" : "start live watch"}.`);
+      }
+      setConnectionNotice(action === "sync" ? "Gmail sync finished. New mail should now appear in the inbox." : "Live Gmail watch is active.");
+      await refreshConnections();
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : "Connection action failed.");
+    } finally {
+      setConnectionAction(null);
+    }
+  }
+
+  async function disconnectConnection() {
+    if (!primaryConnection) return;
+    setConnectionAction("disconnect");
+    setConnectionError(null);
+    setConnectionNotice(null);
+    try {
+      const res = await fetch(`/api/email/connections?connectionId=${primaryConnection.id}`, { method: "DELETE" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error ?? "Could not disconnect Gmail.");
+      }
+      setConnectionNotice("Gmail has been disconnected. You can reconnect whenever you are ready.");
+      await refreshConnections();
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : "Could not disconnect Gmail.");
+    } finally {
+      setConnectionAction(null);
+    }
+  }
+
+  function formatTimestamp(value: string | null) {
+    if (!value) return "Not available";
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  }
 
   async function sendTestEmail() {
     setTestSending(true);
@@ -595,6 +686,131 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
 
   return (
     <div className="space-y-5">
+      <SectionCard>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended</p>
+            <p className="mt-1 text-base font-semibold">Work Hat Gmail connector</p>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
+              Connect Gmail directly so Work Hat can import conversations, keep a live watch, and send replies from the same mailbox.
+              Forwarding stays available as a fallback.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {canEdit ? (
+              <Link
+                href="/api/email/gmail/connect"
+                className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
+              >
+                {isConnected ? "Reconnect Gmail" : "Connect Gmail"}
+              </Link>
+            ) : (
+              <span className="rounded-full border border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
+                Admin access required
+              </span>
+            )}
+            <button
+              onClick={refreshConnections}
+              disabled={connectionsLoading}
+              className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-50"
+            >
+              {connectionsLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4">
+          {connectionsLoading && <p className="text-sm text-[var(--muted)]">Checking Gmail connector status...</p>}
+
+          {!connectionsLoading && !primaryConnection && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold">No Gmail account connected yet</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                  Once connected, this panel will show sync health, live watch status, and the mailbox used for replies.
+                </p>
+              </div>
+              <span className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(144,50,61,0.45)] px-3 py-1.5 text-xs text-[var(--muted)]">
+                <span className="h-2 w-2 rounded-full bg-[var(--moss)] opacity-40" />
+                Not connected
+              </span>
+            </div>
+          )}
+
+          {!connectionsLoading && primaryConnection && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold">{primaryConnection.provider_account_email ?? "Gmail account"}</p>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${
+                      isConnected ? "bg-emerald-400/10 text-emerald-300" : "bg-[rgba(144,50,61,0.16)] text-[var(--muted)]"
+                    }`}>
+                      {primaryConnection.status}
+                    </span>
+                    {primaryConnection.sync_status && (
+                      <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
+                        Sync: {primaryConnection.sync_status}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                    {primaryConnection.display_name || "Primary support mailbox"}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => runConnectionAction("sync")}
+                    disabled={!canEdit || !isConnected || connectionAction !== null}
+                    className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-45"
+                  >
+                    {connectionAction === "sync" ? "Syncing..." : "Sync now"}
+                  </button>
+                  <button
+                    onClick={() => runConnectionAction("watch")}
+                    disabled={!canEdit || !isConnected || connectionAction !== null}
+                    className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-45"
+                  >
+                    {connectionAction === "watch" ? "Starting..." : "Start live watch"}
+                  </button>
+                  <button
+                    onClick={disconnectConnection}
+                    disabled={!canEdit || !isConnected || connectionAction !== null}
+                    className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[rgba(255,190,190,0.9)] transition-colors hover:border-[rgba(144,50,61,0.75)] disabled:opacity-45"
+                  >
+                    {connectionAction === "disconnect" ? "Disconnecting..." : "Disconnect"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <ConnectorMetric label="Last sync" value={formatTimestamp(primaryConnection.last_sync_at)} />
+                <ConnectorMetric label="Live watch expires" value={formatTimestamp(primaryConnection.watch_expires_at)} />
+                <ConnectorMetric label="Token expires" value={formatTimestamp(primaryConnection.token_expires_at)} />
+                <ConnectorMetric label="Gmail history" value={primaryConnection.last_history_id ?? "Not started"} />
+              </div>
+
+              {primaryConnection.error_message && (
+                <div className="rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs leading-5 text-[rgba(255,210,210,0.9)]">
+                  {primaryConnection.error_message}
+                </div>
+              )}
+            </div>
+          )}
+
+          {connectionNotice && (
+            <div className="mt-4 rounded-[14px] border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-xs text-emerald-200">
+              {connectionNotice}
+            </div>
+          )}
+          {connectionError && (
+            <div className="mt-4 rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs leading-5 text-[rgba(255,210,210,0.9)]">
+              {connectionError}
+            </div>
+          )}
+        </div>
+      </SectionCard>
 
       {/* Your inbound address */}
       <SectionCard>
@@ -822,6 +1038,15 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           ))}
         </div>
       </SectionCard>
+    </div>
+  );
+}
+
+function ConnectorMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-3 py-3">
+      <p className="eyebrow text-[8px] text-[var(--muted)]">{label}</p>
+      <p className="mt-1 break-words text-xs text-[var(--foreground)]">{value}</p>
     </div>
   );
 }
