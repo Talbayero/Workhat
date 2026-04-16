@@ -461,15 +461,20 @@ export async function markGmailSyncSuccess({
   connectionId: string;
   result: GmailImportResult;
 }) {
+  const updates: Record<string, string | null> = {
+    sync_status: "idle",
+    status: "connected",
+    last_sync_at: new Date().toISOString(),
+    error_message: null,
+  };
+
+  if (result.latestHistoryId) {
+    updates.last_history_id = result.latestHistoryId;
+  }
+
   await db
     .from("email_connections")
-    .update({
-      sync_status: "idle",
-      status: "connected",
-      last_sync_at: new Date().toISOString(),
-      last_history_id: result.latestHistoryId,
-      error_message: null,
-    })
+    .update(updates)
     .eq("id", connectionId);
 }
 

@@ -31,6 +31,15 @@ function decodePubSubData(data: string | undefined) {
   }
 }
 
+function isExpiredHistoryCursor(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("gmail history sync failed") &&
+    (message.includes("404") || message.includes("historyid") || message.includes("history id"))
+  );
+}
+
 export async function POST(req: NextRequest) {
   const expectedToken = process.env.GMAIL_PUSH_TOKEN;
   if (expectedToken && req.nextUrl.searchParams.get("token") !== expectedToken) {
@@ -87,17 +96,37 @@ export async function POST(req: NextRequest) {
 
   try {
     const typedConnection = connection as EmailConnection;
-    const result = typedConnection.last_history_id
-      ? await importGmailHistory({
+    let recoveredFromExpiredCursor = false;
+    let result;
+
+    if (typedConnection.last_history_id) {
+      try {
+        result = await importGmailHistory({
           db: supabase,
           connection: typedConnection,
           startHistoryId: typedConnection.last_history_id,
-        })
-      : await importRecentGmailInbox({
+        });
+      } catch (error) {
+        if (!isExpiredHistoryCursor(error)) throw error;
+
+        recoveredFromExpiredCursor = true;
+        const fallbackResult = await importRecentGmailInbox({
           db: supabase,
           connection: typedConnection,
-          maxResults: 10,
+          maxResults: 20,
         });
+        result = {
+          ...fallbackResult,
+          latestHistoryId: fallbackResult.latestHistoryId ?? historyId,
+        };
+      }
+    } else {
+      result = await importRecentGmailInbox({
+        db: supabase,
+        connection: typedConnection,
+        maxResults: 10,
+      });
+    }
 
     await markGmailSyncSuccess({
       db: supabase,
@@ -105,7 +134,7 @@ export async function POST(req: NextRequest) {
       result,
     });
 
-    return NextResponse.json({ ok: true, historyId, result });
+    return NextResponse.json({ ok: true, historyId, recoveredFromExpiredCursor, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gmail history sync failed.";
     await markGmailSyncError({
