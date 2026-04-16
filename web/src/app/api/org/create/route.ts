@@ -3,9 +3,9 @@
  *
  * Called at Step 1 of onboarding. Creates org + user + channel.
  *
- * Tries the authenticated bootstrap RPC first because it matches the magic-link
- * signup flow. Falls back to a verified admin client only if the RPC has not
- * been installed yet.
+ * Tries the authenticated bootstrap RPC first because it is the safest way to
+ * create the first org for a newly signed-in user. Falls back to a verified
+ * admin client only if the RPC has not been installed yet.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -49,6 +49,19 @@ function adminHint(reason: string): string {
   return "Supabase admin client could not be initialized.";
 }
 
+function onboardingRepairHint(adminReason: string, rpcError?: string) {
+  const pieces = [
+    adminHint(adminReason),
+    "Run supabase/production-onboarding-repair.sql once in the Supabase SQL Editor for the project connected to NEXT_PUBLIC_SUPABASE_URL.",
+  ];
+
+  if (rpcError) {
+    pieces.push(`Bootstrap RPC error: ${rpcError}`);
+  }
+
+  return pieces.join(" ");
+}
+
 async function tryBootstrapRpc(
   supabase: Awaited<ReturnType<typeof createClient>>,
   body: CreateOrgBody
@@ -89,7 +102,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Organization name is required" }, { status: 422 });
     }
 
-    // Prefer the magic-link-aware bootstrap RPC. It is idempotent and runs as
+    // Prefer the authenticated bootstrap RPC. It is idempotent and runs as
     // SECURITY DEFINER, so it can create or repair the user's org/channel while
     // still requiring a real authenticated Supabase user.
     const rpcAttempt = await tryBootstrapRpc(supabase, body);
@@ -176,7 +189,7 @@ export async function POST(req: NextRequest) {
     if (!usingAdmin) {
       return NextResponse.json({
         error: "Failed to create organization: bootstrap RPC is unavailable and no verified admin client is available.",
-        hint: `${adminHint(adminState.reason)} Apply supabase/migrations/0013_harden_onboarding_bootstrap.sql in Supabase if it has not been applied yet.`,
+        hint: onboardingRepairHint(adminState.reason, rpcAttempt.error?.message),
         code: "missing_verified_admin",
         rpcError: rpcAttempt.error?.message,
       }, { status: 500 });
@@ -207,7 +220,7 @@ export async function POST(req: NextRequest) {
       console.error("[org/create] org insert failed:", orgErr?.message, orgErr?.code, orgErr?.details);
       return NextResponse.json({
         error: `Failed to create organization: ${orgErr?.message ?? "unknown error"}`,
-        hint: `${adminHint(adminState.reason)} If this still says permission denied, apply migration 0014 service-role grants and confirm the key belongs to the same Supabase project as NEXT_PUBLIC_SUPABASE_URL.`,
+        hint: onboardingRepairHint(adminState.reason, rpcAttempt.error?.message),
         code: orgErr?.code,
         rpcError: rpcAttempt.error?.message,
       }, { status: 500 });

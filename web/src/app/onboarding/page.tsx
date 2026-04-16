@@ -261,8 +261,8 @@ function StepInvite({
   return (
     <div className="space-y-4 mt-5">
       <p className="text-sm leading-6 text-[var(--muted)]">
-        Invite your agents and managers. Each person gets a magic link to set up
-        their account. You can add more from Settings → Team any time.
+        Invite your agents and managers. Each person can create a password-based
+        account and join your workspace. You can add more from Settings → Team any time.
       </p>
       <div>
         <label className="eyebrow text-[10px] text-[var(--muted)]">
