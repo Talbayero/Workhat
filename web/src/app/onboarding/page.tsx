@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // ── Shared form state (lifted to parent) ──────────────────────────────────────
 
@@ -14,6 +14,16 @@ type OrgFields = {
 type InviteFields = {
   emails: string;
   role: "agent" | "manager" | "qa_reviewer";
+};
+
+type EmailConnection = {
+  id: string;
+  provider: "gmail" | "outlook";
+  provider_account_email: string;
+  status: "connected" | "needs_reconnect" | "disabled" | "error";
+  sync_status: "idle" | "syncing" | "watching" | "error";
+  last_history_id: string | null;
+  error_message: string | null;
 };
 
 // ── Reusable input components ─────────────────────────────────────────────────
@@ -74,17 +84,180 @@ function StepOrg({ fields, onChange }: { fields: OrgFields; onChange: (f: Partia
 }
 
 function StepInbox({ orgSlug }: { orgSlug: string }) {
+  const [connections, setConnections] = useState<EmailConnection[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [urlMessage, setUrlMessage] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    const emailError = params.get("emailError");
+
+    if (connected === "gmail") {
+      setUrlMessage({ type: "success", message: "Gmail connected. Work Hat can now use this mailbox directly." });
+    } else if (emailError) {
+      setUrlMessage({ type: "error", message: emailError });
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadConnections() {
+      setLoadingConnections(true);
+      setConnectionError(null);
+      try {
+        const response = await fetch("/api/email/connections");
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({})) as { error?: string };
+          throw new Error(data.error ?? "Unable to load email connections.");
+        }
+
+        const data = await response.json() as { connections?: EmailConnection[] };
+        if (!cancelled) setConnections(data.connections ?? []);
+      } catch (error) {
+        if (!cancelled) {
+          setConnectionError(error instanceof Error ? error.message : "Unable to load email connections.");
+        }
+      } finally {
+        if (!cancelled) setLoadingConnections(false);
+      }
+    }
+
+    loadConnections();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const inboundAddress = orgSlug
     ? `inbound+${orgSlug}@work-hat.com`
     : "inbound@work-hat.com";
+  const gmailConnection = connections.find((connection) => connection.provider === "gmail");
+
+  async function syncGmail() {
+    setSyncing(true);
+    setSyncResult(null);
+    setConnectionError(null);
+
+    try {
+      const response = await fetch("/api/email/gmail/sync", { method: "POST" });
+      const data = await response.json().catch(() => ({})) as {
+        imported?: number;
+        skipped?: number;
+        scanned?: number;
+        error?: string;
+      };
+
+      if (!response.ok) throw new Error(data.error ?? "Gmail sync failed.");
+
+      setSyncResult(
+        `Synced ${data.imported ?? 0} new conversations from ${data.scanned ?? 0} recent inbox messages. ${data.skipped ?? 0} duplicates skipped.`
+      );
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : "Gmail sync failed.");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   return (
     <div className="space-y-4 mt-5">
+      <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended</p>
+        <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold">Connect Gmail directly</h3>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              Work Hat connects with OAuth, stores tokens encrypted, and prepares this mailbox for direct sync and sending.
+            </p>
+          </div>
+          {gmailConnection?.status === "connected" ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={syncGmail}
+                disabled={syncing}
+                className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {syncing ? "Syncing..." : "Sync Gmail"}
+              </button>
+              <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-300">
+                Connected
+              </div>
+            </div>
+          ) : (
+            <a
+              href="/api/email/gmail/connect"
+              className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-center text-xs font-medium text-white transition-opacity hover:opacity-90"
+            >
+              Connect Gmail
+            </a>
+          )}
+        </div>
+
+        {gmailConnection && (
+          <div className="mt-4 rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs">
+            <p className="font-medium">{gmailConnection.provider_account_email}</p>
+            <p className="mt-1 text-[var(--muted)]">
+              Status: {gmailConnection.status} · Sync: {gmailConnection.sync_status}
+              {gmailConnection.last_history_id ? ` · History ${gmailConnection.last_history_id}` : ""}
+            </p>
+          </div>
+        )}
+
+        {loadingConnections && (
+          <p className="mt-3 text-xs text-[var(--muted)]">Checking existing connections...</p>
+        )}
+        {connectionError && (
+          <p className="mt-3 text-xs text-[rgba(220,80,80,0.9)]">{connectionError}</p>
+        )}
+        {syncResult && (
+          <p className="mt-3 rounded-[12px] border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+            {syncResult}
+          </p>
+        )}
+        {urlMessage && (
+          <p
+            className={`mt-3 rounded-[12px] border px-4 py-3 text-xs ${
+              urlMessage.type === "success"
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                : "border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] text-[var(--foreground)]"
+            }`}
+          >
+            {urlMessage.message}
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4 opacity-70">
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Coming next</p>
+        <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold">Connect Outlook / Microsoft 365</h3>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              Same Work Hat connector layer, using Microsoft Graph subscriptions and delta sync.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled
+            className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-xs font-medium text-[var(--muted)]"
+          >
+            Soon
+          </button>
+        </div>
+      </div>
+
       <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Your inbound email address</p>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Fallback forwarding address</p>
         <p className="mt-2 text-xs leading-6 text-[var(--muted)]">
-          Forward your support mailbox to this address. Every email creates a
-          conversation in your inbox automatically.
+          If direct connection is not available, forward your support mailbox to this address.
+          Every forwarded email creates a conversation in your inbox automatically.
         </p>
         <div
           className="mt-3 flex items-center justify-between gap-3 rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-3 font-mono text-sm cursor-pointer"
@@ -96,7 +269,7 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
         </div>
       </div>
       <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4 space-y-2 text-sm">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">How to set up forwarding</p>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Forwarding setup</p>
         <p className="text-[var(--muted)]">
           1. Go to your email provider (Gmail, Google Workspace, Outlook, etc.)
         </p>
@@ -109,7 +282,7 @@ function StepInbox({ orgSlug }: { orgSlug: string }) {
       </div>
       <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
         <p className="text-xs text-[var(--muted)]">
-          Additional channels (SMS, live chat) are on the roadmap. Email is the full-featured channel at launch.
+          Direct email connection is the long-term path. Forwarding remains available for providers or teams that need a simpler fallback.
         </p>
       </div>
     </div>
@@ -358,6 +531,14 @@ export default function OnboardingPage() {
 
   const step = STEP_META[currentStep];
   const isLast = currentStep === STEP_META.length - 1;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("step") === "inbox") {
+      setCurrentStep(1);
+      setCompleted((prev) => new Set([...prev, 0]));
+    }
+  }, []);
 
   // ── Step advance logic ────────────────────────────────────────────────────
 
