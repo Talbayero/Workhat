@@ -67,6 +67,8 @@ export function ThreadWorkspace({
   const [composerMode, setComposerMode] = useState<ComposerMode>("reply");
   const [replyText, setReplyText] = useState("");
   const [pendingSend, setPendingSend] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [lastEditRecord, setLastEditRecord] = useState<EditRecord | null>(null);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>(conversation.messages);
   const [status, setStatus] = useState<ConversationStatus>(conversation.status);
@@ -131,62 +133,72 @@ export function ThreadWorkspace({
     setComposerMode(mode);
     setReplyText("");
     setPendingSend(false);
+    setSendError(null);
     if (mode === "note") setActivePanel(null);
   }
 
   function handleSendClick() {
     if (!replyText.trim()) return;
+    setSendError(null);
     setPendingSend(true);
   }
 
-  function confirmSend() {
+  async function confirmSend() {
+    if (sending) return;
+    setSending(true);
+    setSendError(null);
+
     const now = new Date();
     const timestamp = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+    const textToSend = replyText;
 
-    // Optimistically append the message to the thread immediately
-    const newMessage: LocalMessage = {
-      id: `local-${Date.now()}`,
-      sender: composerMode === "note" ? "Internal note" : "You (agent)",
-      senderType: composerMode === "note" ? "internal" : "agent",
-      timestamp,
-      body: replyText,
-    };
-    setLocalMessages((prev) => [...prev, newMessage]);
-
-    if (composerMode === "reply") {
-      // In-memory edit capture (for session-level dashboard while on this page)
-      const record = recordEdit(
-        conversation.id,
-        liveDraft?.draftText ?? conversation.aiDraft.draftText,
-        replyText,
-      );
-      setLastEditRecord(record);
-
-      // Persist to Supabase via reply API (fire-and-forget — UI already updated)
-      fetch(`/api/conversations/${conversation.id}/reply`, {
+    try {
+      const endpoint =
+        composerMode === "reply"
+          ? `/api/conversations/${conversation.id}/reply`
+          : `/api/conversations/${conversation.id}/note`;
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          body: replyText,
-          aiDraftId: liveDraft?.id ?? null,
-        }),
-      }).catch((err: unknown) =>
-        console.error("[thread] reply persist failed:", err)
-      );
-    } else {
-      // Internal note
-      fetch(`/api/conversations/${conversation.id}/note`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: replyText }),
-      }).catch((err: unknown) =>
-        console.error("[thread] note persist failed:", err)
-      );
+        body: JSON.stringify(
+          composerMode === "reply"
+            ? { body: textToSend, aiDraftId: liveDraft?.id ?? null }
+            : { body: textToSend }
+        ),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string; hint?: string };
+        throw new Error([data.error, data.hint].filter(Boolean).join(" ") || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json().catch(() => ({})) as { messageId?: string };
+      const newMessage: LocalMessage = {
+        id: data.messageId ?? `local-${Date.now()}`,
+        sender: composerMode === "note" ? "Internal note" : "You (agent)",
+        senderType: composerMode === "note" ? "internal" : "agent",
+        timestamp,
+        body: textToSend,
+      };
+      setLocalMessages((prev) => [...prev, newMessage]);
+
+      if (composerMode === "reply") {
+        const record = recordEdit(
+          conversation.id,
+          liveDraft?.draftText ?? conversation.aiDraft.draftText,
+          textToSend,
+        );
+        setLastEditRecord(record);
+      }
+
+      setReplyText("");
+      setPendingSend(false);
+      setActivePanel(null);
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : "Unable to send. Please try again.");
+    } finally {
+      setSending(false);
     }
-
-    setReplyText("");
-    setPendingSend(false);
-    setActivePanel(null);
   }
 
   const panelOpen = activePanel !== null;
@@ -368,21 +380,30 @@ export function ThreadWorkspace({
               <div className="mt-3 flex gap-2">
                 <button
                   onClick={confirmSend}
+                  disabled={sending}
                   className={`rounded-full px-4 py-2 text-xs font-medium text-white ${
                     composerMode === "note"
                       ? "bg-[rgba(169,146,125,0.55)]"
                       : "bg-[var(--moss)]"
-                  }`}
+                  } disabled:opacity-50`}
                 >
-                  {composerMode === "note" ? "Confirm note" : "Confirm send"}
+                  {sending
+                    ? composerMode === "note" ? "Posting..." : "Sending..."
+                    : composerMode === "note" ? "Confirm note" : "Confirm send"}
                 </button>
                 <button
-                  onClick={() => setPendingSend(false)}
+                  onClick={() => { setPendingSend(false); setSendError(null); }}
+                  disabled={sending}
                   className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium text-[var(--foreground)]"
                 >
                   Cancel
                 </button>
               </div>
+              {sendError && (
+                <p className="mt-3 rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-3 py-2 text-xs leading-5">
+                  {sendError}
+                </p>
+              )}
             </div>
           ) : composerMode === "note" ? (
             /* Internal note composer — amber tint, no AI draft button */

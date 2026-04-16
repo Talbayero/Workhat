@@ -261,6 +261,7 @@ async function importMessage({
 
   const from = parseEmailAddress(getHeader(message, "From"));
   const subject = getHeader(message, "Subject") || "(no subject)";
+  const rfcMessageId = getHeader(message, "Message-ID") || null;
   const { text, html } = extractBodies(message.payload);
   const bodyText = stripQuotedReply(text || (html ? stripHtml(html) : message.snippet ?? ""));
   const preview = bodyText.replace(/\s+/g, " ").trim().slice(0, 160);
@@ -339,6 +340,7 @@ async function importMessage({
       provider: "gmail",
       gmail_thread_id: message.threadId,
       gmail_history_id: message.historyId ?? null,
+      rfc_message_id: rfcMessageId,
       from_email: from.email,
       label_ids: message.labelIds ?? [],
     },

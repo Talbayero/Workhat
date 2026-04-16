@@ -14,7 +14,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { runEditAnalysis } from "@/lib/ai/analysis";
+import { sendConversationReplyWithGmail } from "@/lib/email-connector/gmail-sender";
 
 type ReplyPayload = {
   body: string;
@@ -137,7 +139,22 @@ export async function POST(
 
   const { body, aiDraftId } = payload;
 
-  // 1. Insert outbound message
+  const admin = createAdminClient();
+  const outbound = await sendConversationReplyWithGmail({
+    db: admin,
+    orgId,
+    conversationId,
+    body,
+  });
+
+  if (!outbound) {
+    return NextResponse.json({
+      error: "Connect Gmail before sending customer replies.",
+      hint: "Use onboarding or settings to connect a Gmail mailbox. Internal notes are still available.",
+    }, { status: 400 });
+  }
+
+  // 1. Insert outbound message after the provider accepted the send.
   const { data: message, error: msgErr } = await supabase
     .from("messages")
     .insert({
@@ -147,8 +164,15 @@ export async function POST(
       sender_user_id: userId,
       author_name: fullName ?? "Agent",
       direction: "outbound",
+      channel_message_id: `${outbound.provider}:${outbound.providerMessageId}`,
       body_text: body,
-      metadata_json: aiDraftId ? { source_ai_draft_id: aiDraftId } : {},
+      metadata_json: {
+        ...(aiDraftId ? { source_ai_draft_id: aiDraftId } : {}),
+        provider: outbound.provider,
+        provider_message_id: outbound.providerMessageId,
+        provider_thread_id: outbound.providerThreadId,
+        sent_from: outbound.sentFrom,
+      },
     })
     .select("id")
     .single();

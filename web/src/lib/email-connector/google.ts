@@ -49,6 +49,12 @@ export type GmailMessage = {
   };
 };
 
+export type GmailSendResponse = {
+  id: string;
+  threadId: string;
+  labelIds?: string[];
+};
+
 export type GmailWatchResponse = {
   historyId: string;
   expiration: string;
@@ -208,6 +214,35 @@ export async function fetchGmailMessage(accessToken: string, messageId: string) 
   }
 
   return (await response.json()) as GmailMessage;
+}
+
+export async function sendGmailMessage({
+  accessToken,
+  raw,
+  threadId,
+}: {
+  accessToken: string;
+  raw: string;
+  threadId?: string | null;
+}) {
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      raw,
+      ...(threadId ? { threadId } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Gmail send failed: ${body}`);
+  }
+
+  return (await response.json()) as GmailSendResponse;
 }
 
 export async function listGmailHistory({
