@@ -8,6 +8,7 @@
  */
 
 import { buildDraftPrompt } from "@/lib/ai/prompts/draft";
+import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
 import { DRAFT_JSON_SCHEMA, parseDraftOutput } from "@/lib/ai/schemas/draft";
 import type { AIDraftOutput, ConversationContext } from "@/lib/ai/types";
 
@@ -65,14 +66,14 @@ export async function callOpenAIDraft(
     max_tokens: 1200,
   };
 
-  const response = await fetch(OPENAI_API_URL, {
+  const response = await fetchWithCircuitBreaker(OPENAI_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-  });
+  }, { key: "openai-chat-completions", timeoutMs: 30_000 });
 
   if (!response.ok) {
     const errText = await response.text().catch(() => "unknown error");

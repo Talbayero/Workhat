@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
 
 export const GMAIL_PROVIDER = "gmail" as const;
 
@@ -123,7 +124,7 @@ export async function exchangeGmailCode({
   redirectUri: string;
 }) {
   const { clientId, clientSecret } = assertGoogleOAuthConfig();
-  const response = await fetch("https://oauth2.googleapis.com/token", {
+  const response = await fetchWithCircuitBreaker("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -133,7 +134,7 @@ export async function exchangeGmailCode({
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
     }),
-  });
+  }, { key: "google-oauth-token" });
 
   if (!response.ok) {
     const body = await response.text();
@@ -145,7 +146,7 @@ export async function exchangeGmailCode({
 
 export async function refreshGmailAccessToken(refreshToken: string) {
   const { clientId, clientSecret } = assertGoogleOAuthConfig();
-  const response = await fetch("https://oauth2.googleapis.com/token", {
+  const response = await fetchWithCircuitBreaker("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -154,7 +155,7 @@ export async function refreshGmailAccessToken(refreshToken: string) {
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
-  });
+  }, { key: "google-oauth-refresh" });
 
   if (!response.ok) {
     const body = await response.text();
@@ -165,9 +166,9 @@ export async function refreshGmailAccessToken(refreshToken: string) {
 }
 
 export async function fetchGmailProfile(accessToken: string) {
-  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+  const response = await fetchWithCircuitBreaker("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
     headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  }, { key: "gmail-profile" });
 
   if (!response.ok) {
     const body = await response.text();
@@ -188,9 +189,10 @@ export async function listGmailInboxMessages({
     maxResults: String(maxResults),
     q: "in:inbox newer_than:30d",
   });
-  const response = await fetch(
+  const response = await fetchWithCircuitBreaker(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+    { key: "gmail-list-messages" }
   );
 
   if (!response.ok) {
@@ -203,9 +205,10 @@ export async function listGmailInboxMessages({
 
 export async function fetchGmailMessage(accessToken: string, messageId: string) {
   const params = new URLSearchParams({ format: "full" });
-  const response = await fetch(
+  const response = await fetchWithCircuitBreaker(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?${params.toString()}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+    { key: "gmail-fetch-message" }
   );
 
   if (!response.ok) {
@@ -225,7 +228,7 @@ export async function sendGmailMessage({
   raw: string;
   threadId?: string | null;
 }) {
-  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+  const response = await fetchWithCircuitBreaker("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -235,7 +238,7 @@ export async function sendGmailMessage({
       raw,
       ...(threadId ? { threadId } : {}),
     }),
-  });
+  }, { key: "gmail-send-message", timeoutMs: 20_000 });
 
   if (!response.ok) {
     const body = await response.text();
@@ -261,9 +264,10 @@ export async function listGmailHistory({
   params.append("historyTypes", "messageAdded");
   if (pageToken) params.set("pageToken", pageToken);
 
-  const response = await fetch(
+  const response = await fetchWithCircuitBreaker(
     `https://gmail.googleapis.com/gmail/v1/users/me/history?${params.toString()}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+    { key: "gmail-history" }
   );
 
   if (!response.ok) {
@@ -281,7 +285,7 @@ export async function watchGmailInbox({
   accessToken: string;
   topicName: string;
 }) {
-  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/watch", {
+  const response = await fetchWithCircuitBreaker("https://gmail.googleapis.com/gmail/v1/users/me/watch", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -292,7 +296,7 @@ export async function watchGmailInbox({
       labelIds: ["INBOX"],
       labelFilterBehavior: "include",
     }),
-  });
+  }, { key: "gmail-watch", timeoutMs: 20_000 });
 
   if (!response.ok) {
     const body = await response.text();

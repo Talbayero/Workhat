@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
 
 /* ─────────────────────────────────────────────
    POST /api/waitlist
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
   // ── 2. Email notification (fire-and-forget) ───────────────────────────────
   const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {
-    fetch("https://api.resend.com/emails", {
+    fetchWithCircuitBreaker("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${resendKey}`,
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
           </div>
         `,
       }),
-    }).catch((err) => {
+    }, { key: "resend-waitlist-notification", timeoutMs: 15_000 }).catch((err) => {
       console.error("[waitlist] Resend notification failed:", err);
     });
   }

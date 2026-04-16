@@ -1,3 +1,5 @@
+import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
+
 /* ─────────────────────────────────────────────
    OpenAI Embeddings — raw fetch, no SDK.
    Model: text-embedding-3-small (1536 dims)
@@ -14,7 +16,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is not set");
 
-  const res = await fetch(OPENAI_EMBEDDINGS_URL, {
+  const res = await fetchWithCircuitBreaker(OPENAI_EMBEDDINGS_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${key}`,
@@ -24,7 +26,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
       model: EMBEDDING_MODEL,
       input: text.slice(0, 8000), // safety cap
     }),
-  });
+  }, { key: "openai-embeddings", timeoutMs: 20_000 });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: { message?: string } };

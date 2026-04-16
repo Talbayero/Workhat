@@ -1,3 +1,5 @@
+import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
+
 /* ─────────────────────────────────────────────
    Stripe helper — raw fetch, no SDK
    Set STRIPE_SECRET_KEY in .env.local
@@ -78,14 +80,14 @@ export async function createCheckoutSession(opts: CreateCheckoutOptions) {
     "subscription_data[metadata][org_id]": opts.orgId,
   });
 
-  const res = await fetch(`${STRIPE_API}/checkout/sessions`, {
+  const res = await fetchWithCircuitBreaker(`${STRIPE_API}/checkout/sessions`, {
     method: "POST",
     headers: {
       Authorization: authHeader(),
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body,
-  });
+  }, { key: "stripe-checkout-session", timeoutMs: 20_000 });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -100,8 +102,7 @@ export async function constructStripeEvent(
   signature: string,
   secret: string
 ): Promise<{ type: string; data: { object: Record<string, unknown> } }> {
-  // Verify Stripe signature using HMAC-SHA256
-  // Node 18+ has crypto globally via globalThis.crypto (Web Crypto API)
+  // Verify Stripe signature using HMAC-SHA256.
   const encoder = new TextEncoder();
   const [, timestampPart, v1Part] =
     signature.match(/t=(\d+).*?v1=([a-f0-9]+)/) ?? [];
@@ -131,7 +132,7 @@ export async function constructStripeEvent(
     throw new Error("Stripe signature verification failed");
   }
 
-  // Tolerate up to 5 minute clock skew
+  // Tolerate up to 5 minute clock skew.
   const ts = parseInt(timestampPart, 10);
   if (Math.abs(Date.now() / 1000 - ts) > 300) {
     throw new Error("Stripe webhook timestamp too old");

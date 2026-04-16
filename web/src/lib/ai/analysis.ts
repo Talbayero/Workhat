@@ -175,6 +175,7 @@ export function heuristicClassify(
 // ── Step 3: LLM-based classification ─────────────────────────────────────────
 
 import { ANALYSIS_JSON_SCHEMA, parseAnalysisOutput } from "@/lib/ai/schemas/analysis";
+import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
 
 /**
  * Intentionally separate from OPENAI_DEFAULT_MODEL — analysis is a cheaper,
@@ -248,14 +249,14 @@ Classify this edit. You may confirm, refine, or override the heuristic suggestio
     max_tokens: 400,
   };
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetchWithCircuitBreaker("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-  });
+  }, { key: "openai-edit-analysis", timeoutMs: 30_000 });
 
   if (!response.ok) {
     // Non-fatal: fall back to heuristic

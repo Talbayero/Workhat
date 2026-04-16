@@ -1,14 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { applyApiGatewayHeaders, guardApiRequest } from "@/lib/security/api-gateway";
 
 /**
  * Next.js 16 proxy (replaces middleware.ts).
  *
  * Public routes pass through freely.
  * All other routes require a valid Supabase session:
- *   - Unauthenticated API requests → 401 JSON
- *   - Unauthenticated page requests → redirect to /login?next=<pathname>
- * Already-signed-in users hitting /login → redirect to /inbox
+ *   - Unauthenticated API requests -> 401 JSON
+ *   - Unauthenticated page requests -> redirect to /login?next=<pathname>
+ * Already-signed-in users hitting /login -> redirect to /inbox
  */
 
 type CookieItem = { name: string; value: string; options?: Record<string, unknown> };
@@ -30,6 +31,9 @@ function isPublic(pathname: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  const gatewayResponse = await guardApiRequest(request);
+  if (gatewayResponse) return gatewayResponse;
 
   let supabaseResponse = NextResponse.next({ request });
 
@@ -58,34 +62,34 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // Always use getUser() — validates against the Supabase Auth server
+  // Always use getUser() because it validates against the Supabase Auth server.
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Always let public routes through
+  // Always let public routes through.
   if (isPublic(pathname)) {
-    // Redirect already-signed-in users away from /login
+    // Redirect already-signed-in users away from /login.
     if (user && pathname === "/login") {
       const url = request.nextUrl.clone();
       url.pathname = "/inbox";
-      return NextResponse.redirect(url);
+      return applyApiGatewayHeaders(NextResponse.redirect(url));
     }
-    return supabaseResponse;
+    return applyApiGatewayHeaders(supabaseResponse);
   }
 
-  // Protected route — no session
+  // Protected route with no session.
   if (!user) {
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return applyApiGatewayHeaders(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
     }
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    return applyApiGatewayHeaders(NextResponse.redirect(loginUrl));
   }
 
-  return supabaseResponse;
+  return applyApiGatewayHeaders(supabaseResponse);
 }
 
 export const config = {
