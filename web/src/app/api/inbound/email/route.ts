@@ -161,7 +161,8 @@ export async function POST(req: NextRequest) {
     await supabase
       .from("contacts")
       .update({ last_activity_at: new Date().toISOString() })
-      .eq("id", contactId);
+      .eq("id", contactId)
+      .eq("org_id", orgId);
   } else {
     const { data: newContact } = await supabase
       .from("contacts")
@@ -226,6 +227,7 @@ export async function POST(req: NextRequest) {
         .from("contacts")
         .update({ company_id: companyId })
         .eq("id", contactId)
+        .eq("org_id", orgId)
         .is("company_id", null);
     }
   }
@@ -286,7 +288,8 @@ export async function POST(req: NextRequest) {
         ...(riskLevel === "red" ? { risk_level: "red" } : {}),
         ...(riskLevel === "yellow" ? {} : {}),
       })
-      .eq("id", conversationId);
+      .eq("id", conversationId)
+      .eq("org_id", orgId);
   }
 
   if (!conversationId) {

@@ -38,6 +38,33 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     updates.full_name = [fn, ln].filter(Boolean).join(" ") || "Unknown";
   }
 
+  if ("company_id" in updates) {
+    const companyId = typeof updates.company_id === "string" ? updates.company_id.trim() : updates.company_id;
+
+    if (!companyId) {
+      updates.company_id = null;
+    } else if (typeof companyId === "string") {
+      const { data: company, error: companyError } = await supabase
+        .from("companies")
+        .select("id")
+        .eq("id", companyId)
+        .eq("org_id", appUser.org_id)
+        .maybeSingle();
+
+      if (companyError) {
+        return NextResponse.json({ error: companyError.message }, { status: 500 });
+      }
+
+      if (!company) {
+        return NextResponse.json({ error: "Company not found for this workspace." }, { status: 400 });
+      }
+
+      updates.company_id = companyId;
+    } else {
+      return NextResponse.json({ error: "Invalid company value." }, { status: 400 });
+    }
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields to update." }, { status: 400 });
   }

@@ -32,6 +32,24 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = await createClient();
+  const companyId = body.companyId?.trim() || null;
+
+  if (companyId) {
+    const { data: company, error: companyError } = await supabase
+      .from("companies")
+      .select("id")
+      .eq("id", companyId)
+      .eq("org_id", appUser.org_id)
+      .maybeSingle();
+
+    if (companyError) {
+      return NextResponse.json({ error: companyError.message }, { status: 500 });
+    }
+
+    if (!company) {
+      return NextResponse.json({ error: "Company not found for this workspace." }, { status: 400 });
+    }
+  }
 
   const { data, error } = await supabase
     .from("contacts")
@@ -42,7 +60,7 @@ export async function POST(req: NextRequest) {
       full_name: fullName,
       email,
       phone: body.phone?.trim() || null,
-      company_id: body.companyId || null,
+      company_id: companyId,
       tier: body.tier || null,
       status: "active",
       notes: body.notes?.trim() || null,

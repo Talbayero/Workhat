@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
   if (existingContact) {
     contactId = existingContact.id;
-    await supabase.from("contacts").update({ last_activity_at: new Date().toISOString() }).eq("id", contactId);
+    await supabase.from("contacts").update({ last_activity_at: new Date().toISOString() }).eq("id", contactId).eq("org_id", orgId);
   } else {
     const rawName = body.contactName?.trim() || contactEmail.split("@")[0];
     const [firstName, ...rest] = rawName.split(" ");
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (companyId) {
-      await supabase.from("contacts").update({ company_id: companyId }).eq("id", contactId).is("company_id", null);
+      await supabase.from("contacts").update({ company_id: companyId }).eq("id", contactId).eq("org_id", orgId).is("company_id", null);
     }
   }
 
