@@ -23,7 +23,7 @@ async function getAppUser() {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { intentId: string } }
+  { params }: { params: Promise<{ intentId: string }> }
 ) {
   const appUser = await getAppUser();
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -31,7 +31,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden — managers only" }, { status: 403 });
   }
 
-  const { intentId } = params;
+  const { intentId } = await params;
 
   let body: Record<string, unknown>;
   try {
@@ -86,7 +86,7 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { intentId: string } }
+  { params }: { params: Promise<{ intentId: string }> }
 ) {
   const appUser = await getAppUser();
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -94,7 +94,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Forbidden — managers only" }, { status: 403 });
   }
 
-  const { intentId } = params;
+  const { intentId } = await params;
 
   const admin = createAdminClient();
   const { error, count } = await admin
