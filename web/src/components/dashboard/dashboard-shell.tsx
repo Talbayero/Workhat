@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { QAQueue } from "@/components/dashboard/qa-queue";
-import { type EditTypeKey, type DashboardStats, type EditLogEntry, type KnowledgeHealthPattern } from "@/lib/supabase/queries";
+import { type EditTypeKey, type DashboardStats, type EditLogEntry, type KnowledgeHealthPattern, type IntentStat } from "@/lib/supabase/queries";
 import type { InboxConversation } from "@/lib/mock-data";
 
 const editTypeLabel: Record<EditTypeKey, string> = {
@@ -30,6 +30,7 @@ type DashboardShellProps = {
   log: EditLogEntry[];
   qaQueue: InboxConversation[];
   knowledgeHealth?: KnowledgeHealthPattern[];
+  intentStats?: IntentStat[];
   isDemo?: boolean;
   baseDir?: string;
 };
@@ -253,11 +254,80 @@ function KnowledgeHealthCard({
   );
 }
 
+function IntentStatsCard({
+  stats,
+  baseDir = "",
+}: {
+  stats: IntentStat[];
+  baseDir?: string;
+}) {
+  if (stats.length === 0) return null;
+
+  const maxCount = stats[0]?.count ?? 1;
+
+  return (
+    <section className="grain-panel rounded-[24px] border border-[var(--line)] p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="eyebrow text-[9px] text-[var(--muted)]">Intent analytics</p>
+          <h2 className="mt-1 text-base font-semibold">Conversation breakdown by intent</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+            Last 90 days — volume, open queue pressure, and misclassification rate per intent.
+          </p>
+        </div>
+        <Link
+          href={`${baseDir}/settings?tab=intents`}
+          className="shrink-0 rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]"
+        >
+          Manage intents →
+        </Link>
+      </div>
+
+      <div className="mt-5 space-y-2.5">
+        {stats.map((s) => {
+          const barPct = Math.round((s.count / maxCount) * 100);
+          const correctionRate = s.count > 0 ? Math.round((s.correctionCount / s.count) * 100) : 0;
+          const label = s.intent.replace(/_/g, " ");
+
+          return (
+            <div key={s.intent} className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="truncate text-sm font-medium capitalize">{label}</p>
+                  {s.redCount > 0 && (
+                    <span className="shrink-0 rounded-full border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.15)] px-1.5 py-0.5 text-[10px] text-[rgba(255,180,180,0.9)]">
+                      {s.redCount} red
+                    </span>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-3 text-[10px] text-[var(--muted)]">
+                  <span>{s.openCount} open</span>
+                  <span>{s.count} total</span>
+                  {correctionRate > 0 && (
+                    <span className="text-[rgba(255,200,100,0.85)]">{correctionRate}% corrected</span>
+                  )}
+                </div>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--sage)]">
+                <div
+                  className="h-full rounded-full bg-[var(--moss)]"
+                  style={{ width: `${barPct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function DashboardShell({
   stats,
   log,
   qaQueue,
   knowledgeHealth = [],
+  intentStats = [],
   isDemo = false,
   baseDir = "",
 }: DashboardShellProps) {
@@ -286,6 +356,8 @@ export function DashboardShell({
         </div>
 
         <QAQueue queue={qaQueue} isDemo={isDemo} baseDir={baseDir} />
+
+        <IntentStatsCard stats={intentStats} baseDir={baseDir} />
 
         <KnowledgeHealthCard patterns={knowledgeHealth} stats={stats} baseDir={baseDir} />
 

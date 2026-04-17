@@ -31,6 +31,32 @@ type DbIntent = {
   priority_order: number;
 };
 
+type UserSkill = {
+  name: string;
+  priority: number;
+};
+
+function normalizeUserSkills(value: unknown): UserSkill[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((skill) => {
+    if (!skill || typeof skill !== "object") return [];
+
+    const maybeSkill = skill as { name?: unknown; priority?: unknown };
+    if (typeof maybeSkill.name !== "string") return [];
+
+    const name = maybeSkill.name.trim();
+    if (!name) return [];
+
+    return [{
+      name,
+      priority: typeof maybeSkill.priority === "number" && Number.isFinite(maybeSkill.priority)
+        ? maybeSkill.priority
+        : 5,
+    }];
+  });
+}
+
 // In-process cache per org so we don't hit the DB on every inbound webhook.
 // TTL: 60 seconds. Fine-grained enough for real-time config changes.
 const cache = new Map<string, { intents: DbIntent[]; expiresAt: number }>();
@@ -116,11 +142,17 @@ export async function routeBySkill(
   const admin = createAdminClient();
 
   // Query all active agents in the org that have the required skill
-  const { data: users } = await admin
+  const { data: users, error } = await admin
     .from("users")
     .select("id, skills, created_at")
     .eq("org_id", orgId)
+    .eq("status", "active")
     .in("role", ["agent", "manager"]);
+
+  if (error) {
+    console.error("[intent-classifier] Failed to load routing candidates:", error.message);
+    return null;
+  }
 
   if (!users || users.length === 0) return null;
 
@@ -130,12 +162,12 @@ export async function routeBySkill(
   const candidates: Candidate[] = [];
 
   for (const u of users) {
-    const skills = Array.isArray(u.skills) ? u.skills as { name: string; priority: number }[] : [];
+    const skills = normalizeUserSkills(u.skills);
     const match = skills.find((s) => s.name.toLowerCase().trim() === skillLower);
     if (match) {
       candidates.push({
         id: u.id,
-        skillPriority: match.priority ?? 5,
+        skillPriority: match.priority,
         createdAt: u.created_at as string,
       });
     }

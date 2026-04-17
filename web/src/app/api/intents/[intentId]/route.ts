@@ -9,6 +9,23 @@ import { invalidateIntentCache } from "@/lib/ai/intent-classifier";
    Both require manager or admin role.
 ───────────────────────────────────────────── */
 
+const VALID_PRIORITY_LEVELS = new Set(["high", "normal", "low"]);
+
+function normalizeKeywords(value: unknown) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.some((keyword) => typeof keyword !== "string")) {
+    return null;
+  }
+
+  return [...new Set(value.map((keyword) => keyword.trim()).filter(Boolean))];
+}
+
+function normalizeOptionalString(value: unknown) {
+  if (value == null) return null;
+  if (typeof value !== "string") return undefined;
+  return value.trim() || null;
+}
+
 async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -45,16 +62,37 @@ export async function PATCH(
 
   for (const key of allowed) {
     if (key in body) {
-      if (key === "name" && typeof body.name === "string") patch.name = body.name.trim();
-      else if (key === "color" && typeof body.color === "string") patch.color = body.color.trim();
-      else if (key === "keywords" && Array.isArray(body.keywords)) {
-        patch.keywords = (body.keywords as string[]).map((k) => k.trim()).filter(Boolean);
+      if (key === "name") {
+        const name = normalizeOptionalString(body.name);
+        if (!name) return NextResponse.json({ error: "name cannot be empty" }, { status: 400 });
+        patch.name = name;
       }
-      else if (key === "skill_required") patch.skill_required = body.skill_required || null;
-      else if (key === "priority_order" && typeof body.priority_order === "number") patch.priority_order = body.priority_order;
+      else if (key === "color") {
+        const color = normalizeOptionalString(body.color);
+        if (color === undefined) return NextResponse.json({ error: "color must be text" }, { status: 400 });
+        patch.color = color || "#78a17a";
+      }
+      else if (key === "keywords") {
+        const keywords = normalizeKeywords(body.keywords);
+        if (keywords === null) return NextResponse.json({ error: "keywords must be a list of text values" }, { status: 400 });
+        patch.keywords = keywords;
+      }
+      else if (key === "skill_required") {
+        const skillRequired = normalizeOptionalString(body.skill_required);
+        if (skillRequired === undefined) return NextResponse.json({ error: "skill_required must be text" }, { status: 400 });
+        patch.skill_required = skillRequired;
+      }
+      else if (key === "priority_order") {
+        if (typeof body.priority_order !== "number" || !Number.isFinite(body.priority_order)) {
+          return NextResponse.json({ error: "priority_order must be a finite number" }, { status: 400 });
+        }
+        patch.priority_order = body.priority_order;
+      }
       else if (key === "priority_level") {
-        const validLevels = ["high", "normal", "low"];
-        if (validLevels.includes(body.priority_level as string)) patch.priority_level = body.priority_level;
+        if (typeof body.priority_level !== "string" || !VALID_PRIORITY_LEVELS.has(body.priority_level)) {
+          return NextResponse.json({ error: "priority_level must be high, normal, or low" }, { status: 400 });
+        }
+        patch.priority_level = body.priority_level;
       }
     }
   }
@@ -70,7 +108,7 @@ export async function PATCH(
     .eq("id", intentId)
     .eq("org_id", appUser.org_id)
     .select("id, name, color, keywords, skill_required, priority_order, priority_level, created_at")
-    .single();
+    .maybeSingle();
 
   if (error) {
     if (error.code === "23505") {

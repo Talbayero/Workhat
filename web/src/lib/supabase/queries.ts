@@ -850,6 +850,80 @@ export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
     .map(dbConvToFrontend);
 }
 
+// ── Intent analytics ─────────────────────────────────────────────────────────
+
+export type IntentStat = {
+  intent: string;
+  count: number;
+  openCount: number;
+  redCount: number;      // risk_level = red
+  correctionCount: number; // times it was corrected away FROM this intent
+};
+
+/**
+ * Returns intent volume breakdown for the org's conversations (last 90 days).
+ * Also joins with correction counts so the dashboard can show misclassification pressure.
+ */
+export async function getIntentStats(): Promise<IntentStat[]> {
+  const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
+
+  const since = new Date();
+  since.setDate(since.getDate() - 90);
+
+  // Fetch all conversations in window (capped for perf)
+  const { data: convs, error: convError } = await supabase
+    .from("conversations")
+    .select("intent, status, risk_level")
+    .eq("org_id", orgId)
+    .gte("last_message_at", since.toISOString())
+    .limit(2000);
+
+  if (convError) return [];
+  if (!convs || convs.length === 0) return [];
+
+  type ConvRow = { intent: string | null; status: string | null; risk_level: string | null };
+
+  const byIntent = new Map<string, IntentStat>();
+
+  for (const row of convs as ConvRow[]) {
+    const key = (row.intent ?? "unclassified").trim().toLowerCase() || "unclassified";
+    if (!byIntent.has(key)) {
+      byIntent.set(key, { intent: key, count: 0, openCount: 0, redCount: 0, correctionCount: 0 });
+    }
+    const stat = byIntent.get(key)!;
+    stat.count++;
+    if (!["resolved", "archived"].includes(row.status ?? "")) stat.openCount++;
+    if (row.risk_level === "red") stat.redCount++;
+  }
+
+  // Fetch corrections to enrich with misclassification rate
+  const { data: corrections, error: correctionsError } = await supabase
+    .from("intent_corrections")
+    .select("original_intent, was_changed")
+    .eq("org_id", orgId)
+    .gte("created_at", since.toISOString())
+    .limit(1000);
+
+  if (correctionsError) {
+    return [...byIntent.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }
+
+  for (const c of (corrections ?? []) as { original_intent: string | null; was_changed: boolean | null }[]) {
+    if (!c.was_changed) continue;
+    const key = (c.original_intent ?? "unclassified").trim().toLowerCase() || "unclassified";
+    const stat = byIntent.get(key);
+    if (stat) stat.correctionCount++;
+  }
+
+  return [...byIntent.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+}
+
 // ── Intent color map ──────────────────────────────────────────────────────────
 
 /**

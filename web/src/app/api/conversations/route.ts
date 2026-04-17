@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 /* ─────────────────────────────────────────────
    POST /api/conversations
@@ -33,22 +35,36 @@ const GENERIC_DOMAINS = new Set([
   "icloud.com", "me.com", "aol.com", "protonmail.com", "live.com",
 ]);
 
+function normalizeOptionalString(value: unknown) {
+  if (value == null) return null;
+  if (typeof value !== "string") return undefined;
+  return value.trim() || null;
+}
+
 export async function POST(req: NextRequest) {
   const appUser = await getAppUser();
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json() as {
-    contactEmail?: string;
-    contactName?: string;
-    subject?: string;
-    firstMessage?: string;
-    intent?: string;
-  };
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json() as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+  }
 
-  const contactEmail = body.contactEmail?.trim().toLowerCase();
-  const subject = body.subject?.trim();
-  const firstMessage = body.firstMessage?.trim();
+  const contactEmailRaw = normalizeOptionalString(body.contactEmail);
+  const contactName = normalizeOptionalString(body.contactName);
+  const subject = normalizeOptionalString(body.subject);
+  const firstMessage = normalizeOptionalString(body.firstMessage);
+  const explicitIntent = normalizeOptionalString(body.intent);
 
+  if (contactEmailRaw === undefined) return NextResponse.json({ error: "Contact email must be text." }, { status: 400 });
+  if (contactName === undefined) return NextResponse.json({ error: "Contact name must be text." }, { status: 400 });
+  if (subject === undefined) return NextResponse.json({ error: "Subject must be text." }, { status: 400 });
+  if (firstMessage === undefined) return NextResponse.json({ error: "Message body must be text." }, { status: 400 });
+  if (explicitIntent === undefined) return NextResponse.json({ error: "Intent must be text." }, { status: 400 });
+
+  const contactEmail = contactEmailRaw?.toLowerCase();
   if (!contactEmail || !contactEmail.includes("@")) {
     return NextResponse.json({ error: "Valid contact email is required." }, { status: 400 });
   }
@@ -56,23 +72,68 @@ export async function POST(req: NextRequest) {
   if (!firstMessage) return NextResponse.json({ error: "Message body is required." }, { status: 400 });
 
   const supabase = await createClient();
+  const admin = createAdminClient();
   const { org_id: orgId } = appUser;
-  const intent = body.intent?.trim() || "general";
+
+  // Classify intent: use DB-driven classifier unless caller provided an explicit override
+  let intent = explicitIntent?.toLowerCase() || "";
+  if (!intent) {
+    try {
+      intent = await classifyIntentFromDb(orgId, subject, firstMessage);
+    } catch {
+      intent = "unclassified";
+    }
+  }
+
+  // Routing: look up the intent's required skill and find the best agent
+  let assignedToName = "";
+  try {
+    const { data: intentRow } = await admin
+      .from("intents")
+      .select("skill_required, name")
+      .eq("org_id", orgId)
+      .ilike("name", intent)
+      .limit(1)
+      .maybeSingle();
+
+    if (intentRow?.skill_required) {
+      const assignedUserId = await routeBySkill(orgId, intentRow.skill_required);
+      if (assignedUserId) {
+        const { data: agentRow } = await admin
+          .from("users")
+          .select("full_name")
+          .eq("id", assignedUserId)
+          .eq("org_id", orgId)
+          .maybeSingle();
+        assignedToName = agentRow?.full_name ?? "";
+      }
+    }
+  } catch {
+    // Routing is best-effort — don't fail conversation creation
+  }
 
   // 1. Find or create contact
   let contactId: string;
   const { data: existingContact } = await supabase
     .from("contacts")
-    .select("id")
-    .eq("org_id", orgId)
-    .eq("email", contactEmail)
-    .single();
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("email", contactEmail)
+      .maybeSingle();
 
   if (existingContact) {
     contactId = existingContact.id;
-    await supabase.from("contacts").update({ last_activity_at: new Date().toISOString() }).eq("id", contactId).eq("org_id", orgId);
+    const { error: contactUpdateErr } = await supabase
+      .from("contacts")
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq("id", contactId)
+      .eq("org_id", orgId);
+
+    if (contactUpdateErr) {
+      return NextResponse.json({ error: contactUpdateErr.message }, { status: 500 });
+    }
   } else {
-    const rawName = body.contactName?.trim() || contactEmail.split("@")[0];
+    const rawName = contactName || contactEmail.split("@")[0];
     const [firstName, ...rest] = rawName.split(" ");
     const { data: newContact, error: contactErr } = await supabase
       .from("contacts")
@@ -103,22 +164,36 @@ export async function POST(req: NextRequest) {
       .select("id")
       .eq("org_id", orgId)
       .eq("domain", domain)
-      .single();
+      .maybeSingle();
 
     if (existingCompany) {
       companyId = existingCompany.id;
     } else {
       const companyName = domain.split(".")[0].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-      const { data: newCompany } = await supabase
+      const { data: newCompany, error: companyErr } = await supabase
         .from("companies")
         .insert({ org_id: orgId, name: companyName, domain, tier: "standard", active_contacts: 0, open_conversations: 0 })
         .select("id")
         .single();
+
+      if (companyErr) {
+        return NextResponse.json({ error: companyErr.message }, { status: 500 });
+      }
+
       companyId = newCompany?.id ?? null;
     }
 
     if (companyId) {
-      await supabase.from("contacts").update({ company_id: companyId }).eq("id", contactId).eq("org_id", orgId).is("company_id", null);
+      const { error: companyLinkErr } = await supabase
+        .from("contacts")
+        .update({ company_id: companyId })
+        .eq("id", contactId)
+        .eq("org_id", orgId)
+        .is("company_id", null);
+
+      if (companyLinkErr) {
+        return NextResponse.json({ error: companyLinkErr.message }, { status: 500 });
+      }
     }
   }
 
@@ -128,7 +203,7 @@ export async function POST(req: NextRequest) {
     .select("id")
     .eq("org_id", orgId)
     .eq("type", "email")
-    .single();
+    .maybeSingle();
 
   if (!channel) {
     return NextResponse.json({ error: "No email channel found. Complete onboarding first." }, { status: 400 });
@@ -150,7 +225,7 @@ export async function POST(req: NextRequest) {
       ai_confidence: "yellow",
       intent,
       preview,
-      assigned_to_name: "",
+      assigned_to_name: assignedToName,
       last_message_at: new Date().toISOString(),
     })
     .select("id")
@@ -163,17 +238,21 @@ export async function POST(req: NextRequest) {
   const conversationId = conversation.id;
 
   // 5. Create the opening inbound message
-  const contactName = body.contactName?.trim() || contactEmail.split("@")[0];
-  await supabase.from("messages").insert({
+  const messageAuthorName = contactName || contactEmail.split("@")[0];
+  const { error: messageErr } = await supabase.from("messages").insert({
     org_id: orgId,
     conversation_id: conversationId,
     sender_type: "customer",
     direction: "inbound",
-    author_name: contactName,
+    author_name: messageAuthorName,
     body_text: firstMessage,
     is_note: false,
     metadata_json: { created_manually: true, created_by: appUser.id },
   });
+
+  if (messageErr) {
+    return NextResponse.json({ error: messageErr.message }, { status: 500 });
+  }
 
   return NextResponse.json({ conversationId, contactId, companyId }, { status: 201 });
 }

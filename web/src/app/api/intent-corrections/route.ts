@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { suggestKeywordsFromCorrection } from "@/lib/ai/intent-classifier";
@@ -63,19 +63,23 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
   // Verify the conversation belongs to this org
-  const { data: conv } = await admin
+  const { data: conv, error: convError } = await admin
     .from("conversations")
     .select("id, subject, org_id")
     .eq("id", conversationId)
     .eq("org_id", appUser.org_id)
-    .single();
+    .maybeSingle();
+
+  if (convError) {
+    return NextResponse.json({ error: convError.message }, { status: 500 });
+  }
 
   if (!conv) {
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   }
 
   // Get the first customer message body for AI analysis
-  const { data: firstMsg } = await admin
+  const { data: firstMsg, error: firstMsgError } = await admin
     .from("messages")
     .select("body_text")
     .eq("conversation_id", conversationId)
@@ -83,7 +87,11 @@ export async function POST(req: NextRequest) {
     .eq("org_id", appUser.org_id)
     .order("created_at", { ascending: true })
     .limit(1)
-    .single();
+    .maybeSingle();
+
+  if (firstMsgError) {
+    return NextResponse.json({ error: firstMsgError.message }, { status: 500 });
+  }
 
   const bodyPreview = (firstMsg?.body_text ?? "").slice(0, 500);
 
@@ -122,8 +130,9 @@ export async function POST(req: NextRequest) {
 
     const existingKeywords = (intentRow?.keywords as string[]) ?? [];
 
-    // Run suggestion async — don't block the response
-    void (async () => {
+    // Keep this Vercel-safe: after() allows the response to return while
+    // ensuring the keyword suggestion write is still allowed to finish.
+    after(async () => {
       try {
         const suggested = await suggestKeywordsFromCorrection({
           correctedIntent: correctedIntent.trim(),
@@ -142,7 +151,7 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.error("[intent-corrections] Keyword suggestion failed:", err instanceof Error ? err.message : err);
       }
-    })();
+    });
   }
 
   return NextResponse.json({ ok: true, correctionId: correction.id });

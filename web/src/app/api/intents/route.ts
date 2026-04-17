@@ -8,6 +8,23 @@ import { invalidateIntentCache } from "@/lib/ai/intent-classifier";
    POST /api/intents  — create intent (manager+)
 ───────────────────────────────────────────── */
 
+const VALID_PRIORITY_LEVELS = new Set(["high", "normal", "low"]);
+
+function normalizeKeywords(value: unknown) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.some((keyword) => typeof keyword !== "string")) {
+    return null;
+  }
+
+  return [...new Set(value.map((keyword) => keyword.trim()).filter(Boolean))];
+}
+
+function normalizeOptionalString(value: unknown) {
+  if (value == null) return null;
+  if (typeof value !== "string") return undefined;
+  return value.trim() || null;
+}
+
 async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -43,25 +60,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden — managers only" }, { status: 403 });
   }
 
-  let body: {
-    name?: string;
-    color?: string;
-    keywords?: string[];
-    skill_required?: string;
-    priority_order?: number;
-    priority_level?: string;
-  };
+  let body: Record<string, unknown>;
   try {
-    body = await req.json();
+    body = await req.json() as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const name = body.name?.trim();
+  const name = normalizeOptionalString(body.name);
   if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
-  const validLevels = ["high", "normal", "low"];
-  const priority_level = validLevels.includes(body.priority_level ?? "")
+  const color = normalizeOptionalString(body.color);
+  if (color === undefined) return NextResponse.json({ error: "color must be text" }, { status: 400 });
+
+  const skillRequired = normalizeOptionalString(body.skill_required);
+  if (skillRequired === undefined) return NextResponse.json({ error: "skill_required must be text" }, { status: 400 });
+
+  const keywords = normalizeKeywords(body.keywords);
+  if (keywords === null) return NextResponse.json({ error: "keywords must be a list of text values" }, { status: 400 });
+
+  const priorityOrder = body.priority_order;
+  if (priorityOrder !== undefined && (typeof priorityOrder !== "number" || !Number.isFinite(priorityOrder))) {
+    return NextResponse.json({ error: "priority_order must be a finite number" }, { status: 400 });
+  }
+
+  const priorityLevel = typeof body.priority_level === "string" && VALID_PRIORITY_LEVELS.has(body.priority_level)
     ? body.priority_level
     : "normal";
 
@@ -71,11 +94,11 @@ export async function POST(req: NextRequest) {
     .insert({
       org_id: appUser.org_id,
       name,
-      color: body.color?.trim() || "#78a17a",
-      keywords: Array.isArray(body.keywords) ? body.keywords.map((k: string) => k.trim()).filter(Boolean) : [],
-      skill_required: body.skill_required?.trim() || null,
-      priority_order: typeof body.priority_order === "number" ? body.priority_order : 100,
-      priority_level,
+      color: color || "#78a17a",
+      keywords,
+      skill_required: skillRequired,
+      priority_order: typeof priorityOrder === "number" ? priorityOrder : 100,
+      priority_level: priorityLevel,
     })
     .select("id, name, color, keywords, skill_required, priority_order, priority_level, created_at")
     .single();

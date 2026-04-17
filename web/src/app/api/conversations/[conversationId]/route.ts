@@ -20,6 +20,14 @@ const VALID_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
 
 type RouteContext = { params: Promise<{ conversationId: string }> };
 
+function normalizeTags(value: unknown) {
+  if (!Array.isArray(value) || value.some((tag) => typeof tag !== "string")) {
+    return null;
+  }
+
+  return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
+}
+
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const { conversationId } = await ctx.params;
   const appUser = await getAppUser();
@@ -49,13 +57,23 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   }
 
   if ("assigned_to_name" in body) {
-    updates.assigned_to_name = typeof body.assigned_to_name === "string"
-      ? body.assigned_to_name.trim()
-      : "";
+    if (typeof body.assigned_to_name !== "string" && body.assigned_to_name != null) {
+      return NextResponse.json({ error: "Assigned user name must be text." }, { status: 400 });
+    }
+    updates.assigned_to_name = typeof body.assigned_to_name === "string" ? body.assigned_to_name.trim() : "";
   }
 
   if ("tags" in body) {
-    updates.tags = Array.isArray(body.tags) ? body.tags : [];
+    const tags = normalizeTags(body.tags);
+    if (tags === null) return NextResponse.json({ error: "Tags must be a list of text values." }, { status: 400 });
+    updates.tags = tags;
+  }
+
+  if ("intent" in body) {
+    if (typeof body.intent !== "string" && body.intent != null) {
+      return NextResponse.json({ error: "Intent must be text." }, { status: 400 });
+    }
+    updates.intent = typeof body.intent === "string" ? body.intent.trim().toLowerCase() || "unclassified" : "unclassified";
   }
 
   if (Object.keys(updates).length === 0) {

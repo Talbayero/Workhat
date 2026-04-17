@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { classifyIntent as classifyIntentFromDb } from "@/lib/ai/intent-classifier";
+import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
 
 /* ─────────────────────────────────────────────
    POST /api/inbound/email
@@ -108,11 +108,21 @@ export async function POST(req: NextRequest) {
     ? `inbound+${mailboxHash}@work-hat.com`
     : toEmail;
 
-  const { data: channel } = await supabase
+  if (!inboundAddress) {
+    console.warn("[inbound] Missing destination address");
+    return NextResponse.json({ ok: true, skipped: "missing_destination" });
+  }
+
+  const { data: channel, error: channelErr } = await supabase
     .from("channels")
     .select("id, org_id")
     .eq("inbound_address", inboundAddress)
-    .single();
+    .maybeSingle();
+
+  if (channelErr) {
+    console.error("[inbound] Channel lookup error:", channelErr.message);
+    return NextResponse.json({ error: "Failed to resolve inbound channel" }, { status: 500 });
+  }
 
   if (!channel) {
     // Unknown destination — still return 200 so Postmark doesn't retry
@@ -124,12 +134,17 @@ export async function POST(req: NextRequest) {
   const channelId: string = channel.id;
 
   // ── 2. Idempotency check ─────────────────────────────────────────────────
-  const { data: existing } = await supabase
+  const { data: existing, error: existingErr } = await supabase
     .from("messages")
     .select("id, conversation_id")
     .eq("org_id", orgId)
     .eq("channel_message_id", payload.MessageID)
-    .single();
+    .maybeSingle();
+
+  if (existingErr) {
+    console.error("[inbound] Idempotency lookup error:", existingErr.message);
+    return NextResponse.json({ error: "Failed to check duplicate message" }, { status: 500 });
+  }
 
   if (existing) {
     return NextResponse.json({ ok: true, skipped: "duplicate", messageId: existing.id });
@@ -137,29 +152,43 @@ export async function POST(req: NextRequest) {
 
   // ── 3. Find or create contact ────────────────────────────────────────────
   const senderEmail = payload.FromFull?.Email?.toLowerCase() ?? payload.From?.toLowerCase();
+  if (!senderEmail || !senderEmail.includes("@")) {
+    return NextResponse.json({ error: "Sender email is required" }, { status: 400 });
+  }
+
   const senderName = payload.FromFull?.Name?.trim() || senderEmail.split("@")[0];
   const [firstName, ...restName] = senderName.split(" ");
   const lastName = restName.join(" ");
 
   let contactId: string | null = null;
 
-  const { data: existingContact } = await supabase
+  const { data: existingContact, error: existingContactErr } = await supabase
     .from("contacts")
     .select("id")
     .eq("org_id", orgId)
     .eq("email", senderEmail)
-    .single();
+    .maybeSingle();
+
+  if (existingContactErr) {
+    console.error("[inbound] Contact lookup error:", existingContactErr.message);
+    return NextResponse.json({ error: "Failed to find contact" }, { status: 500 });
+  }
 
   if (existingContact) {
     contactId = existingContact.id;
     // Bump last_activity_at
-    await supabase
+    const { error: contactUpdateErr } = await supabase
       .from("contacts")
       .update({ last_activity_at: new Date().toISOString() })
       .eq("id", contactId)
       .eq("org_id", orgId);
+
+    if (contactUpdateErr) {
+      console.error("[inbound] Contact update error:", contactUpdateErr.message);
+      return NextResponse.json({ error: "Failed to update contact" }, { status: 500 });
+    }
   } else {
-    const { data: newContact } = await supabase
+    const { data: newContact, error: contactInsertErr } = await supabase
       .from("contacts")
       .insert({
         org_id: orgId,
@@ -172,6 +201,12 @@ export async function POST(req: NextRequest) {
       })
       .select("id")
       .single();
+
+    if (contactInsertErr || !newContact) {
+      console.error("[inbound] Contact insert error:", contactInsertErr?.message);
+      return NextResponse.json({ error: "Failed to create contact" }, { status: 500 });
+    }
+
     contactId = newContact?.id ?? null;
   }
 
@@ -186,12 +221,17 @@ export async function POST(req: NextRequest) {
   ]);
 
   if (senderDomain && !genericDomains.has(senderDomain)) {
-    const { data: existingCompany } = await supabase
+    const { data: existingCompany, error: existingCompanyErr } = await supabase
       .from("companies")
       .select("id")
       .eq("org_id", orgId)
       .eq("domain", senderDomain)
-      .single();
+      .maybeSingle();
+
+    if (existingCompanyErr) {
+      console.error("[inbound] Company lookup error:", existingCompanyErr.message);
+      return NextResponse.json({ error: "Failed to find company" }, { status: 500 });
+    }
 
     if (existingCompany) {
       companyId = existingCompany.id;
@@ -201,7 +241,7 @@ export async function POST(req: NextRequest) {
         .replace(/-/g, " ")
         .replace(/\b\w/g, (c) => c.toUpperCase());
 
-      const { data: newCompany } = await supabase
+      const { data: newCompany, error: companyInsertErr } = await supabase
         .from("companies")
         .insert({
           org_id: orgId,
@@ -213,17 +253,28 @@ export async function POST(req: NextRequest) {
         })
         .select("id")
         .single();
+
+      if (companyInsertErr || !newCompany) {
+        console.error("[inbound] Company insert error:", companyInsertErr?.message);
+        return NextResponse.json({ error: "Failed to create company" }, { status: 500 });
+      }
+
       companyId = newCompany?.id ?? null;
     }
 
     // Link contact to company if not already linked
     if (contactId && companyId) {
-      await supabase
+      const { error: contactCompanyErr } = await supabase
         .from("contacts")
         .update({ company_id: companyId })
         .eq("id", contactId)
         .eq("org_id", orgId)
         .is("company_id", null);
+
+      if (contactCompanyErr) {
+        console.error("[inbound] Contact company link error:", contactCompanyErr.message);
+        return NextResponse.json({ error: "Failed to link contact to company" }, { status: 500 });
+      }
     }
   }
 
@@ -232,12 +283,17 @@ export async function POST(req: NextRequest) {
   let conversationId: string | null = null;
 
   if (payload.InReplyTo) {
-    const { data: threadMsg } = await supabase
+    const { data: threadMsg, error: threadErr } = await supabase
       .from("messages")
       .select("conversation_id")
       .eq("org_id", orgId)
       .eq("channel_message_id", payload.InReplyTo)
-      .single();
+      .maybeSingle();
+
+    if (threadErr) {
+      console.error("[inbound] Thread lookup error:", threadErr.message);
+      return NextResponse.json({ error: "Failed to match reply thread" }, { status: 500 });
+    }
 
     conversationId = threadMsg?.conversation_id ?? null;
   }
@@ -260,9 +316,38 @@ export async function POST(req: NextRequest) {
   const riskLevel = scoreRisk(payload.Subject ?? "", cleanBody);
   const preview = buildPreview(cleanBody || (payload.TextBody ?? ""));
 
+  // ── 6b. Skill-based routing ──────────────────────────────────────────────
+  let assignedToName = "";
+  if (intent !== "unclassified") {
+    try {
+      const { data: intentRows } = await supabase
+        .from("intents")
+        .select("skill_required")
+        .eq("org_id", orgId)
+        .ilike("name", intent)
+        .limit(1);
+
+      const skillRequired = intentRows?.[0]?.skill_required ?? null;
+      if (skillRequired) {
+        const assignedUserId = await routeBySkill(orgId, skillRequired);
+        if (assignedUserId) {
+          const { data: agentRow } = await supabase
+            .from("users")
+            .select("full_name")
+            .eq("id", assignedUserId)
+            .eq("org_id", orgId)
+            .maybeSingle();
+          assignedToName = agentRow?.full_name ?? "";
+        }
+      }
+    } catch (err) {
+      console.warn("[inbound] Routing failed (non-fatal):", err instanceof Error ? err.message : err);
+    }
+  }
+
   // ── 7. Create conversation if no thread match ────────────────────────────
   if (!conversationId) {
-    const { data: newConv } = await supabase
+    const { data: newConv, error: conversationErr } = await supabase
       .from("conversations")
       .insert({
         org_id: orgId,
@@ -276,17 +361,22 @@ export async function POST(req: NextRequest) {
         ai_confidence: "yellow",
         intent,
         preview,
-        assigned_to_name: "",
+        assigned_to_name: assignedToName,
         last_message_at: new Date().toISOString(),
         external_thread_id: payload.MessageID,
       })
       .select("id")
       .single();
 
+    if (conversationErr || !newConv) {
+      console.error("[inbound] Conversation insert error:", conversationErr?.message);
+      return NextResponse.json({ error: "Failed to create conversation" }, { status: 500 });
+    }
+
     conversationId = newConv?.id ?? null;
   } else {
     // Update existing conversation with latest preview + risk
-    await supabase
+    const { error: conversationUpdateErr } = await supabase
       .from("conversations")
       .update({
         preview,
@@ -297,6 +387,11 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", conversationId)
       .eq("org_id", orgId);
+
+    if (conversationUpdateErr) {
+      console.error("[inbound] Conversation update error:", conversationUpdateErr.message);
+      return NextResponse.json({ error: "Failed to update conversation" }, { status: 500 });
+    }
   }
 
   if (!conversationId) {
@@ -336,9 +431,15 @@ export async function POST(req: NextRequest) {
   // ── 9. Update company open conversation count ────────────────────────────
   if (companyId && !payload.InReplyTo) {
     // Only increment on new conversations, not threaded replies
-    supabase.rpc("increment_company_open_conversations", {
-      p_company_id: companyId,
-    }).then(() => {}, () => {}); // Best-effort, ignore errors
+    after(async () => {
+      const { error } = await supabase.rpc("increment_company_open_conversations", {
+        p_company_id: companyId,
+      });
+
+      if (error) {
+        console.warn("[inbound] Company open count increment failed:", error.message);
+      }
+    });
   }
 
   console.log(

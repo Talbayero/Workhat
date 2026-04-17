@@ -102,11 +102,15 @@ export async function InboxWorkspace({
         </div>
 
         <div className="shrink-0 border-b border-[var(--line)] px-3 py-3">
-          <input
-            type="search"
-            placeholder="Search conversations…"
-            className="w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
-          />
+          {/* Submitting navigates to the full search page — keeps search logic in one place */}
+          <form action={`${baseDir}/search`} method="get">
+            <input
+              type="search"
+              name="q"
+              placeholder="Search conversations…"
+              className="w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
+            />
+          </form>
           <div className="mt-3 flex items-center justify-between text-[10px] text-[var(--muted)]">
             <span>Sorted by latest reply</span>
             <span>Customer, account, risk</span>

@@ -96,7 +96,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
-  
+  const [openCount, setOpenCount] = useState<number | null>(null);
+
   const isDemo = pathname.startsWith("/demo");
   const baseDir = isDemo ? "/demo" : "";
 
@@ -118,6 +119,27 @@ export function Sidebar() {
     );
 
     return () => subscription.unsubscribe();
+  }, [isDemo]);
+
+  // Live open conversation count — refreshes every 60s
+  useEffect(() => {
+    if (isDemo) return;
+    let cancelled = false;
+
+    async function loadCount() {
+      try {
+        const res = await fetch("/api/conversations/count");
+        if (!res.ok || cancelled) return;
+        const data = await res.json() as { open?: number };
+        if (!cancelled) setOpenCount(data.open ?? null);
+      } catch {
+        // Non-fatal — count just won't show
+      }
+    }
+
+    void loadCount();
+    const timer = setInterval(() => void loadCount(), 60_000);
+    return () => { cancelled = true; clearInterval(timer); };
   }, [isDemo]);
 
   async function handleSignOut() {
@@ -158,6 +180,7 @@ export function Sidebar() {
             {primaryItems.map((item) => {
               const fullHref = `${baseDir}${item.href}`;
               const isActive = pathname.startsWith(fullHref);
+              const showBadge = item.href === "/inbox" && !isDemo && openCount !== null && openCount > 0;
               return (
                 <Link
                   key={item.href}
@@ -169,7 +192,14 @@ export function Sidebar() {
                   }`}
                 >
                   <span className="shrink-0">{item.icon}</span>
-                  <span>{item.label}</span>
+                  <span className="flex-1">{item.label}</span>
+                  {showBadge && (
+                    <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+                      isActive ? "bg-white/25 text-white" : "bg-[var(--moss)] text-white"
+                    }`}>
+                      {openCount! > 99 ? "99+" : openCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}
