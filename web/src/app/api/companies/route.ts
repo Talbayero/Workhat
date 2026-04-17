@@ -3,6 +3,21 @@ import { createClient } from "@/lib/supabase/server";
 
 /* POST /api/companies — create company */
 
+function normalizeOptionalString(value: unknown) {
+  if (value == null) return null;
+  if (typeof value !== "string") return undefined;
+  return value.trim() || null;
+}
+
+function normalizeTags(value: unknown) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.some((tag) => typeof tag !== "string")) {
+    return null;
+  }
+
+  return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
+}
+
 async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -15,9 +30,26 @@ export async function POST(req: NextRequest) {
   const appUser = await getAppUser();
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json() as { name?: string; domain?: string; industry?: string; tier?: string; notes?: string; tags?: string[] };
-  const name = body.name?.trim();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json() as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+  }
+
+  const name = normalizeOptionalString(body.name);
   if (!name) return NextResponse.json({ error: "Company name is required." }, { status: 400 });
+
+  const domain = normalizeOptionalString(body.domain);
+  const industry = normalizeOptionalString(body.industry);
+  const notes = normalizeOptionalString(body.notes);
+  const tier = normalizeOptionalString(body.tier) ?? "standard";
+  const tags = normalizeTags(body.tags);
+
+  if (domain === undefined) return NextResponse.json({ error: "Domain must be text." }, { status: 400 });
+  if (industry === undefined) return NextResponse.json({ error: "Industry must be text." }, { status: 400 });
+  if (notes === undefined) return NextResponse.json({ error: "Notes must be text." }, { status: 400 });
+  if (tags === null) return NextResponse.json({ error: "Tags must be a list of text values." }, { status: 400 });
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -25,17 +57,21 @@ export async function POST(req: NextRequest) {
     .insert({
       org_id: appUser.org_id,
       name,
-      domain: body.domain?.trim().toLowerCase() || null,
-      industry: body.industry?.trim() || null,
-      tier: body.tier || "standard",
-      notes: body.notes?.trim() || null,
-      tags: body.tags ?? [],
+      domain: domain?.toLowerCase() || null,
+      industry,
+      tier,
+      notes,
+      tags,
       open_conversations: 0,
       active_contacts: 0,
     })
     .select("id")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const status = error.code === "23505" ? 409 : 500;
+    return NextResponse.json({ error: error.message }, { status });
+  }
+
   return NextResponse.json({ company: { id: data.id } }, { status: 201 });
 }
