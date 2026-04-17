@@ -57,6 +57,21 @@ export async function POST(
     return NextResponse.json({ error: "body is required" }, { status: 422 });
   }
 
+  const { data: conversation, error: conversationError } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("org_id", orgId)
+    .maybeSingle();
+
+  if (conversationError) {
+    return NextResponse.json({ error: conversationError.message }, { status: 500 });
+  }
+
+  if (!conversation) {
+    return NextResponse.json({ error: "Conversation not found for this workspace." }, { status: 404 });
+  }
+
   // Insert internal message
   const { data: message, error: msgErr } = await supabase
     .from("messages")

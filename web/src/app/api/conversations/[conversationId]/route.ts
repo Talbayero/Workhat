@@ -25,7 +25,12 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const appUser = await getAppUser();
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json() as Record<string, unknown>;
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json() as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
 
   const updates: Record<string, unknown> = {};
 
@@ -58,12 +63,16 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("conversations")
     .update(updates)
     .eq("id", conversationId)
-    .eq("org_id", appUser.org_id);
+    .eq("org_id", appUser.org_id)
+    .select("id")
+    .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) return NextResponse.json({ error: "Conversation not found for this workspace." }, { status: 404 });
+
   return NextResponse.json({ ok: true });
 }

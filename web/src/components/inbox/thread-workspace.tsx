@@ -78,6 +78,7 @@ export function ThreadWorkspace({
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [editingAssignee, setEditingAssignee] = useState(false);
   const [assigneeInput, setAssigneeInput] = useState(conversation.assignee);
+  const [threadError, setThreadError] = useState<string | null>(null);
 
   // Live AI draft state
   const [liveDraft, setLiveDraft] = useState<LiveDraft | null>(null);
@@ -164,33 +165,66 @@ export function ThreadWorkspace({
   async function updateConversation(patch: Record<string, unknown>) {
     if (isDemo) return;
 
-    await fetch(`/api/conversations/${conversation.id}`, {
+    const response = await fetch(`/api/conversations/${conversation.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
+    const responseData = await response.json().catch(() => ({})) as { error?: string };
+
+    if (!response.ok) {
+      throw new Error(responseData.error ?? `Update failed with HTTP ${response.status}`);
+    }
   }
 
   async function handleStatusChange(newStatus: ConversationStatus) {
+    const previousStatus = status;
     setStatusUpdating(true);
     setStatus(newStatus);
-    await updateConversation({ status: newStatus });
-    setStatusUpdating(false);
+    setThreadError(null);
+
+    try {
+      await updateConversation({ status: newStatus });
+    } catch (error) {
+      setStatus(previousStatus);
+      setThreadError(error instanceof Error ? error.message : "Unable to update status.");
+    } finally {
+      setStatusUpdating(false);
+    }
   }
 
   async function handleClaim() {
     const name = "You";
+    const previousAssignee = assignee;
+    const previousAssigneeInput = assigneeInput;
     setAssignee(name);
     setAssigneeInput(name);
-    await updateConversation({ assigned_to_name: name });
+    setThreadError(null);
+
+    try {
+      await updateConversation({ assigned_to_name: name });
+    } catch (error) {
+      setAssignee(previousAssignee);
+      setAssigneeInput(previousAssigneeInput);
+      setThreadError(error instanceof Error ? error.message : "Unable to claim conversation.");
+    }
   }
 
   async function handleAssigneeSave() {
     const name = assigneeInput.trim();
+    const previousAssignee = assignee;
     setEditingAssignee(false);
     if (name === assignee) return;
     setAssignee(name);
-    await updateConversation({ assigned_to_name: name });
+    setThreadError(null);
+
+    try {
+      await updateConversation({ assigned_to_name: name });
+    } catch (error) {
+      setAssignee(previousAssignee);
+      setAssigneeInput(previousAssignee);
+      setThreadError(error instanceof Error ? error.message : "Unable to update assignee.");
+    }
   }
 
   function switchMode(mode: ComposerMode) {
@@ -445,6 +479,21 @@ export function ThreadWorkspace({
             </div>
           </div>
         </div>
+
+        {threadError && (
+          <div className="shrink-0 border-b border-[var(--line)] px-5 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3">
+              <span className="text-xs leading-5 text-[var(--muted)]">{threadError}</span>
+              <button
+                onClick={() => setThreadError(null)}
+                className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                aria-label="Dismiss update error"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto scroll-soft px-5 py-4 space-y-3">
