@@ -37,7 +37,9 @@ function validateBody(raw: unknown): DraftRequestBody | null {
   return {
     conversationId: obj.conversationId.trim(),
     sourceMessageId:
-      typeof obj.sourceMessageId === "string" ? obj.sourceMessageId : undefined,
+      typeof obj.sourceMessageId === "string" && obj.sourceMessageId.trim()
+        ? obj.sourceMessageId.trim()
+        : undefined,
   };
 }
 
@@ -231,6 +233,7 @@ async function assembleContext(
     .from("messages")
     .select("id, sender_type, author_name, body_text, created_at")
     .eq("conversation_id", conversationId)
+    .eq("org_id", orgId)
     .order("created_at", { ascending: true })
     .limit(20);
 
@@ -431,6 +434,27 @@ export async function POST(req: NextRequest) {
   }
 
   const { conversationId, sourceMessageId } = body;
+
+  if (sourceMessageId) {
+    const { data: sourceMessage, error: sourceMessageError } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("id", sourceMessageId)
+      .eq("conversation_id", conversationId)
+      .eq("org_id", appUser.org_id as string)
+      .maybeSingle();
+
+    if (sourceMessageError) {
+      return NextResponse.json({ error: sourceMessageError.message }, { status: 500 });
+    }
+
+    if (!sourceMessage) {
+      return NextResponse.json(
+        { error: "Source message not found for this conversation." },
+        { status: 400 }
+      );
+    }
+  }
 
   // Check AI action quota before touching OpenAI
   const quota = await checkAIQuota(supabase, appUser.org_id as string);

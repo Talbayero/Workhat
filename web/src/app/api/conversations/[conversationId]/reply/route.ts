@@ -41,7 +41,10 @@ function validateBody(raw: unknown): ReplyPayload | null {
   if (typeof obj.body !== "string" || !obj.body.trim()) return null;
   return {
     body: obj.body.trim(),
-    aiDraftId: typeof obj.aiDraftId === "string" ? obj.aiDraftId : null,
+    aiDraftId:
+      typeof obj.aiDraftId === "string" && obj.aiDraftId.trim()
+        ? obj.aiDraftId.trim()
+        : null,
   };
 }
 
@@ -102,6 +105,8 @@ async function triggerEditAnalysis(
       .from("ai_drafts")
       .select("id, draft_text")
       .eq("id", aiDraftId)
+      .eq("org_id", orgId)
+      .eq("conversation_id", conversationId)
       .single();
 
     if (error || !draft) {
@@ -191,6 +196,42 @@ export async function POST(
   }
 
   const { body, aiDraftId } = payload;
+
+  const { data: conversation, error: conversationError } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("org_id", orgId)
+    .maybeSingle();
+
+  if (conversationError) {
+    return NextResponse.json({ error: conversationError.message }, { status: 500 });
+  }
+
+  if (!conversation) {
+    return NextResponse.json({ error: "Conversation not found for this workspace." }, { status: 404 });
+  }
+
+  if (aiDraftId) {
+    const { data: aiDraft, error: aiDraftError } = await supabase
+      .from("ai_drafts")
+      .select("id")
+      .eq("id", aiDraftId)
+      .eq("conversation_id", conversationId)
+      .eq("org_id", orgId)
+      .maybeSingle();
+
+    if (aiDraftError) {
+      return NextResponse.json({ error: aiDraftError.message }, { status: 500 });
+    }
+
+    if (!aiDraft) {
+      return NextResponse.json(
+        { error: "AI draft not found for this conversation." },
+        { status: 400 }
+      );
+    }
+  }
 
   const admin = createAdminClient();
   let outbound: OutboundResult | null;

@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json() as { aiDraftId?: string; sentReplyId?: string };
-  const { aiDraftId, sentReplyId } = body;
+  const aiDraftId = body.aiDraftId?.trim();
+  const sentReplyId = body.sentReplyId?.trim();
 
   if (!aiDraftId || !sentReplyId) {
     return NextResponse.json(
@@ -51,14 +52,14 @@ export async function POST(req: NextRequest) {
   const [draftResult, replyResult, analysisResult] = await Promise.all([
     admin
       .from("ai_drafts")
-      .select("id, org_id, draft_text")
+      .select("id, org_id, conversation_id, draft_text")
       .eq("id", aiDraftId)
       .eq("org_id", appUser.org_id)
       .single(),
 
     admin
       .from("sent_replies")
-      .select("id, org_id, body_text")
+      .select("id, org_id, conversation_id, source_ai_draft_id, body_text")
       .eq("id", sentReplyId)
       .eq("org_id", appUser.org_id)
       .single(),
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
     // edit_analyses may not exist yet if the after() task hasn't run
     admin
       .from("edit_analyses")
-      .select("id, categories, likely_reason_summary")
+      .select("id, ai_draft_id, conversation_id, categories, likely_reason_summary")
       .eq("sent_reply_id", sentReplyId)
       .eq("org_id", appUser.org_id)
       .maybeSingle(),
@@ -77,6 +78,34 @@ export async function POST(req: NextRequest) {
   }
   if (replyResult.error || !replyResult.data) {
     return NextResponse.json({ error: "Sent reply not found." }, { status: 404 });
+  }
+
+  if (draftResult.data.conversation_id !== replyResult.data.conversation_id) {
+    return NextResponse.json(
+      { error: "AI draft and sent reply do not belong to the same conversation." },
+      { status: 400 }
+    );
+  }
+
+  if (
+    replyResult.data.source_ai_draft_id &&
+    replyResult.data.source_ai_draft_id !== draftResult.data.id
+  ) {
+    return NextResponse.json(
+      { error: "Sent reply is linked to a different AI draft." },
+      { status: 400 }
+    );
+  }
+
+  if (
+    analysisResult.data &&
+    (analysisResult.data.ai_draft_id !== draftResult.data.id ||
+      analysisResult.data.conversation_id !== draftResult.data.conversation_id)
+  ) {
+    return NextResponse.json(
+      { error: "Edit analysis does not match the submitted draft and reply." },
+      { status: 400 }
+    );
   }
 
   const draftText = draftResult.data.draft_text;
