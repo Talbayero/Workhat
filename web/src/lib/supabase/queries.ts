@@ -303,6 +303,8 @@ function dbContactToFrontend(
 
 export async function getContacts(view?: string): Promise<ContactRecord[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
 
   let query = supabase
     .from("contacts")
@@ -312,6 +314,7 @@ export async function getContacts(view?: string): Promise<ContactRecord[]> {
        last_activity_at,
        companies(id, name, industry, account_owner, open_conversations, active_contacts, tier)`
     )
+    .eq("org_id", orgId)
     .order("last_activity_at", { ascending: false });
 
   if (view && view !== "all") {
@@ -330,10 +333,13 @@ export async function getContacts(view?: string): Promise<ContactRecord[]> {
 
   // Get open conversation counts for all returned contacts
   const contactIds = (data ?? []).map((c) => c.id);
+  if (contactIds.length === 0) return [];
+
   const { data: convCounts } = await supabase
     .from("conversations")
     .select("contact_id, status")
-    .in("contact_id", contactIds);
+    .in("contact_id", contactIds)
+    .eq("org_id", orgId);
 
   const convRows = (convCounts ?? []) as { contact_id: string | null; status: string }[];
 
@@ -346,6 +352,8 @@ export async function getContactById(
   id: string
 ): Promise<ContactRecord | null> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return null;
 
   const { data, error } = await supabase
     .from("contacts")
@@ -356,6 +364,7 @@ export async function getContactById(
        companies(id, name, industry, account_owner, open_conversations, active_contacts, tier)`
     )
     .eq("id", id)
+    .eq("org_id", orgId)
     .single();
 
   if (error || !data) return null;
@@ -364,7 +373,8 @@ export async function getContactById(
   const { data: convRows } = await supabase
     .from("conversations")
     .select("contact_id, status")
-    .eq("contact_id", id);
+    .eq("contact_id", id)
+    .eq("org_id", orgId);
 
   const open = countOpen(
     (convRows ?? []) as { contact_id: string | null; status: string }[],
@@ -378,6 +388,9 @@ export async function getContactsForCompany(
   companyId: string
 ): Promise<ContactRecord[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
+
   const { data, error } = await supabase
     .from("contacts")
     .select(
@@ -387,15 +400,19 @@ export async function getContactsForCompany(
        companies(id, name, industry, account_owner, open_conversations, active_contacts, tier)`
     )
     .eq("company_id", companyId)
+    .eq("org_id", orgId)
     .order("last_activity_at", { ascending: false });
 
   if (error) return [];
 
   const contactIds = (data ?? []).map((c) => c.id);
+  if (contactIds.length === 0) return [];
+
   const { data: convCounts } = await supabase
     .from("conversations")
     .select("contact_id, status")
-    .in("contact_id", contactIds);
+    .in("contact_id", contactIds)
+    .eq("org_id", orgId);
 
   const convRows = (convCounts ?? []) as { contact_id: string | null; status: string }[];
   return ((data ?? []) as unknown as DbContact[]).map((row) =>
@@ -434,6 +451,8 @@ function dbCompanyToFrontend(row: DbCompany): CompanyRecord {
 
 export async function getCompanies(view?: string): Promise<CompanyRecord[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
 
   let query = supabase
     .from("companies")
@@ -441,6 +460,7 @@ export async function getCompanies(view?: string): Promise<CompanyRecord[]> {
       `id, name, domain, industry, account_owner, tier,
        health_score, open_conversations, active_contacts, arr, notes, tags`
     )
+    .eq("org_id", orgId)
     .order("name");
 
   if (view && view !== "all") {
@@ -464,6 +484,9 @@ export async function getCompanyById(
   id: string
 ): Promise<CompanyRecord | null> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return null;
+
   const { data, error } = await supabase
     .from("companies")
     .select(
@@ -471,6 +494,7 @@ export async function getCompanyById(
        health_score, open_conversations, active_contacts, arr, notes, tags`
     )
     .eq("id", id)
+    .eq("org_id", orgId)
     .single();
 
   if (error || !data) return null;
@@ -515,6 +539,8 @@ export async function getKnowledgeEntries(
   category?: KnowledgeCategory | "all"
 ): Promise<KnowledgeEntry[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
 
   let query = supabase
     .from("knowledge_entries")
@@ -522,6 +548,7 @@ export async function getKnowledgeEntries(
       `id, title, summary, body, category, tags, used_in_drafts, is_active, last_updated, updated_by,
        knowledge_chunks:knowledge_chunks(id, chunk_index, text)`
     )
+    .eq("org_id", orgId)
     .order("used_in_drafts", { ascending: false });
 
   if (category && category !== "all") {
@@ -543,6 +570,9 @@ export async function getKnowledgeEntryById(
   id: string
 ): Promise<KnowledgeEntry | null> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return null;
+
   const { data, error } = await supabase
     .from("knowledge_entries")
     .select(
@@ -550,6 +580,7 @@ export async function getKnowledgeEntryById(
        knowledge_chunks:knowledge_chunks(id, chunk_index, text)`
     )
     .eq("id", id)
+    .eq("org_id", orgId)
     .single();
 
   if (error || !data) return null;
@@ -595,10 +626,22 @@ function emptyByType(): Record<EditTypeKey, number> {
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+
+  if (!orgId) {
+    return {
+      totalEdits: 0,
+      acceptanceRate: 0,
+      avgEditIntensity: 0,
+      topEditType: null,
+      byType: emptyByType(),
+    };
+  }
 
   const { data, error } = await supabase
     .from("edit_analyses")
     .select("id, change_percent, categories, conversation_id")
+    .eq("org_id", orgId)
     .order("created_at", { ascending: false })
     .limit(500); // cap for perf — enough for stats
 
@@ -650,6 +693,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
 export async function getRecentEditLog(limit = 8): Promise<EditLogEntry[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
 
   const { data, error } = await supabase
     .from("edit_analyses")
@@ -657,6 +702,7 @@ export async function getRecentEditLog(limit = 8): Promise<EditLogEntry[]> {
       `id, conversation_id, change_percent, categories,
        sent_replies(body_text)`
     )
+    .eq("org_id", orgId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -712,12 +758,16 @@ function normalizeKnowledgeCategory(categories: string[], intensity: number): Ed
 
 export async function getKnowledgeHealth(limit = 4): Promise<KnowledgeHealthPattern[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
+
   const since = new Date();
   since.setDate(since.getDate() - 30);
 
   const { data, error } = await supabase
     .from("edit_analyses")
     .select("categories, change_percent, likely_reason_summary, created_at")
+    .eq("org_id", orgId)
     .gte("created_at", since.toISOString())
     .order("created_at", { ascending: false })
     .limit(500);
@@ -758,6 +808,8 @@ export async function getKnowledgeHealth(limit = 4): Promise<KnowledgeHealthPatt
 
 export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
 
   const { data, error } = await supabase
     .from("conversations")
@@ -767,6 +819,7 @@ export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
        contacts(full_name, email, phone, tier, notes, tags),
        companies(name)`
     )
+    .eq("org_id", orgId)
     .or("risk_level.eq.red,risk_level.eq.yellow,ai_confidence.eq.red,ai_confidence.eq.yellow")
     .order("last_message_at", { ascending: false })
     .limit(30);
@@ -781,6 +834,7 @@ export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
     .from("qa_reviews")
     .select("conversation_id, result, created_at")
     .in("conversation_id", conversationIds)
+    .eq("org_id", orgId)
     .order("created_at", { ascending: false });
 
   const latestReviewResult = new Map<string, string | null>();
