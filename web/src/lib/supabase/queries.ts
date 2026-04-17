@@ -849,3 +849,29 @@ export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
     .slice(0, 20)
     .map(dbConvToFrontend);
 }
+
+// ── Intent color map ──────────────────────────────────────────────────────────
+
+/**
+ * Returns a map of intent name (lowercase) → hex color string.
+ * Used to colorize intent pills throughout the UI consistently.
+ * Returns empty map on error so callers can render a fallback color.
+ */
+export async function getOrgIntentColors(): Promise<Record<string, string>> {
+  const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return {};
+
+  const { data } = await supabase
+    .from("intents")
+    .select("name, color")
+    .eq("org_id", orgId);
+
+  if (!data) return {};
+
+  const map: Record<string, string> = {};
+  for (const row of data as { name: string; color: string }[]) {
+    map[row.name.trim().toLowerCase()] = row.color;
+  }
+  return map;
+}

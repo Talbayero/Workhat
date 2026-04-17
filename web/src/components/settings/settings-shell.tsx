@@ -1616,12 +1616,230 @@ function IntentFormModal({
   );
 }
 
+// ── Corrections types ─────────────────────────────────────────────────────────
+
+type CorrectionRecord = {
+  id: string;
+  original_intent: string;
+  corrected_intent: string;
+  was_changed: boolean;
+  closure_note: string | null;
+  suggested_keywords: string[] | null;
+  status: string;
+  created_at: string;
+  conversation_id: string;
+};
+
+type CorrectionPattern = {
+  originalIntent: string;
+  correctedIntent: string;
+  count: number;
+};
+
+// ── CorrectionsPanel ──────────────────────────────────────────────────────────
+
+function CorrectionsPanel({
+  intents,
+  onIntentUpdated,
+}: {
+  intents: IntentRecord[];
+  onIntentUpdated: (updated: IntentRecord) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [corrections, setCorrections] = useState<CorrectionRecord[]>([]);
+  const [patterns, setPatterns] = useState<CorrectionPattern[]>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [applying, setApplying] = useState<string | null>(null); // intentName being applied
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applied, setApplied] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/intent-corrections");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json() as { corrections?: CorrectionRecord[]; patterns?: CorrectionPattern[] };
+        setCorrections(data.corrections ?? []);
+        setPatterns(data.patterns ?? []);
+      } catch (err) {
+        setFetchError(err instanceof Error ? err.message : "Failed to load corrections");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // Group AI-suggested keywords by corrected_intent
+  const suggestionsByIntent = corrections.reduce<Record<string, Set<string>>>((acc, c) => {
+    if (!c.suggested_keywords?.length || !c.was_changed) return acc;
+    const key = c.corrected_intent.trim().toLowerCase();
+    if (!acc[key]) acc[key] = new Set();
+    c.suggested_keywords.forEach((kw) => acc[key].add(kw.trim().toLowerCase()));
+    return acc;
+  }, {});
+
+  const intentSuggestions = Object.entries(suggestionsByIntent)
+    .map(([name, kwSet]) => ({ name, keywords: [...kwSet] }))
+    .filter((g) => g.keywords.length > 0);
+
+  async function handleApply(intentName: string, newKeywords: string[]) {
+    const match = intents.find((i) => i.name.toLowerCase() === intentName.toLowerCase());
+    if (!match) {
+      setApplyError(`Intent "${intentName}" not found — create it first.`);
+      return;
+    }
+
+    setApplying(intentName);
+    setApplyError(null);
+
+    const merged = [...new Set([...match.keywords, ...newKeywords])];
+
+    try {
+      const res = await fetch(`/api/intents/${match.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords: merged }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { intent?: IntentRecord };
+      if (data.intent) onIntentUpdated(data.intent);
+      setApplied((prev) => new Set([...prev, intentName]));
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : "Failed to apply keywords.");
+    } finally {
+      setApplying(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="py-4 text-xs text-[var(--muted)]">Loading correction data…</div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs text-[rgba(255,210,210,0.9)]">
+        {fetchError}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-4">
+      {/* Recurring correction patterns */}
+      {patterns.length > 0 && (
+        <div>
+          <p className="eyebrow text-[9px] text-[var(--muted)] mb-2">Recurring misclassifications</p>
+          <div className="space-y-1.5">
+            {patterns.map((p) => (
+              <div
+                key={`${p.originalIntent}→${p.correctedIntent}`}
+                className="flex items-center gap-2 rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-xs"
+              >
+                <span className="font-medium text-[rgba(255,180,180,0.85)]">{p.originalIntent}</span>
+                <span className="text-[var(--muted)]">→</span>
+                <span className="font-medium">{p.correctedIntent}</span>
+                <span className="ml-auto shrink-0 rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+                  {p.count}× corrected
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Keyword suggestions */}
+      {intentSuggestions.length > 0 ? (
+        <div>
+          <p className="eyebrow text-[9px] text-[var(--muted)] mb-2">AI keyword suggestions</p>
+          {applyError && (
+            <div className="mb-3 rounded-[12px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-3 py-2 text-xs text-[rgba(255,210,210,0.9)]">
+              {applyError}
+            </div>
+          )}
+          <div className="space-y-3">
+            {intentSuggestions.map(({ name, keywords }) => {
+              const isApplied = applied.has(name);
+              const isApplying = applying === name;
+              const matchedIntent = intents.find((i) => i.name.toLowerCase() === name.toLowerCase());
+              // Filter out keywords already on the intent
+              const newOnly = keywords.filter(
+                (kw) => !matchedIntent?.keywords.some((ex) => ex.toLowerCase() === kw.toLowerCase())
+              );
+              if (newOnly.length === 0 && !isApplied) return null;
+
+              return (
+                <div
+                  key={name}
+                  className="rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      {matchedIntent && (
+                        <span
+                          className="inline-block h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: matchedIntent.color }}
+                        />
+                      )}
+                      <p className="text-xs font-semibold capitalize">{name.replace(/_/g, " ")}</p>
+                    </div>
+                    {isApplied ? (
+                      <span className="text-[10px] text-[var(--moss)]">✓ Applied</span>
+                    ) : (
+                      <button
+                        onClick={() => void handleApply(name, newOnly)}
+                        disabled={isApplying || newOnly.length === 0}
+                        className="rounded-full bg-[var(--moss)] px-3 py-1 text-[10px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                      >
+                        {isApplying ? "Applying…" : `Add ${newOnly.length} keyword${newOnly.length !== 1 ? "s" : ""}`}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {newOnly.map((kw) => (
+                      <span
+                        key={kw}
+                        className="rounded-full border border-[rgba(120,161,122,0.35)] bg-[rgba(120,161,122,0.08)] px-2.5 py-0.5 text-[10px] text-[var(--foreground)]"
+                      >
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--muted)]">
+          {corrections.length === 0
+            ? "No corrections logged yet. Suggestions appear here after agents resolve conversations."
+            : "No new keyword suggestions yet — the AI needs a few more corrections on the same intent to propose improvements."}
+        </p>
+      )}
+
+      {patterns.length === 0 && intentSuggestions.length === 0 && corrections.length > 0 && (
+        <p className="text-xs text-[var(--muted)]">
+          {corrections.length} correction{corrections.length !== 1 ? "s" : ""} logged — recurring patterns will surface here once the same intent is corrected 2+ times.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── IntentsTab ────────────────────────────────────────────────────────────────
+
 function IntentsTab({ canManage }: { canManage: boolean }) {
   const [intents, setIntents] = useState<IntentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<"create" | IntentRecord | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showCorrections, setShowCorrections] = useState(false);
 
   useEffect(() => {
     void load();
@@ -1663,6 +1881,12 @@ function IntentsTab({ canManage }: { canManage: boolean }) {
       return updated.sort((a, b) => a.priority_order - b.priority_order);
     });
     setModal(null);
+  }
+
+  function handleIntentUpdated(updated: IntentRecord) {
+    setIntents((prev) =>
+      prev.map((i) => (i.id === updated.id ? updated : i))
+    );
   }
 
   return (
@@ -1798,27 +2022,32 @@ function IntentsTab({ canManage }: { canManage: boolean }) {
         </SectionCard>
       )}
 
-      {/* Self-learning hint */}
+      {/* Self-learning panel */}
       <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Self-learning</p>
-        <p className="mt-1 text-sm font-semibold">Keyword suggestions from agent corrections</p>
-        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-          When agents correct an intent at resolution, the AI analyzes the email and proposes new keywords.
-          Suggestions appear here after 3+ corrections on the same intent.
-          All suggestions require your approval before taking effect.
-        </p>
-        <button
-          onClick={() => void fetch("/api/intent-corrections").then(r => r.json()).then((d: { patterns?: { originalIntent: string; correctedIntent: string; count: number }[] }) => {
-            if (d.patterns && d.patterns.length > 0) {
-              alert(`Top correction patterns:\n${d.patterns.map((p) => `• "${p.originalIntent}" → "${p.correctedIntent}" (${p.count}×)`).join("\n")}`);
-            } else {
-              alert("No recurring correction patterns yet. Keep resolving conversations!");
-            }
-          })}
-          className="mt-3 rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]"
-        >
-          View correction patterns
-        </button>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="eyebrow text-[9px] text-[var(--muted)]">Self-learning</p>
+            <p className="mt-1 text-sm font-semibold">Keyword suggestions from agent corrections</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              When agents correct an intent at resolution, the AI analyzes the email and proposes new keywords.
+              All suggestions require your approval before taking effect.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCorrections((v) => !v)}
+            className={`shrink-0 rounded-full border px-4 py-2 text-xs font-medium transition-colors ${
+              showCorrections
+                ? "border-[var(--moss)] text-[var(--moss)]"
+                : "border-[var(--line-strong)] text-[var(--muted)] hover:border-[var(--moss)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            {showCorrections ? "Hide" : "View patterns & suggestions"}
+          </button>
+        </div>
+
+        {showCorrections && (
+          <CorrectionsPanel intents={intents} onIntentUpdated={handleIntentUpdated} />
+        )}
       </SectionCard>
 
       {/* Modal */}

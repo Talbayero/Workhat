@@ -60,9 +60,11 @@ function CloseIcon() {
 export function ThreadWorkspace({
   conversation,
   isDemo = false,
+  intentColors = {},
 }: {
   conversation: InboxConversation;
   isDemo?: boolean;
+  intentColors?: Record<string, string>;
 }) {
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [composerMode, setComposerMode] = useState<ComposerMode>("reply");
@@ -521,7 +523,12 @@ export function ThreadWorkspace({
                     title={isDemo ? undefined : "Click to edit intent"}
                     className="flex items-center gap-1.5 rounded-full border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.06)] px-2.5 py-1 text-[10px] text-[var(--muted)] transition-colors hover:border-[var(--moss)] hover:text-[var(--foreground)] disabled:opacity-50"
                   >
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--moss)] shrink-0" />
+                    <span
+                      className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{
+                        backgroundColor: intentColors[intentValue?.trim().toLowerCase() ?? ""] ?? "var(--moss)",
+                      }}
+                    />
                     {intentValue && intentValue !== "unclassified"
                       ? intentValue.replace(/_/g, " ")
                       : "unclassified"}

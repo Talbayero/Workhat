@@ -9,7 +9,7 @@ import {
   type InboxViewId,
   type RiskLevel,
 } from "@/lib/mock-data";
-import { getConversations, getConversationById } from "@/lib/supabase/queries";
+import { getConversations, getConversationById, getOrgIntentColors } from "@/lib/supabase/queries";
 import { ThreadWorkspace } from "./thread-workspace";
 import { NewConversationButton } from "./new-conversation-button";
 
@@ -30,10 +30,11 @@ export async function InboxWorkspace({
   isDemo = false,
   staticConversations,
 }: InboxWorkspaceProps & { isDemo?: boolean; staticConversations?: InboxConversation[] }) {
-  // Fetch all conversations for sidebar list + view counts
-  const allConversations = isDemo && staticConversations 
-    ? staticConversations 
-    : await getConversations();
+  // Fetch all conversations for sidebar list + view counts + intent colors
+  const [allConversations, intentColors] = await Promise.all([
+    isDemo && staticConversations ? Promise.resolve(staticConversations) : getConversations(),
+    isDemo ? Promise.resolve({} as Record<string, string>) : getOrgIntentColors(),
+  ]);
     
   const filtered = filterConversations(allConversations, activeView);
 
@@ -162,9 +163,23 @@ export async function InboxWorkspace({
 
                 <div className="mt-2.5 flex items-center justify-between gap-2">
                   <div className="flex min-w-0 flex-wrap gap-1">
-                    <span className="rounded-full bg-[var(--sage)] px-2 py-0.5 text-[10px] font-medium">
-                      {conversation.intent}
-                    </span>
+                    {(() => {
+                      const intentKey = conversation.intent?.trim().toLowerCase();
+                      const color = intentKey ? intentColors[intentKey] : undefined;
+                      return (
+                        <span
+                          className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-[var(--sage)]"
+                        >
+                          {color && (
+                            <span
+                              className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: color }}
+                            />
+                          )}
+                          {conversation.intent || "unclassified"}
+                        </span>
+                      );
+                    })()}
                     <span className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
                       {conversationStatusLabel[conversation.status]}
                     </span>
@@ -182,7 +197,7 @@ export async function InboxWorkspace({
 
       <div className="flex-1 min-w-0 overflow-hidden">
         {selected ? (
-          <ThreadWorkspace key={selected.id} conversation={selected} isDemo={isDemo} />
+          <ThreadWorkspace key={selected.id} conversation={selected} isDemo={isDemo} intentColors={intentColors} />
         ) : (
           <div className="flex h-full items-center justify-center px-8">
             <div className="max-w-sm rounded-[24px] border border-[var(--line)] bg-[var(--panel-strong)] p-8 text-center">
