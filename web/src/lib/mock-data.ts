@@ -98,7 +98,7 @@ export function filterConversations(
     case "ai-review":
       return list.filter((c) => c.aiConfidence === "red" || c.aiConfidence === "yellow");
     case "unclassified":
-      return list.filter((c) => !c.intent || c.intent.toLowerCase() === "unclassified");
+      return list.filter((c) => !c.intent || c.intent.toLowerCase() === "unclassified" || c.intent.trim() === "");
     default:
       return list;
   }

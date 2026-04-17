@@ -93,9 +93,18 @@ export async function POST(
     return NextResponse.json({ error: "Failed to persist note" }, { status: 500 });
   }
 
+  const now = new Date().toISOString();
   return NextResponse.json({
     ok: true,
     conversationId,
     messageId: (message as { id: string }).id,
+    // Full message shape for optimistic UI updates in the thread workspace
+    message: {
+      id: (message as { id: string }).id,
+      sender: fullName ?? "Agent",
+      senderType: "internal",
+      timestamp: now,
+      body: payload.body,
+    },
   });
 }

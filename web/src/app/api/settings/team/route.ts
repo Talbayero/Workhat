@@ -75,13 +75,19 @@ export async function PATCH(req: NextRequest) {
     if (!Array.isArray(skills)) {
       return NextResponse.json({ error: "skills must be an array" }, { status: 422 });
     }
+    if (skills.length > 20) {
+      return NextResponse.json({ error: "Maximum 20 skills per agent" }, { status: 422 });
+    }
     for (const s of skills) {
+      if (typeof s !== "object" || s === null) {
+        return NextResponse.json({ error: "Each skill must be an object with name and priority" }, { status: 422 });
+      }
       const sk = s as Record<string, unknown>;
-      if (typeof sk?.name !== "string" || !sk.name.trim()) {
+      if (typeof sk.name !== "string" || !sk.name.trim()) {
         return NextResponse.json({ error: "Each skill must have a non-empty name" }, { status: 422 });
       }
-      if (typeof sk.priority !== "number" || sk.priority < 1 || sk.priority > 5) {
-        return NextResponse.json({ error: "Skill priority must be 1–5" }, { status: 422 });
+      if (typeof sk.priority !== "number" || !Number.isInteger(sk.priority) || sk.priority < 1 || sk.priority > 5) {
+        return NextResponse.json({ error: "Skill priority must be an integer between 1 and 5" }, { status: 422 });
       }
     }
     const { data: skillTarget } = await supabase

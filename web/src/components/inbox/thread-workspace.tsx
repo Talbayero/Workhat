@@ -209,24 +209,26 @@ export function ThreadWorkspace({
   }
 
   async function handleClosureConfirm() {
+    const resolvedIntent = closureIntent.trim() || "unclassified";
+
     setClosureSubmitting(true);
     setClosureError(null);
 
     try {
-      // 1. Log the intent correction (even if unchanged — it's a confirmation)
       if (!isDemo) {
-        await fetch("/api/intent-corrections", {
+        // 1. Log the intent correction — best-effort, don't block resolve on failure
+        fetch("/api/intent-corrections", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             conversationId: conversation.id,
             originalIntent: conversation.intent ?? "unclassified",
-            correctedIntent: closureIntent || "unclassified",
+            correctedIntent: resolvedIntent,
             closureNote: closureNote.trim() || null,
           }),
-        });
+        }).catch((err) => console.error("[closure] intent-correction log failed:", err));
 
-        // 2. If there's a closure note, save it as an internal note visible in thread
+        // 2. If there's a closure note, save it as a visible internal note in the thread
         if (closureNote.trim()) {
           const noteRes = await fetch(
             `/api/conversations/${conversation.id}/note`,
@@ -241,15 +243,19 @@ export function ThreadWorkspace({
             if (noteData.message) {
               setLocalMessages((prev) => [...prev, noteData.message!]);
             }
+          } else {
+            // Note failed — not fatal, proceed to resolve anyway
+            console.warn("[closure] Note save failed:", await noteRes.text().catch(() => "unknown"));
           }
         }
       }
 
-      // 3. Mark as resolved
+      // 3. Mark as resolved — this is the authoritative step
       await handleStatusChange("resolved");
       setShowClosureCard(false);
     } catch (err) {
-      setClosureError(err instanceof Error ? err.message : "Could not resolve conversation.");
+      console.error("[closure] resolve failed:", err);
+      setClosureError(err instanceof Error ? err.message : "Could not resolve conversation. Please try again.");
     } finally {
       setClosureSubmitting(false);
     }

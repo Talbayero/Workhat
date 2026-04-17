@@ -110,14 +110,15 @@ export async function POST(req: NextRequest) {
   }
 
   // If the intent was actually changed, fire async AI keyword suggestion
-  if (correction.was_changed) {
-    // Get existing keywords for the corrected intent
-    const { data: intentRow } = await admin
+  if (correction && correction.was_changed === true) {
+    // Get existing keywords for the corrected intent (case-insensitive, take first match)
+    const { data: intentRows } = await admin
       .from("intents")
       .select("keywords")
       .eq("org_id", appUser.org_id)
       .ilike("name", correctedIntent.trim())
-      .single();
+      .limit(1);
+    const intentRow = intentRows?.[0] ?? null;
 
     const existingKeywords = (intentRow?.keywords as string[]) ?? [];
 
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
             .eq("id", correction.id);
         }
       } catch (err) {
-        console.error("[intent-corrections] Keyword suggestion failed:", err);
+        console.error("[intent-corrections] Keyword suggestion failed:", err instanceof Error ? err.message : err);
       }
     })();
   }
@@ -172,7 +173,8 @@ export async function GET() {
 
   // Build pattern summary: count how many times X was corrected to Y
   const patterns: Record<string, { originalIntent: string; correctedIntent: string; count: number }> = {};
-  for (const c of corrections ?? []) {
+  const correctionList = Array.isArray(corrections) ? corrections : [];
+  for (const c of correctionList) {
     if (!c.was_changed) continue;
     const key = `${c.original_intent}→${c.corrected_intent}`;
     if (!patterns[key]) {
@@ -187,7 +189,7 @@ export async function GET() {
     .slice(0, 10);
 
   return NextResponse.json({
-    corrections: corrections ?? [],
+    corrections: correctionList,
     patterns: topPatterns,
   });
 }

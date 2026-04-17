@@ -202,6 +202,7 @@ function SkillEditor({
       onClose(skills);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
       setSaving(false);
     }
   }
@@ -1471,9 +1472,11 @@ function IntentFormModal({
       });
       const data = await res.json() as { intent?: IntentRecord; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Save failed");
-      onSave(data.intent!);
+      if (!data.intent) throw new Error("Invalid response from server");
+      onSave(data.intent);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
       setSaving(false);
     }
   }
