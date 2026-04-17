@@ -15,7 +15,7 @@ async function getAppUser() {
   return data as { id: string; org_id: string; role: string } | null;
 }
 
-const VALID_STATUSES = new Set(["open", "waiting_on_customer", "in_progress", "resolved", "archived"]);
+const VALID_STATUSES = new Set(["open", "waiting_on_customer", "waiting_on_internal", "in_progress", "resolved", "archived"]);
 const VALID_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
 
 type RouteContext = { params: Promise<{ conversationId: string }> };

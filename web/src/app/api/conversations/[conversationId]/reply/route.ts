@@ -13,6 +13,7 @@
  *   8. Return message + sent_reply IDs
  */
 
+import { randomUUID } from "crypto";
 import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -25,6 +26,15 @@ type ReplyPayload = {
   aiDraftId?: string | null; // present when agent used or modified a draft
 };
 
+type OutboundResult = {
+  provider: "gmail" | "workhat_test";
+  providerMessageId: string;
+  providerThreadId: string;
+  rfcMessageId: string;
+  sentFrom: string;
+  simulated?: boolean;
+};
+
 function validateBody(raw: unknown): ReplyPayload | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
@@ -32,6 +42,47 @@ function validateBody(raw: unknown): ReplyPayload | null {
   return {
     body: obj.body.trim(),
     aiDraftId: typeof obj.aiDraftId === "string" ? obj.aiDraftId : null,
+  };
+}
+
+async function buildManualTestOutbound(
+  db: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  conversationId: string
+): Promise<OutboundResult | null> {
+  const { data: inbound } = await db
+    .from("messages")
+    .select("metadata_json")
+    .eq("org_id", orgId)
+    .eq("conversation_id", conversationId)
+    .eq("direction", "inbound")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  const metadata = (inbound as { metadata_json?: Record<string, unknown> } | null)?.metadata_json ?? {};
+  if (metadata.created_manually !== true) return null;
+
+  const { data: channel } = await db
+    .from("channels")
+    .select("inbound_address, config_json")
+    .eq("org_id", orgId)
+    .eq("type", "email")
+    .single();
+
+  const channelData = channel as { inbound_address?: string | null; config_json?: Record<string, string> } | null;
+  const fromAddress =
+    channelData?.config_json?.support_email ||
+    channelData?.inbound_address ||
+    "local-test@work-hat.com";
+
+  return {
+    provider: "workhat_test",
+    providerMessageId: `local-${randomUUID()}`,
+    providerThreadId: `local-thread-${conversationId}`,
+    rfcMessageId: `<workhat-local-${randomUUID()}@work-hat.com>`,
+    sentFrom: fromAddress,
+    simulated: true,
   };
 }
 
@@ -142,7 +193,7 @@ export async function POST(
   const { body, aiDraftId } = payload;
 
   const admin = createAdminClient();
-  let outbound;
+  let outbound: OutboundResult | null;
   try {
     outbound = await sendConversationReplyWithGmail({
       db: admin,
@@ -156,9 +207,13 @@ export async function POST(
   }
 
   if (!outbound) {
+    outbound = await buildManualTestOutbound(admin, orgId, conversationId);
+  }
+
+  if (!outbound) {
     return NextResponse.json({
       error: "Connect Gmail before sending customer replies.",
-      hint: "Use onboarding or settings to connect a Gmail mailbox. Internal notes are still available.",
+      hint: "Use onboarding or settings to connect a Gmail mailbox. Internal notes are still available. Manually created test conversations can still be logged locally.",
     }, { status: 400 });
   }
 
@@ -181,6 +236,7 @@ export async function POST(
         provider_thread_id: outbound.providerThreadId,
         rfc_message_id: outbound.rfcMessageId,
         sent_from: outbound.sentFrom,
+        simulated_send: Boolean(outbound.simulated),
       },
     })
     .select("id")
@@ -236,6 +292,7 @@ export async function POST(
       metadata_json: {
         conversation_id: conversationId,
         has_ai_draft: Boolean(aiDraftId),
+        simulated_send: Boolean(outbound.simulated),
       },
     })
     .then(({ error: e }) => {
@@ -267,5 +324,7 @@ export async function POST(
     messageId,
     sentReplyId,
     analysisQueued: Boolean(aiDraftId && sentReplyId),
+    simulatedSend: Boolean(outbound.simulated),
+    warning: outbound.simulated ? "No Gmail mailbox is connected, so this test reply was logged locally and not emailed to the customer." : undefined,
   });
 }

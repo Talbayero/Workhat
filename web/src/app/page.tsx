@@ -23,7 +23,7 @@ function NavBar() {
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">
-          <Link href="#how-it-works" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">How it works</Link>
+          <Link href="#demo" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
           <Link href="#compare" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
           <Link href="/pricing" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Pricing</Link>
         </nav>
@@ -123,15 +123,15 @@ function Hero() {
 
 function WalkthroughSection() {
   return (
-    <section id="how-it-works" className="px-6 py-16">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-10 max-w-xl">
-          <p className="text-[10px] font-medium tracking-[0.16em] text-[var(--muted)] uppercase">How it works</p>
+    <section id="demo" className="px-6 py-16">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-10 max-w-2xl">
+          <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--muted)]">Interactive demo</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-            The full loop — from email to insight
+            A support command center that shows its work
           </h2>
           <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-            Work Hat doesn&apos;t just draft replies. It captures what your team changes, classifies why, and builds a measurable record of AI quality over time.
+            Inspired by focused product systems, this demo frames the whole support loop: triage, AI guidance, human edits, and QA intelligence in one connected operating surface.
           </p>
         </div>
         <AnimatedPreview />
@@ -425,7 +425,7 @@ function Footer() {
           <div>
             <p className="mb-3 text-[10px] font-medium tracking-widest text-[var(--muted)] uppercase">Product</p>
             <nav className="flex flex-col gap-2">
-              <Link href="#how-it-works" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">How it works</Link>
+              <Link href="#demo" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
               <Link href="#features" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Features</Link>
               <Link href="#compare" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
               <Link href="/pricing" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Pricing</Link>

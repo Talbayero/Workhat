@@ -70,6 +70,7 @@ export function ThreadWorkspace({
   const [pendingSend, setPendingSend] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sendNotice, setSendNotice] = useState<string | null>(null);
   const [lastEditRecord, setLastEditRecord] = useState<EditRecord | null>(null);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>(conversation.messages);
   const [status, setStatus] = useState<ConversationStatus>(conversation.status);
@@ -194,6 +195,7 @@ export function ThreadWorkspace({
     setPendingSend(false);
     setSendError(null);
     if (mode === "note") setActivePanel(null);
+    setSendNotice(null);
   }
 
   function handleSendClick() {
@@ -235,6 +237,7 @@ export function ThreadWorkspace({
           hint?: string;
           sentReplyId?: string | null;
           analysisQueued?: boolean;
+          warning?: string;
         };
 
         if (!response.ok) {
@@ -244,9 +247,11 @@ export function ThreadWorkspace({
         if (responseData.analysisQueued && responseData.sentReplyId) {
           replySentReplyId = responseData.sentReplyId;
         }
+        setSendNotice(responseData.warning ?? null);
       } else {
         // Mock network delay
         await new Promise(resolve => setTimeout(resolve, 600));
+        setSendNotice(null);
       }
 
       const newMessage: LocalMessage = {
@@ -450,6 +455,22 @@ export function ThreadWorkspace({
           {/* Scroll anchor */}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Local-only send notice — shown when Gmail is skipped for a manual test conversation */}
+        {sendNotice && (
+          <div className="shrink-0 border-t border-[var(--line)] px-5 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.08)] px-4 py-3">
+              <span className="text-xs leading-5 text-[var(--muted)]">{sendNotice}</span>
+              <button
+                onClick={() => setSendNotice(null)}
+                className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                aria-label="Dismiss"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Edit capture feedback — shows after a reply is confirmed */}
         {lastEditRecord && (

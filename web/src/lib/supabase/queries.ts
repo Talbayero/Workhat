@@ -51,6 +51,20 @@ function countOpen(
       !["resolved", "archived"].includes(c.status)
   ).length;
 }
+async function getCurrentOrgId(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: appUser } = await supabase
+    .from("users")
+    .select("org_id")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  return (appUser as { org_id?: string } | null)?.org_id ?? null;
+}
 
 // ── Conversations ─────────────────────────────────────────────────────────────
 
@@ -110,6 +124,8 @@ export async function getConversations(
   view?: InboxViewId
 ): Promise<InboxConversation[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
 
   let query = supabase
     .from("conversations")
@@ -119,6 +135,7 @@ export async function getConversations(
        contacts(full_name, email, phone, tier, notes, tags),
        companies(name)`
     )
+    .eq("org_id", orgId)
     .order("last_message_at", { ascending: false });
 
   // Apply view filter at DB level where possible
@@ -154,6 +171,7 @@ export async function getConversationById(
     .eq("auth_user_id", user.id)
     .single();
   if (!appUser) return null;
+  const orgId = (appUser as { org_id: string }).org_id;
 
   const [convRes, msgRes] = await Promise.all([
     supabase
@@ -165,12 +183,13 @@ export async function getConversationById(
          companies(name)`
       )
       .eq("id", id)
-      .eq("org_id", (appUser as { org_id: string }).org_id)
+      .eq("org_id", orgId)
       .single(),
     supabase
       .from("messages")
       .select("id, sender_type, author_name, body_text, is_note, created_at")
       .eq("conversation_id", id)
+      .eq("org_id", orgId)
       .order("created_at", { ascending: true }),
   ]);
 
@@ -192,6 +211,8 @@ export async function getConversationsForContact(
   contactId: string
 ): Promise<InboxConversation[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
   const { data, error } = await supabase
     .from("conversations")
     .select(
@@ -201,6 +222,7 @@ export async function getConversationsForContact(
        companies(name)`
     )
     .eq("contact_id", contactId)
+    .eq("org_id", orgId)
     .order("last_message_at", { ascending: false });
 
   if (error) return [];
@@ -211,6 +233,8 @@ export async function getConversationsForCompany(
   companyId: string
 ): Promise<InboxConversation[]> {
   const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) return [];
   const { data, error } = await supabase
     .from("conversations")
     .select(
@@ -220,6 +244,7 @@ export async function getConversationsForCompany(
        companies(name)`
     )
     .eq("company_id", companyId)
+    .eq("org_id", orgId)
     .order("last_message_at", { ascending: false });
 
   if (error) return [];
