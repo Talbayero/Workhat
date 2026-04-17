@@ -36,12 +36,14 @@ function CompanyFormModal({
   companyId,
   onClose,
   onSaved,
+  isDemo = false,
 }: {
   mode: "create" | "edit";
   initial?: { name: string; domain: string; industry: string; tier: string; notes: string };
   companyId?: string;
   onClose: () => void;
   onSaved: () => void;
+  isDemo?: boolean;
 }) {
   const [form, setForm] = useState({
     name: initial?.name ?? "",
@@ -62,6 +64,13 @@ function CompanyFormModal({
     e.preventDefault();
     if (!form.name.trim()) { setError("Company name is required."); return; }
     setSaving(true);
+
+    if (isDemo) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      setSaving(false);
+      onSaved();
+      return;
+    }
 
     const url = mode === "create" ? "/api/companies" : `/api/companies/${companyId}`;
     const method = mode === "create" ? "POST" : "PATCH";
@@ -202,7 +211,7 @@ export function CompaniesShell({
   return (
     <>
       {modal === "create" && (
-        <CompanyFormModal mode="create" onClose={() => setModal(null)} onSaved={refresh} />
+        <CompanyFormModal mode="create" onClose={() => setModal(null)} onSaved={refresh} isDemo={isDemo} />
       )}
       {modal === "edit" && selectedCompany && (
         <CompanyFormModal
@@ -217,6 +226,7 @@ export function CompaniesShell({
           }}
           onClose={() => setModal(null)}
           onSaved={refresh}
+          isDemo={isDemo}
         />
       )}
 
@@ -468,3 +478,6 @@ export function CompaniesShell({
     </>
   );
 }
+
+
+

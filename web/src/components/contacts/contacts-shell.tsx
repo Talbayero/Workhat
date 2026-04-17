@@ -39,7 +39,7 @@ function ContactStatusPill({ status }: { status: ContactRecord["status"] }) {
 
 // ── Create contact modal ───────────────────────────────────────────────────────
 
-function CreateContactModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function CreateContactModal({ onClose, onSaved, isDemo = false }: { onClose: () => void; onSaved: () => void; isDemo?: boolean }) {
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", notes: "", tags: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +56,12 @@ function CreateContactModal({ onClose, onSaved }: { onClose: () => void; onSaved
       return;
     }
     setSaving(true);
+    if (isDemo) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      setSaving(false);
+      onSaved();
+      return;
+    }
     const res = await fetch("/api/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -147,7 +153,7 @@ function CreateContactModal({ onClose, onSaved }: { onClose: () => void; onSaved
 
 // ── Edit contact modal ────────────────────────────────────────────────────────
 
-function EditContactModal({ contact, onClose, onSaved }: { contact: ContactRecord; onClose: () => void; onSaved: () => void }) {
+function EditContactModal({ contact, onClose, onSaved, isDemo = false }: { contact: ContactRecord; onClose: () => void; onSaved: () => void; isDemo?: boolean }) {
   const [form, setForm] = useState({
     firstName: contact.firstName,
     lastName: contact.lastName,
@@ -169,6 +175,12 @@ function EditContactModal({ contact, onClose, onSaved }: { contact: ContactRecor
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    if (isDemo) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      setSaving(false);
+      onSaved();
+      return;
+    }
     const res = await fetch(`/api/contacts/${contact.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -333,9 +345,9 @@ export function ContactsShell({
 
   return (
     <>
-      {modal === "create" && <CreateContactModal onClose={() => setModal(null)} onSaved={refresh} />}
+      {modal === "create" && <CreateContactModal onClose={() => setModal(null)} onSaved={refresh} isDemo={isDemo} />}
       {modal === "edit" && selectedContact && (
-        <EditContactModal contact={selectedContact} onClose={() => setModal(null)} onSaved={refresh} />
+        <EditContactModal contact={selectedContact} onClose={() => setModal(null)} onSaved={refresh} isDemo={isDemo} />
       )}
 
       <div className="flex h-full overflow-hidden">
@@ -614,3 +626,6 @@ export function ContactsShell({
     </>
   );
 }
+
+
+

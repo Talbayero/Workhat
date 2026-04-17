@@ -11,7 +11,7 @@ export default async function DemoCompanyDetailPage({ params }: { params: { id: 
 
   return (
     <CompaniesShell
-      initialCompanies={companies}
+      companies={companies}
       selectedCompany={company}
       isDemo={true}
       baseDir="/demo"

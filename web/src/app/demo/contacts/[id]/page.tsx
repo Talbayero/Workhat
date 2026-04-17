@@ -11,7 +11,7 @@ export default async function DemoContactDetailPage({ params }: { params: { id: 
 
   return (
     <ContactsShell
-      initialContacts={contacts}
+      contacts={contacts}
       selectedContact={contact}
       isDemo={true}
       baseDir="/demo"
