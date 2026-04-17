@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { classifyIntent as classifyIntentFromDb } from "@/lib/ai/intent-classifier";
 
 /* ─────────────────────────────────────────────
    POST /api/inbound/email
@@ -32,16 +33,10 @@ interface PostmarkPayload {
 }
 
 // ── Intent classification ────────────────────────────────────────────────────
+// Hardcoded fallback used only when no org context is available yet (step 1).
+// Once orgId is resolved, we use the DB-driven classifier.
 
-type IntentLabel =
-  | "billing"
-  | "support"
-  | "feature_request"
-  | "onboarding"
-  | "escalation"
-  | "general";
-
-function classifyIntent(subject: string, body: string): IntentLabel {
+function classifyIntentFallback(subject: string, body: string): string {
   const t = `${subject} ${body}`.toLowerCase();
   if (/invoice|payment|charge|refund|bill|subscription|cancel|pricing|receipt|overcharg/.test(t))
     return "billing";
@@ -53,7 +48,7 @@ function classifyIntent(subject: string, body: string): IntentLabel {
     return "feature_request";
   if (/getting started|onboard|setup|how.*do|new user|tutorial|access|sign.?up/.test(t))
     return "onboarding";
-  return "general";
+  return "unclassified";
 }
 
 function scoreRisk(subject: string, body: string): "green" | "yellow" | "red" {
@@ -249,7 +244,19 @@ export async function POST(req: NextRequest) {
 
   // ── 6. Classify intent and risk ─────────────────────────────────────────
   const cleanBody = stripQuotedReply(payload.TextBody ?? "");
-  const intent = classifyIntent(payload.Subject ?? "", cleanBody);
+
+  // Try DB-driven classifier first; fall back to hardcoded regex if it fails
+  let intent: string;
+  try {
+    intent = await classifyIntentFromDb(orgId, payload.Subject ?? "", cleanBody);
+    // If no DB intents configured yet, fall back to regex rules
+    if (intent === "unclassified") {
+      const fallback = classifyIntentFallback(payload.Subject ?? "", cleanBody);
+      if (fallback !== "unclassified") intent = fallback;
+    }
+  } catch {
+    intent = classifyIntentFallback(payload.Subject ?? "", cleanBody);
+  }
   const riskLevel = scoreRisk(payload.Subject ?? "", cleanBody);
   const preview = buildPreview(cleanBody || (payload.TextBody ?? ""));
 

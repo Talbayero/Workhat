@@ -66,6 +66,32 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // ── Skills update — managers+ can patch skills without being an admin ──────
+  if ("skills" in body) {
+    if (!["admin", "manager"].includes(caller.role)) {
+      return NextResponse.json({ error: "Only managers can update skills" }, { status: 403 });
+    }
+    const skills = body.skills;
+    if (!Array.isArray(skills)) {
+      return NextResponse.json({ error: "skills must be an array" }, { status: 422 });
+    }
+    for (const s of skills) {
+      const sk = s as Record<string, unknown>;
+      if (typeof sk?.name !== "string" || !sk.name.trim()) {
+        return NextResponse.json({ error: "Each skill must have a non-empty name" }, { status: 422 });
+      }
+      if (typeof sk.priority !== "number" || sk.priority < 1 || sk.priority > 5) {
+        return NextResponse.json({ error: "Skill priority must be 1–5" }, { status: 422 });
+      }
+    }
+    const { data: skillTarget } = await supabase
+      .from("users").select("id").eq("id", userId).eq("org_id", caller.org_id).single();
+    if (!skillTarget) return NextResponse.json({ error: "User not found in org" }, { status: 404 });
+    await supabase.from("users").update({ skills }).eq("id", userId).eq("org_id", caller.org_id);
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Role update ───────────────────────────────────────────────────────────
   if (!VALID_ROLES.has(body.role as string)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 422 });
   }

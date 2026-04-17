@@ -72,7 +72,7 @@ export type InboxConversation = {
   };
 };
 
-export type InboxViewId = "all" | "mine" | "unassigned" | "high-risk" | "ai-review";
+export type InboxViewId = "all" | "mine" | "unassigned" | "high-risk" | "ai-review" | "unclassified";
 
 export const inboxViews: { id: InboxViewId; label: string; count: number }[] = [
   { id: "all", label: "All conversations", count: 42 },
@@ -80,6 +80,7 @@ export const inboxViews: { id: InboxViewId; label: string; count: number }[] = [
   { id: "unassigned", label: "Unassigned", count: 6 },
   { id: "high-risk", label: "High risk", count: 4 },
   { id: "ai-review", label: "AI needs review", count: 8 },
+  { id: "unclassified", label: "Unclassified", count: 0 },
 ];
 
 export function filterConversations(
@@ -96,6 +97,8 @@ export function filterConversations(
       return list.filter((c) => c.riskLevel === "red" || c.riskLevel === "yellow");
     case "ai-review":
       return list.filter((c) => c.aiConfidence === "red" || c.aiConfidence === "yellow");
+    case "unclassified":
+      return list.filter((c) => !c.intent || c.intent.toLowerCase() === "unclassified");
     default:
       return list;
   }

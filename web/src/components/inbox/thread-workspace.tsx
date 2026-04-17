@@ -95,6 +95,13 @@ export function ThreadWorkspace({
   const [correctionSaved, setCorrectionSaved] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
 
+  // Closure card state — shown when agent clicks Resolve
+  const [showClosureCard, setShowClosureCard] = useState(false);
+  const [closureIntent, setClosureIntent] = useState(conversation.intent ?? "");
+  const [closureNote, setClosureNote] = useState("");
+  const [closureSubmitting, setClosureSubmitting] = useState(false);
+  const [closureError, setClosureError] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom whenever messages change
@@ -190,6 +197,61 @@ export function ThreadWorkspace({
       setThreadError(error instanceof Error ? error.message : "Unable to update status.");
     } finally {
       setStatusUpdating(false);
+    }
+  }
+
+  // Intercept Resolve → show closure card instead
+  function handleResolveClick() {
+    setClosureIntent(conversation.intent ?? "");
+    setClosureNote("");
+    setClosureError(null);
+    setShowClosureCard(true);
+  }
+
+  async function handleClosureConfirm() {
+    setClosureSubmitting(true);
+    setClosureError(null);
+
+    try {
+      // 1. Log the intent correction (even if unchanged — it's a confirmation)
+      if (!isDemo) {
+        await fetch("/api/intent-corrections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: conversation.id,
+            originalIntent: conversation.intent ?? "unclassified",
+            correctedIntent: closureIntent || "unclassified",
+            closureNote: closureNote.trim() || null,
+          }),
+        });
+
+        // 2. If there's a closure note, save it as an internal note visible in thread
+        if (closureNote.trim()) {
+          const noteRes = await fetch(
+            `/api/conversations/${conversation.id}/note`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ body: `[Closure note] ${closureNote.trim()}` }),
+            }
+          );
+          if (noteRes.ok) {
+            const noteData = await noteRes.json() as { message?: LocalMessage };
+            if (noteData.message) {
+              setLocalMessages((prev) => [...prev, noteData.message!]);
+            }
+          }
+        }
+      }
+
+      // 3. Mark as resolved
+      await handleStatusChange("resolved");
+      setShowClosureCard(false);
+    } catch (err) {
+      setClosureError(err instanceof Error ? err.message : "Could not resolve conversation.");
+    } finally {
+      setClosureSubmitting(false);
     }
   }
 
@@ -461,8 +523,8 @@ export function ThreadWorkspace({
               </div>
               {status !== "resolved" ? (
                 <button
-                  onClick={() => handleStatusChange("resolved")}
-                  disabled={statusUpdating}
+                  onClick={handleResolveClick}
+                  disabled={statusUpdating || showClosureCard}
                   className="rounded-full border border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.08)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[rgba(120,161,122,0.18)] disabled:opacity-50"
                 >
                   ✓ Resolve
@@ -559,6 +621,77 @@ export function ThreadWorkspace({
               >
                 <CloseIcon />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Closure card — shown when agent clicks Resolve */}
+        {showClosureCard && (
+          <div className="shrink-0 border-t border-[var(--line)] bg-[var(--panel-strong)] px-5 py-4">
+            <div className="rounded-[18px] border border-[rgba(120,161,122,0.3)] bg-[rgba(120,161,122,0.06)] p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold">Resolve conversation</p>
+                <button
+                  onClick={() => setShowClosureCard(false)}
+                  className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                  aria-label="Cancel"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+
+              {/* Intent confirmation */}
+              <div className="space-y-1.5">
+                <label className="eyebrow text-[9px] text-[var(--muted)]">Confirm intent</label>
+                <input
+                  type="text"
+                  value={closureIntent}
+                  onChange={(e) => setClosureIntent(e.target.value)}
+                  placeholder="e.g. billing, support, onboarding"
+                  className="w-full rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
+                />
+                {conversation.intent && closureIntent.toLowerCase().trim() !== (conversation.intent ?? "").toLowerCase().trim() && (
+                  <p className="text-[10px] text-amber-400">
+                    Changed from &quot;{conversation.intent}&quot; — this correction will help improve future classification.
+                  </p>
+                )}
+              </div>
+
+              {/* Closure note */}
+              <div className="space-y-1.5">
+                <label className="eyebrow text-[9px] text-[var(--muted)]">Closure note (optional)</label>
+                <textarea
+                  value={closureNote}
+                  onChange={(e) => setClosureNote(e.target.value)}
+                  placeholder="Brief summary — reason for re-assignment, resolution details, or anything useful for the self-learning loop…"
+                  rows={3}
+                  className="w-full resize-none rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
+                />
+                <p className="text-[10px] text-[var(--muted)]">
+                  Saved as an internal note visible to all agents. If you re-assigned the intent, your note helps the AI learn better keywords.
+                </p>
+              </div>
+
+              {closureError && (
+                <p className="text-xs text-[rgba(220,80,80,0.9)]">{closureError}</p>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  onClick={() => setShowClosureCard(false)}
+                  disabled={closureSubmitting}
+                  className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClosureConfirm}
+                  disabled={closureSubmitting}
+                  className="rounded-full bg-[rgba(120,161,122,0.8)] px-5 py-2 text-xs font-medium text-white hover:bg-[rgba(120,161,122,1)] disabled:opacity-50 transition-colors"
+                >
+                  {closureSubmitting ? "Resolving…" : "✓ Confirm & resolve"}
+                </button>
+              </div>
             </div>
           </div>
         )}

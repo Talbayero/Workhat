@@ -52,15 +52,18 @@ type EmailDiagnostics = {
   };
 };
 
+type AgentSkill = { name: string; priority: number };
+
 type TeamMember = {
   id: string;
   full_name: string;
   email: string;
   role: string;
   status: string;
+  skills?: AgentSkill[];
 };
 
-type SettingsTab = "setup" | "organization" | "team" | "channels" | "ai" | "billing";
+type SettingsTab = "setup" | "organization" | "team" | "channels" | "ai" | "intents" | "billing";
 
 const tabs: { id: SettingsTab; label: string }[] = [
   { id: "setup", label: "Setup wizard" },
@@ -68,6 +71,7 @@ const tabs: { id: SettingsTab; label: string }[] = [
   { id: "team", label: "Team members" },
   { id: "channels", label: "Channels" },
   { id: "ai", label: "AI settings" },
+  { id: "intents", label: "Intents" },
   { id: "billing", label: "Billing" },
 ];
 
@@ -129,6 +133,159 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
     >
       <span className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${checked ? "translate-x-4" : "translate-x-0"}`} />
     </button>
+  );
+}
+
+// ── Skill editor (used inside TeamTab) ───────────────────────────────────────
+
+const PRIORITY_LABELS: Record<number, string> = {
+  1: "Primary",
+  2: "Strong",
+  3: "Moderate",
+  4: "Secondary",
+  5: "Backup",
+};
+
+function SkillEditor({
+  memberId,
+  memberName,
+  initialSkills,
+  onClose,
+}: {
+  memberId: string;
+  memberName: string;
+  initialSkills: AgentSkill[];
+  onClose: (updated?: AgentSkill[]) => void;
+}) {
+  const [skills, setSkills] = useState<AgentSkill[]>(initialSkills);
+  const [newSkill, setNewSkill] = useState("");
+  const [newPriority, setNewPriority] = useState(3);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function addSkill() {
+    const name = newSkill.trim().toLowerCase();
+    if (!name) return;
+    if (skills.some((s) => s.name === name)) {
+      setError("Skill already added.");
+      return;
+    }
+    setSkills((prev) => [...prev, { name, priority: newPriority }].sort((a, b) => a.priority - b.priority));
+    setNewSkill("");
+    setNewPriority(3);
+    setError(null);
+  }
+
+  function removeSkill(name: string) {
+    setSkills((prev) => prev.filter((s) => s.name !== name));
+  }
+
+  function updatePriority(name: string, priority: number) {
+    setSkills((prev) =>
+      prev.map((s) => (s.name === name ? { ...s, priority } : s)).sort((a, b) => a.priority - b.priority)
+    );
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/settings/team?userId=${memberId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skills }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error ?? "Save failed");
+      }
+      onClose(skills);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-[18px] border border-[var(--line)] bg-[var(--sage)] p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">Skills — {memberName}</p>
+        <button onClick={() => onClose()} className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]">✕</button>
+      </div>
+
+      {/* Existing skills */}
+      {skills.length === 0 ? (
+        <p className="text-xs text-[var(--muted)]">No skills assigned yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {skills.map((skill) => (
+            <div key={skill.name} className="flex items-center gap-2">
+              <span className="flex-1 rounded-[10px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-1.5 text-xs font-medium capitalize">
+                {skill.name}
+              </span>
+              <select
+                value={skill.priority}
+                onChange={(e) => updatePriority(skill.name, Number(e.target.value))}
+                className="rounded-[10px] border border-[var(--line)] bg-[var(--panel-strong)] px-2 py-1.5 text-xs text-[var(--foreground)] outline-none"
+              >
+                {[1, 2, 3, 4, 5].map((p) => (
+                  <option key={p} value={p}>{p} — {PRIORITY_LABELS[p]}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => removeSkill(skill.name)}
+                className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new skill */}
+      <div className="flex items-center gap-2 pt-1">
+        <input
+          type="text"
+          value={newSkill}
+          onChange={(e) => setNewSkill(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addSkill()}
+          placeholder="e.g. finance, back office"
+          className="flex-1 rounded-[10px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-1.5 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)]"
+        />
+        <select
+          value={newPriority}
+          onChange={(e) => setNewPriority(Number(e.target.value))}
+          className="rounded-[10px] border border-[var(--line)] bg-[var(--panel-strong)] px-2 py-1.5 text-xs text-[var(--foreground)] outline-none"
+        >
+          {[1, 2, 3, 4, 5].map((p) => (
+            <option key={p} value={p}>{p} — {PRIORITY_LABELS[p]}</option>
+          ))}
+        </select>
+        <button
+          onClick={addSkill}
+          disabled={!newSkill.trim()}
+          className="rounded-full bg-[var(--moss)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+        >
+          Add
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-[rgba(220,80,80,0.9)]">{error}</p>}
+
+      <div className="flex justify-end gap-2 pt-1">
+        <button onClick={() => onClose()} className="rounded-full border border-[var(--line-strong)] px-4 py-1.5 text-xs font-medium">
+          Cancel
+        </button>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="rounded-full bg-[var(--moss)] px-4 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save skills"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -371,6 +528,7 @@ function TeamTab({
   const [inviting, setInviting] = useState(false);
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSkillsId, setEditingSkillsId] = useState<string | null>(null);
 
   async function sendInvite() {
     if (!inviteEmail.trim() || !inviteEmail.includes("@")) return;
@@ -520,6 +678,18 @@ function TeamTab({
                     <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px]">
                       {roleLabel[member.role] ?? member.role}
                     </span>
+                    {/* Skill pills */}
+                    {(member.skills ?? []).slice(0, 2).map((s) => (
+                      <span
+                        key={s.name}
+                        className="rounded-full border border-[rgba(120,161,122,0.35)] bg-[rgba(120,161,122,0.08)] px-2.5 py-1 text-[10px] capitalize text-[var(--muted)]"
+                      >
+                        {s.name}
+                      </span>
+                    ))}
+                    {(member.skills ?? []).length > 2 && (
+                      <span className="text-[10px] text-[var(--muted)]">+{(member.skills ?? []).length - 2}</span>
+                    )}
                     {member.status === "pending" ? (
                       <span className="rounded-full bg-[rgba(169,146,125,0.15)] border border-[rgba(169,146,125,0.3)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
                         Invited
@@ -536,6 +706,12 @@ function TeamTab({
                           Role
                         </button>
                         <button
+                          onClick={() => setEditingSkillsId(editingSkillsId === member.id ? null : member.id)}
+                          className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                        >
+                          Skills
+                        </button>
+                        <button
                           onClick={() => removeMember(member.id)}
                           className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
                         >
@@ -546,6 +722,25 @@ function TeamTab({
                   </>
                 )}
               </div>
+
+              {/* Inline skill editor */}
+              {editingSkillsId === member.id && (
+                <div className="px-5 pb-4">
+                  <SkillEditor
+                    memberId={member.id}
+                    memberName={member.full_name}
+                    initialSkills={member.skills ?? []}
+                    onClose={(updated) => {
+                      setEditingSkillsId(null);
+                      if (updated) {
+                        setMembers((prev) =>
+                          prev.map((m) => (m.id === member.id ? { ...m, skills: updated } : m))
+                        );
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </div>
           ))
         )}
@@ -1198,6 +1393,443 @@ function AiTab({ onDirty }: { onDirty: () => void }) {
   );
 }
 
+// ── Intents tab ───────────────────────────────────────────────────────────────
+
+type IntentRecord = {
+  id: string;
+  name: string;
+  color: string;
+  keywords: string[];
+  skill_required: string | null;
+  priority_order: number;
+  priority_level: "high" | "normal" | "low";
+  created_at: string;
+};
+
+const INTENT_COLORS = [
+  "#78a17a", // moss green
+  "#6b8fc7", // blue
+  "#c77a6b", // red
+  "#c7b26b", // amber
+  "#9b6bc7", // purple
+  "#6bc7c3", // teal
+  "#c76b9b", // pink
+  "#8a9b6b", // olive
+];
+
+const PRIORITY_LEVEL_LABELS: Record<string, string> = {
+  high: "High priority (SLA)",
+  normal: "Normal",
+  low: "Low priority",
+};
+
+function IntentFormModal({
+  intent,
+  onSave,
+  onClose,
+}: {
+  intent: IntentRecord | null; // null = create new
+  onSave: (saved: IntentRecord) => void;
+  onClose: () => void;
+}) {
+  const isEdit = Boolean(intent);
+  const [name, setName] = useState(intent?.name ?? "");
+  const [color, setColor] = useState(intent?.color ?? INTENT_COLORS[0]);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [keywords, setKeywords] = useState<string[]>(intent?.keywords ?? []);
+  const [skillRequired, setSkillRequired] = useState(intent?.skill_required ?? "");
+  const [priorityOrder, setPriorityOrder] = useState(intent?.priority_order ?? 100);
+  const [priorityLevel, setPriorityLevel] = useState<"high" | "normal" | "low">(intent?.priority_level ?? "normal");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function addKeyword() {
+    const kw = keywordInput.trim().toLowerCase();
+    if (!kw || keywords.includes(kw)) return;
+    setKeywords((prev) => [...prev, kw]);
+    setKeywordInput("");
+  }
+
+  function removeKeyword(kw: string) {
+    setKeywords((prev) => prev.filter((k) => k !== kw));
+  }
+
+  async function handleSave() {
+    if (!name.trim()) { setError("Intent name is required."); return; }
+    setSaving(true);
+    setError(null);
+
+    const body = { name: name.trim(), color, keywords, skill_required: skillRequired.trim() || null, priority_order: priorityOrder, priority_level: priorityLevel };
+    const url = isEdit ? `/api/intents/${intent!.id}` : "/api/intents";
+    const method = isEdit ? "PATCH" : "POST";
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json() as { intent?: IntentRecord; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      onSave(data.intent!);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg rounded-[24px] border border-[var(--line)] bg-[var(--background)] p-6 shadow-2xl">
+        <div className="flex items-center justify-between gap-4 mb-5">
+          <h2 className="text-base font-semibold">{isEdit ? "Edit intent" : "New intent"}</h2>
+          <button onClick={onClose} className="text-[var(--muted)] hover:text-[var(--foreground)] text-lg leading-none">✕</button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Name + color */}
+          <div className="flex gap-3">
+            <div className="flex-1 space-y-1.5">
+              <label className="eyebrow text-[9px] text-[var(--muted)]">Name *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Billing, Onboarding"
+                className="w-full rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm outline-none focus:border-[var(--moss)]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="eyebrow text-[9px] text-[var(--muted)]">Color</label>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {INTENT_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setColor(c)}
+                    className={`h-6 w-6 rounded-full border-2 transition-transform ${color === c ? "border-white scale-110" : "border-transparent"}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Keywords */}
+          <div className="space-y-1.5">
+            <label className="eyebrow text-[9px] text-[var(--muted)]">Keywords — first match wins</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={keywordInput}
+                onChange={(e) => setKeywordInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addKeyword()}
+                placeholder="invoice, payment, charge…"
+                className="flex-1 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm outline-none focus:border-[var(--moss)]"
+              />
+              <button
+                onClick={addKeyword}
+                disabled={!keywordInput.trim()}
+                className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
+              >
+                Add
+              </button>
+            </div>
+            {keywords.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {keywords.map((kw) => (
+                  <span
+                    key={kw}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line-strong)] bg-[var(--sage)] px-2.5 py-1 text-xs"
+                  >
+                    {kw}
+                    <button onClick={() => removeKeyword(kw)} className="text-[var(--muted)] hover:text-[var(--foreground)]">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Skill + priority row */}
+          <div className="flex gap-3">
+            <div className="flex-1 space-y-1.5">
+              <label className="eyebrow text-[9px] text-[var(--muted)]">Required skill for routing</label>
+              <input
+                type="text"
+                value={skillRequired}
+                onChange={(e) => setSkillRequired(e.target.value)}
+                placeholder="e.g. finance, back office"
+                className="w-full rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm outline-none focus:border-[var(--moss)]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="eyebrow text-[9px] text-[var(--muted)]">Priority order</label>
+              <input
+                type="number"
+                value={priorityOrder}
+                onChange={(e) => setPriorityOrder(Number(e.target.value))}
+                min={1}
+                className="w-20 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm outline-none focus:border-[var(--moss)]"
+              />
+            </div>
+          </div>
+
+          {/* SLA level */}
+          <div className="space-y-1.5">
+            <label className="eyebrow text-[9px] text-[var(--muted)]">SLA priority level</label>
+            <div className="flex gap-2">
+              {(["high", "normal", "low"] as const).map((lvl) => (
+                <button
+                  key={lvl}
+                  onClick={() => setPriorityLevel(lvl)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    priorityLevel === lvl
+                      ? "border-[var(--moss)] bg-[rgba(120,161,122,0.1)] text-[var(--foreground)]"
+                      : "border-[var(--line-strong)] text-[var(--muted)]"
+                  }`}
+                >
+                  {PRIORITY_LEVEL_LABELS[lvl]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {error && <p className="mt-3 text-xs text-[rgba(220,80,80,0.9)]">{error}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !name.trim()}
+            className="rounded-full bg-[var(--moss)] px-5 py-2 text-xs font-medium text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : isEdit ? "Save changes" : "Create intent"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IntentsTab({ canManage }: { canManage: boolean }) {
+  const [intents, setIntents] = useState<IntentRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState<"create" | IntentRecord | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/intents");
+      const data = await res.json() as { intents?: IntentRecord[] };
+      setIntents(data.intents ?? []);
+    } catch {
+      setError("Could not load intents.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this intent? Conversations already tagged will keep their label.")) return;
+    setDeleting(id);
+    try {
+      const res = await fetch(`/api/intents/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      setIntents((prev) => prev.filter((i) => i.id !== id));
+    } catch {
+      setError("Could not delete intent.");
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  function handleSaved(saved: IntentRecord) {
+    setIntents((prev) => {
+      const exists = prev.find((i) => i.id === saved.id);
+      const updated = exists
+        ? prev.map((i) => (i.id === saved.id ? saved : i))
+        : [...prev, saved];
+      return updated.sort((a, b) => a.priority_order - b.priority_order);
+    });
+    setModal(null);
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold">Intent classification</h2>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Intents are matched in priority order — first keyword match wins.
+            Unmatched conversations land in the Unclassified inbox filter.
+          </p>
+        </div>
+        {canManage && (
+          <button
+            onClick={() => setModal("create")}
+            className="shrink-0 rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white"
+          >
+            + New intent
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div className="rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs text-[rgba(255,210,210,0.9)]">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <SectionCard>
+          <p className="text-sm text-[var(--muted)]">Loading intents…</p>
+        </SectionCard>
+      ) : intents.length === 0 ? (
+        <SectionCard>
+          <div className="py-6 text-center">
+            <p className="text-sm font-medium">No intents configured</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Create your first intent to start auto-classifying inbound messages.
+            </p>
+            {canManage && (
+              <button
+                onClick={() => setModal("create")}
+                className="mt-4 rounded-full bg-[var(--moss)] px-5 py-2 text-xs font-medium text-white"
+              >
+                Create first intent
+              </button>
+            )}
+          </div>
+        </SectionCard>
+      ) : (
+        <SectionCard className="p-0 overflow-hidden">
+          {/* Header row */}
+          <div className="grid grid-cols-[2fr_3fr_1fr_1fr_80px] gap-3 border-b border-[var(--line)] px-5 py-2.5">
+            {["Intent", "Keywords", "Skill", "SLA", ""].map((h) => (
+              <p key={h} className="eyebrow text-[9px] text-[var(--muted)]">{h}</p>
+            ))}
+          </div>
+          {intents.map((intent, i) => (
+            <div
+              key={intent.id}
+              className={`grid grid-cols-[2fr_3fr_1fr_1fr_80px] items-center gap-3 px-5 py-3.5 ${
+                i < intents.length - 1 ? "border-b border-[var(--line)]" : ""
+              }`}
+            >
+              {/* Name pill */}
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: intent.color }}
+                />
+                <p className="truncate text-sm font-medium">{intent.name}</p>
+                <span className="shrink-0 rounded border border-[var(--line)] px-1.5 py-0.5 text-[9px] text-[var(--muted)]">
+                  #{intent.priority_order}
+                </span>
+              </div>
+
+              {/* Keywords */}
+              <div className="flex flex-wrap gap-1 min-w-0">
+                {intent.keywords.slice(0, 4).map((kw) => (
+                  <span
+                    key={kw}
+                    className="rounded-full border border-[var(--line)] bg-[var(--sage)] px-2 py-0.5 text-[10px]"
+                  >
+                    {kw}
+                  </span>
+                ))}
+                {intent.keywords.length > 4 && (
+                  <span className="text-[10px] text-[var(--muted)]">+{intent.keywords.length - 4}</span>
+                )}
+                {intent.keywords.length === 0 && (
+                  <span className="text-[10px] text-[var(--muted)] italic">No keywords</span>
+                )}
+              </div>
+
+              {/* Skill */}
+              <p className="truncate text-xs text-[var(--muted)] capitalize">
+                {intent.skill_required || "—"}
+              </p>
+
+              {/* SLA */}
+              <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                intent.priority_level === "high"
+                  ? "bg-[rgba(144,50,61,0.12)] text-[rgba(255,180,180,0.9)]"
+                  : intent.priority_level === "low"
+                  ? "bg-[var(--sage)] text-[var(--muted)]"
+                  : "bg-[var(--sage)] text-[var(--foreground)]"
+              }`}>
+                {intent.priority_level}
+              </span>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 justify-end">
+                {canManage && (
+                  <>
+                    <button
+                      onClick={() => setModal(intent)}
+                      className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(intent.id)}
+                      disabled={deleting === intent.id}
+                      className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-40"
+                    >
+                      {deleting === intent.id ? "…" : "Delete"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </SectionCard>
+      )}
+
+      {/* Self-learning hint */}
+      <SectionCard>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Self-learning</p>
+        <p className="mt-1 text-sm font-semibold">Keyword suggestions from agent corrections</p>
+        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+          When agents correct an intent at resolution, the AI analyzes the email and proposes new keywords.
+          Suggestions appear here after 3+ corrections on the same intent.
+          All suggestions require your approval before taking effect.
+        </p>
+        <button
+          onClick={() => void fetch("/api/intent-corrections").then(r => r.json()).then((d: { patterns?: { originalIntent: string; correctedIntent: string; count: number }[] }) => {
+            if (d.patterns && d.patterns.length > 0) {
+              alert(`Top correction patterns:\n${d.patterns.map((p) => `• "${p.originalIntent}" → "${p.correctedIntent}" (${p.count}×)`).join("\n")}`);
+            } else {
+              alert("No recurring correction patterns yet. Keep resolving conversations!");
+            }
+          })}
+          className="mt-3 rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]"
+        >
+          View correction patterns
+        </button>
+      </SectionCard>
+
+      {/* Modal */}
+      {modal && (
+        <IntentFormModal
+          intent={modal === "create" ? null : modal}
+          onSave={handleSaved}
+          onClose={() => setModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Billing tab ───────────────────────────────────────────────────────────────
 
 function BillingTab({ org }: { org: OrgRecord | null }) {
@@ -1305,6 +1937,7 @@ export function SettingsShell({
     ),
     channels: <ChannelsTab channel={channel} canEdit={isAdmin} onDirty={() => setIsDirty(true)} />,
     ai: <AiTab onDirty={() => setIsDirty(true)} />,
+    intents: <IntentsTab canManage={canManageTeam} />,
     billing: <BillingTab org={org} />,
   };
 
@@ -1338,7 +1971,7 @@ export function SettingsShell({
         </div>
 
         {/* Save bar — only shown for tabs with editable fields */}
-        {activeTab !== "team" && activeTab !== "billing" && (
+        {activeTab !== "team" && activeTab !== "billing" && activeTab !== "intents" && (
           <div className={`shrink-0 border-t border-[var(--line)] px-6 py-4 transition-opacity ${isDirty || saveStatus === "saved" ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
             <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
               <p className="text-xs text-[var(--muted)]">
