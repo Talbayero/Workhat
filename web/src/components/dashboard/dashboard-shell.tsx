@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { QAQueue } from "@/components/dashboard/qa-queue";
-import { type EditTypeKey, type DashboardStats, type EditLogEntry } from "@/lib/supabase/queries";
+import { type EditTypeKey, type DashboardStats, type EditLogEntry, type KnowledgeHealthPattern } from "@/lib/supabase/queries";
 import type { InboxConversation } from "@/lib/mock-data";
 
 const editTypeLabel: Record<EditTypeKey, string> = {
@@ -29,6 +29,7 @@ type DashboardShellProps = {
   stats: DashboardStats;
   log: EditLogEntry[];
   qaQueue: InboxConversation[];
+  knowledgeHealth?: KnowledgeHealthPattern[];
   isDemo?: boolean;
   baseDir?: string;
 };
@@ -176,10 +177,87 @@ function RecentEditLog({ log, baseDir = "" }: { log: EditLogEntry[]; baseDir?: s
   );
 }
 
+function KnowledgeHealthCard({
+  patterns,
+  stats,
+  baseDir = "",
+}: {
+  patterns: KnowledgeHealthPattern[];
+  stats: DashboardStats;
+  baseDir?: string;
+}) {
+  const hasPatterns = patterns.length > 0;
+  const title = hasPatterns ? "Knowledge gaps driving edits" : "Knowledge base health";
+
+  return (
+    <section className="grain-panel rounded-[24px] border border-[var(--line)] p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="eyebrow text-[9px] text-[var(--muted)]">Knowledge base health</p>
+          <h2 className="mt-1 text-base font-semibold">{title}</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
+            {hasPatterns
+              ? "Based on the last 30 days of agent edits. These patterns show where a new SOP, policy note, or context entry could reduce rewrites."
+              : stats.totalEdits > 0
+                ? "No recurring edit cluster has emerged yet. Keep sending AI-assisted replies and this area will surface repeated policy or missing-context patterns."
+                : "Once agents send AI-assisted replies, this area will show which knowledge gaps are creating the most edits."}
+          </p>
+        </div>
+        <Link
+          href={`${baseDir}/knowledge`}
+          className="shrink-0 rounded-full bg-[var(--moss)] px-5 py-2.5 text-sm font-medium text-white"
+        >
+          Review knowledge base
+        </Link>
+      </div>
+
+      {hasPatterns ? (
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {patterns.map((pattern) => {
+            const label = pattern.category === "other" ? "Other recurring edit" : editTypeLabel[pattern.category];
+            return (
+              <div
+                key={pattern.category}
+                className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{label}</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {pattern.count} edit{pattern.count !== 1 ? "s" : ""} in 30 days
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[10px] text-[var(--muted)]">
+                    {pattern.avgEditIntensity}% avg edit
+                  </span>
+                </div>
+                {pattern.sampleReasons.length > 0 && (
+                  <ul className="mt-3 space-y-1.5">
+                    {pattern.sampleReasons.slice(0, 2).map((reason) => (
+                      <li key={reason} className="line-clamp-2 text-xs leading-5 text-[var(--muted)]">
+                        {reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-5 rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-5 text-sm text-[var(--muted)]">
+          No knowledge maintenance action needed yet.
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function DashboardShell({
   stats,
   log,
   qaQueue,
+  knowledgeHealth = [],
   isDemo = false,
   baseDir = "",
 }: DashboardShellProps) {
@@ -209,29 +287,7 @@ export function DashboardShell({
 
         <QAQueue queue={qaQueue} isDemo={isDemo} baseDir={baseDir} />
 
-        {/* Knowledge maintenance signal */}
-        <section className="grain-panel rounded-[24px] border border-[var(--line)] p-5">
-          <p className="eyebrow text-[9px] text-[var(--muted)]">Knowledge base health</p>
-          <h2 className="mt-1 text-base font-semibold">Entries driving the most edits</h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-            Phase 2 will surface knowledge entries that correlate with high edit
-            intensity — a signal they need updating. For now, review entries directly.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href={`${baseDir}/knowledge`}
-              className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-sm font-medium text-white"
-            >
-              Review knowledge base
-            </Link>
-            <Link
-              href={`${baseDir}/inbox`}
-              className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-sm font-medium"
-            >
-              Open inbox
-            </Link>
-          </div>
-        </section>
+        <KnowledgeHealthCard patterns={knowledgeHealth} stats={stats} baseDir={baseDir} />
 
       </div>
     </main>

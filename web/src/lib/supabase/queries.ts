@@ -693,6 +693,69 @@ export async function getRecentEditLog(limit = 8): Promise<EditLogEntry[]> {
   });
 }
 
+export type KnowledgeHealthPattern = {
+  category: EditTypeKey | "other";
+  count: number;
+  avgEditIntensity: number;
+  sampleReasons: string[];
+};
+
+function normalizeKnowledgeCategory(categories: string[], intensity: number): EditTypeKey | "other" | "accepted" {
+  if (intensity < 10 || categories.includes("accepted")) return "accepted";
+
+  const matched = categories.find(
+    (category) => EDIT_TYPE_KEYS.includes(category as EditTypeKey) && category !== "accepted"
+  ) as EditTypeKey | undefined;
+
+  return matched ?? "other";
+}
+
+export async function getKnowledgeHealth(limit = 4): Promise<KnowledgeHealthPattern[]> {
+  const supabase = await createClient();
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+
+  const { data, error } = await supabase
+    .from("edit_analyses")
+    .select("categories, change_percent, likely_reason_summary, created_at")
+    .gte("created_at", since.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (error || !data || data.length === 0) return [];
+
+  const grouped = new Map<EditTypeKey | "other", { count: number; totalIntensity: number; reasons: string[] }>();
+
+  for (const row of data) {
+    const categories = Array.isArray(row.categories) ? (row.categories as string[]) : [];
+    const intensity = Number(row.change_percent ?? 0);
+    const category = normalizeKnowledgeCategory(categories, intensity);
+
+    if (category === "accepted") continue;
+
+    const reason = String(row.likely_reason_summary ?? "").trim();
+    const existing = grouped.get(category) ?? { count: 0, totalIntensity: 0, reasons: [] };
+    existing.count += 1;
+    existing.totalIntensity += intensity;
+
+    if (reason && existing.reasons.length < 3 && !existing.reasons.includes(reason)) {
+      existing.reasons.push(reason);
+    }
+
+    grouped.set(category, existing);
+  }
+
+  return [...grouped.entries()]
+    .map(([category, value]) => ({
+      category,
+      count: value.count,
+      avgEditIntensity: Math.round(value.totalIntensity / value.count),
+      sampleReasons: value.reasons,
+    }))
+    .sort((a, b) => b.count - a.count || b.avgEditIntensity - a.avgEditIntensity)
+    .slice(0, limit);
+}
+
 export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
   const supabase = await createClient();
 
