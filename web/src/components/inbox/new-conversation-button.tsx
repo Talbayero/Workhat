@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 /* ─────────────────────────────────────────────
@@ -9,30 +9,97 @@ import { useRouter } from "next/navigation";
    Used for testing and outbound-initiated threads.
 ───────────────────────────────────────────── */
 
-const INTENT_OPTIONS = [
-  { value: "support", label: "Support" },
-  { value: "billing", label: "Billing" },
-  { value: "onboarding", label: "Onboarding" },
-  { value: "feature_request", label: "Feature request" },
-  { value: "escalation", label: "Escalation" },
-  { value: "general", label: "General" },
+interface OrgIntent {
+  id: string;
+  name: string;
+  color: string;
+  keywords: string[];
+  priority_order: number;
+}
+
+// Fallback intents used before org intents load (or if org has none)
+const FALLBACK_INTENTS: OrgIntent[] = [
+  { id: "support", name: "support", color: "#78A17A", keywords: [], priority_order: 1 },
+  { id: "billing", name: "billing", color: "#A99162", keywords: [], priority_order: 2 },
+  { id: "onboarding", name: "onboarding", color: "#6B8EAD", keywords: [], priority_order: 3 },
+  { id: "feature_request", name: "feature_request", color: "#8E7BA8", keywords: [], priority_order: 4 },
+  { id: "escalation", name: "escalation", color: "#904B4B", keywords: [], priority_order: 5 },
+  { id: "general", name: "general", color: "#888888", keywords: [], priority_order: 6 },
 ];
+
+// Client-side intent classifier — mirrors server logic
+function detectIntent(text: string, intents: OrgIntent[]): string | null {
+  const lower = text.toLowerCase();
+  for (const intent of intents) {
+    for (const kw of intent.keywords) {
+      const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Whole-word for single tokens, substring for multi-word phrases
+      const pattern = kw.includes(" ")
+        ? new RegExp(escaped, "i")
+        : new RegExp(`\\b${escaped}\\b`, "i");
+      if (pattern.test(lower)) return intent.name;
+    }
+  }
+  return null;
+}
 
 export function NewConversationButton() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [intents, setIntents] = useState<OrgIntent[]>(FALLBACK_INTENTS);
+  const [intentsLoaded, setIntentsLoaded] = useState(false);
+  const [autoDetected, setAutoDetected] = useState<string | null>(null);
   const [form, setForm] = useState({
     contactEmail: "",
     contactName: "",
     subject: "",
     firstMessage: "",
-    intent: "support",
+    intent: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const autoClassifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load org intents when modal opens
+  useEffect(() => {
+    if (!open || intentsLoaded) return;
+    fetch("/api/intents")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { intents?: OrgIntent[] } | null) => {
+        if (data?.intents && data.intents.length > 0) {
+          setIntents(data.intents);
+        }
+        setIntentsLoaded(true);
+      })
+      .catch(() => setIntentsLoaded(true));
+  }, [open, intentsLoaded]);
+
+  // Debounced auto-classify as user types subject/message
+  const scheduleAutoClassify = useCallback((subject: string, message: string) => {
+    if (autoClassifyTimer.current) clearTimeout(autoClassifyTimer.current);
+    autoClassifyTimer.current = setTimeout(() => {
+      const text = `${subject} ${message}`.trim();
+      if (!text) { setAutoDetected(null); return; }
+      const detected = detectIntent(text, intents);
+      setAutoDetected(detected);
+      // Only auto-select if the user hasn't manually chosen yet
+      if (detected) {
+        setForm((f) => ({ ...f, intent: detected }));
+      }
+    }, 300);
+  }, [intents]);
 
   function set(field: string, value: string) {
-    setForm((f) => ({ ...f, [field]: value }));
+    setForm((f) => {
+      const next = { ...f, [field]: value };
+      if (field === "subject" || field === "firstMessage") {
+        scheduleAutoClassify(
+          field === "subject" ? value : f.subject,
+          field === "firstMessage" ? value : f.firstMessage,
+        );
+      }
+      return next;
+    });
     setError(null);
   }
 
@@ -58,7 +125,8 @@ export function NewConversationButton() {
       if (res.ok) {
         const { conversationId } = await res.json() as { conversationId: string };
         setOpen(false);
-        setForm({ contactEmail: "", contactName: "", subject: "", firstMessage: "", intent: "support" });
+        setForm({ contactEmail: "", contactName: "", subject: "", firstMessage: "", intent: "" });
+        setAutoDetected(null);
         router.push(`/inbox/${conversationId}`);
         router.refresh();
       } else {
@@ -136,22 +204,52 @@ export function NewConversationButton() {
 
                 {/* Intent */}
                 <div>
-                  <label className="eyebrow text-[10px] text-[var(--muted)]">Intent</label>
+                  <div className="flex items-center justify-between">
+                    <label className="eyebrow text-[10px] text-[var(--muted)]">Intent</label>
+                    {autoDetected && (
+                      <span className="text-[10px] text-[var(--moss)]">
+                        ✦ Auto-detected
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-1.5 flex flex-wrap gap-2">
-                    {INTENT_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => set("intent", opt.value)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                          form.intent === opt.value
-                            ? "bg-[var(--moss)] text-white"
-                            : "border border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                    {/* "Let AI decide" pill — sends no intent, server classifies */}
+                    <button
+                      key="__auto"
+                      type="button"
+                      onClick={() => { setForm((f) => ({ ...f, intent: "" })); setAutoDetected(null); }}
+                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                        !form.intent
+                          ? "bg-[var(--moss)] text-white"
+                          : "border border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                      }`}
+                    >
+                      Auto
+                    </button>
+                    {intents.map((opt) => {
+                      const isSelected = form.intent === opt.name;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => { setForm((f) => ({ ...f, intent: opt.name })); setAutoDetected(null); }}
+                          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                            isSelected
+                              ? "text-white"
+                              : "border border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                          }`}
+                          style={isSelected ? { backgroundColor: opt.color } : undefined}
+                        >
+                          {!isSelected && (
+                            <span
+                              className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: opt.color }}
+                            />
+                          )}
+                          {opt.name.replace(/_/g, " ")}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -181,7 +279,7 @@ export function NewConversationButton() {
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => { setOpen(false); setError(null); }}
+                    onClick={() => { setOpen(false); setError(null); setAutoDetected(null); }}
                     className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]"
                   >
                     Cancel

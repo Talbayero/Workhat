@@ -95,6 +95,30 @@ export function ThreadWorkspace({
   const [correctionSaved, setCorrectionSaved] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
 
+  // Intent pill — inline editing in thread header
+  const [intentValue, setIntentValue] = useState(conversation.intent ?? "");
+  const [editingIntent, setEditingIntent] = useState(false);
+  const [intentInput, setIntentInput] = useState(conversation.intent ?? "");
+  const [intentUpdating, setIntentUpdating] = useState(false);
+
+  async function handleIntentSave() {
+    const newIntent = intentInput.trim().toLowerCase() || "unclassified";
+    setEditingIntent(false);
+    if (newIntent === intentValue) return;
+    const previousIntent = intentValue;
+    setIntentValue(newIntent);
+    setIntentUpdating(true);
+    try {
+      await updateConversation({ intent: newIntent });
+    } catch (err) {
+      setIntentValue(previousIntent);
+      setIntentInput(previousIntent);
+      setThreadError(err instanceof Error ? err.message : "Unable to update intent.");
+    } finally {
+      setIntentUpdating(false);
+    }
+  }
+
   // Closure card state — shown when agent clicks Resolve
   const [showClosureCard, setShowClosureCard] = useState(false);
   const [closureIntent, setClosureIntent] = useState(conversation.intent ?? "");
@@ -202,7 +226,7 @@ export function ThreadWorkspace({
 
   // Intercept Resolve → show closure card instead
   function handleResolveClick() {
-    setClosureIntent(conversation.intent ?? "");
+    setClosureIntent(intentValue || (conversation.intent ?? ""));
     setClosureNote("");
     setClosureError(null);
     setShowClosureCard(true);
@@ -478,6 +502,32 @@ export function ThreadWorkspace({
                   <option value="resolved">Resolved</option>
                   <option value="archived">Archived</option>
                 </select>
+
+                {/* Intent pill */}
+                {editingIntent ? (
+                  <input
+                    autoFocus
+                    value={intentInput}
+                    onChange={(e) => setIntentInput(e.target.value)}
+                    onBlur={handleIntentSave}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleIntentSave(); if (e.key === "Escape") { setEditingIntent(false); setIntentInput(intentValue); } }}
+                    placeholder="intent…"
+                    className="rounded-full border border-[var(--moss)] bg-transparent px-2.5 py-1 text-[10px] outline-none text-[var(--foreground)] w-28"
+                  />
+                ) : (
+                  <button
+                    onClick={() => { if (!isDemo && !intentUpdating) { setIntentInput(intentValue); setEditingIntent(true); } }}
+                    disabled={intentUpdating}
+                    title={isDemo ? undefined : "Click to edit intent"}
+                    className="flex items-center gap-1.5 rounded-full border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.06)] px-2.5 py-1 text-[10px] text-[var(--muted)] transition-colors hover:border-[var(--moss)] hover:text-[var(--foreground)] disabled:opacity-50"
+                  >
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--moss)] shrink-0" />
+                    {intentValue && intentValue !== "unclassified"
+                      ? intentValue.replace(/_/g, " ")
+                      : "unclassified"}
+                    {!isDemo && <span className="opacity-50 ml-0.5">✎</span>}
+                  </button>
+                )}
 
                 {/* Assignee */}
                 {editingAssignee ? (
