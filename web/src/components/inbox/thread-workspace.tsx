@@ -81,6 +81,7 @@ export function ThreadWorkspace({
 
   // Live AI draft state
   const [liveDraft, setLiveDraft] = useState<LiveDraft | null>(null);
+  const [appliedDraft, setAppliedDraft] = useState<{ id: string; draftText: string } | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
 
@@ -91,6 +92,7 @@ export function ThreadWorkspace({
   } | null>(null);
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [correctionSaved, setCorrectionSaved] = useState(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -154,6 +156,8 @@ export function ThreadWorkspace({
     const text = liveDraft?.draftText ?? conversation.aiDraft.draftText;
     setComposerMode("reply");
     setReplyText(text);
+    setAppliedDraft(liveDraft?.id ? { id: liveDraft.id, draftText: text } : null);
+    setCorrectionError(null);
     setActivePanel(null);
   }
 
@@ -192,10 +196,12 @@ export function ThreadWorkspace({
   function switchMode(mode: ComposerMode) {
     setComposerMode(mode);
     setReplyText("");
+    setAppliedDraft(null);
     setPendingSend(false);
     setSendError(null);
     if (mode === "note") setActivePanel(null);
     setSendNotice(null);
+    setCorrectionError(null);
   }
 
   function handleSendClick() {
@@ -212,6 +218,7 @@ export function ThreadWorkspace({
     const now = new Date();
     const timestamp = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
     const textToSend = replyText;
+    const draftForReply = composerMode === "reply" ? appliedDraft : null;
 
     // sentReplyId is populated from the API response when a draft was used
     let replySentReplyId: string | null = null;
@@ -227,7 +234,7 @@ export function ThreadWorkspace({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             composerMode === "reply"
-              ? { body: textToSend, aiDraftId: liveDraft?.id ?? null }
+              ? { body: textToSend, aiDraftId: draftForReply?.id ?? null }
               : { body: textToSend }
           ),
         });
@@ -263,22 +270,26 @@ export function ThreadWorkspace({
       };
       setLocalMessages((prev) => [...prev, newMessage]);
 
-      if (composerMode === "reply") {
+      if (composerMode === "reply" && draftForReply) {
         const record = recordEdit(
           conversation.id,
-          liveDraft?.draftText ?? conversation.aiDraft.draftText,
+          draftForReply.draftText,
           textToSend,
         );
         setLastEditRecord(record);
 
         // Show "Save correction?" banner when agent edited the draft
-        if (replySentReplyId && liveDraft?.id && record.editIntensity > 0) {
-          setCorrectionBanner({ aiDraftId: liveDraft.id, sentReplyId: replySentReplyId });
+        if (replySentReplyId && record.editIntensity > 0) {
+          setCorrectionBanner({ aiDraftId: draftForReply.id, sentReplyId: replySentReplyId });
           setCorrectionSaved(false);
+          setCorrectionError(null);
         }
+      } else if (composerMode === "reply") {
+        setLastEditRecord(null);
       }
 
       setReplyText("");
+      setAppliedDraft(null);
       setPendingSend(false);
       setActivePanel(null);
     } catch (error) {
@@ -291,16 +302,22 @@ export function ThreadWorkspace({
   async function handleSaveCorrection() {
     if (!correctionBanner || savingCorrection) return;
     setSavingCorrection(true);
+    setCorrectionError(null);
     try {
-      await fetch("/api/knowledge/from-edit", {
+      const response = await fetch("/api/knowledge/from-edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(correctionBanner),
       });
+      const responseData = await response.json().catch(() => ({})) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(responseData.error ?? "Unable to save correction.");
+      }
+
       setCorrectionSaved(true);
-    } catch {
-      // Silently dismiss — non-critical action
-      setCorrectionBanner(null);
+    } catch (error) {
+      setCorrectionError(error instanceof Error ? error.message : "Unable to save correction.");
     } finally {
       setSavingCorrection(false);
     }
@@ -518,29 +535,36 @@ export function ThreadWorkspace({
                 </button>
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[rgba(144,50,61,0.25)] bg-[rgba(73,17,28,0.1)] px-4 py-3">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="status-dot status-dot-yellow shrink-0" />
-                  <span className="text-xs text-[var(--muted)]">
-                    You edited the AI draft — save this as a knowledge entry to improve future drafts?
-                  </span>
+              <div className="rounded-[14px] border border-[rgba(144,50,61,0.25)] bg-[rgba(73,17,28,0.1)] px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="status-dot status-dot-yellow shrink-0" />
+                    <span className="text-xs text-[var(--muted)]">
+                      You edited the AI draft — save this as a knowledge entry to improve future drafts?
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      onClick={handleSaveCorrection}
+                      disabled={savingCorrection}
+                      className="rounded-full bg-[var(--moss)] px-3 py-1 text-xs font-medium text-white disabled:opacity-50 transition-opacity"
+                    >
+                      {savingCorrection ? "Saving…" : "Save correction"}
+                    </button>
+                    <button
+                      onClick={() => setCorrectionBanner(null)}
+                      className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                      aria-label="Dismiss"
+                    >
+                      <CloseIcon />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    onClick={handleSaveCorrection}
-                    disabled={savingCorrection}
-                    className="rounded-full bg-[var(--moss)] px-3 py-1 text-xs font-medium text-white disabled:opacity-50 transition-opacity"
-                  >
-                    {savingCorrection ? "Saving…" : "Save correction"}
-                  </button>
-                  <button
-                    onClick={() => setCorrectionBanner(null)}
-                    className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-                    aria-label="Dismiss"
-                  >
-                    <CloseIcon />
-                  </button>
-                </div>
+                {correctionError && (
+                  <p className="mt-2 rounded-[10px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-3 py-2 text-xs leading-5 text-[var(--muted)]">
+                    {correctionError}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -660,7 +684,7 @@ export function ThreadWorkspace({
                       : "border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
                   }`}
                 >
-                  {draftLoading ? "Drafting…" : liveDraft ? "AI Draft ✓" : "AI Draft"}
+                  {draftLoading ? "Drafting…" : appliedDraft ? "Draft applied ✓" : liveDraft ? "AI Draft ✓" : "AI Draft"}
                 </button>
               </div>
             </div>
