@@ -1242,7 +1242,6 @@ export function SettingsShell({
   const [activeTab, setActiveTab] = useState<SettingsTab>(
     org && channel?.inboundAddress ? "organization" : "setup"
   );
-  const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [saveFields, setSaveFields] = useState<Record<string, string>>({});
@@ -1252,12 +1251,10 @@ export function SettingsShell({
 
   async function handleSave() {
     setSaveStatus("saving");
-    setSaving(true);
     
     // In demo mode, we just simulate saving
     if (isDemo) {
       await new Promise((resolve) => setTimeout(resolve, 800));
-      setSaving(false);
       setSaveStatus("saved");
       setIsDirty(false);
       setTimeout(() => setSaveStatus("idle"), 2500);
@@ -1272,12 +1269,10 @@ export function SettingsShell({
       });
       if (!res.ok) throw new Error("Save failed");
       setSaveStatus("saved");
-      setSaving(false);
       setIsDirty(false);
       setTimeout(() => setSaveStatus("idle"), 2500);
     } catch {
       setSaveStatus("idle");
-      setSaving(false);
     }
   }
 
@@ -1308,18 +1303,8 @@ export function SettingsShell({
       />
     ),
     channels: <ChannelsTab channel={channel} canEdit={isAdmin} onDirty={() => setIsDirty(true)} />,
-    ai: (
-      <SectionCard>
-        <h2 className="text-base font-semibold">AI Settings</h2>
-        <p className="mt-2 text-sm text-[var(--muted)]">Phase 2: Advanced model configuration and sampling parameters.</p>
-      </SectionCard>
-    ),
-    billing: (
-      <SectionCard>
-        <h2 className="text-base font-semibold">Billing & usage</h2>
-        <p className="mt-2 text-sm text-[var(--muted)]">Phase 2: Stripe integration and usage-based action logs.</p>
-      </SectionCard>
-    ),
+    ai: <AiTab onDirty={() => setIsDirty(true)} />,
+    billing: <BillingTab org={org} />,
   };
 
   return (
