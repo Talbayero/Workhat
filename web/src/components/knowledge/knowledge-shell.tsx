@@ -71,10 +71,39 @@ function EntryFormModal({
   const [form, setForm] = useState<EntryFormData>({ ...EMPTY_FORM, ...initial });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rewriting, setRewriting] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
 
   function set(field: keyof EntryFormData, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
     setError(null);
+  }
+
+  async function handleRewrite() {
+    if (!form.body.trim() || rewriting) return;
+    setRewriting(true);
+    setRewriteError(null);
+    try {
+      const res = await fetch("/api/knowledge/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          body: form.body,
+          category: form.category,
+          title: form.title,
+        }),
+      });
+      const data = await res.json() as { rewritten?: string; error?: string };
+      if (res.ok && data.rewritten) {
+        set("body", data.rewritten);
+      } else {
+        setRewriteError(data.error ?? "Rewrite failed. Please try again.");
+      }
+    } catch {
+      setRewriteError("Rewrite failed. Please try again.");
+    } finally {
+      setRewriting(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -172,10 +201,38 @@ function EntryFormModal({
 
             {/* Body */}
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Content *</label>
-              <p className="mt-0.5 text-[10px] text-[var(--muted)]">
-                Write clearly — this text is chunked and retrieved by the AI. Use double line breaks to separate sections.
-              </p>
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <label className="eyebrow text-[10px] text-[var(--muted)]">Content *</label>
+                  <p className="mt-0.5 text-[10px] text-[var(--muted)]">
+                    Write clearly — this text is chunked and retrieved by the AI. Use double line breaks to separate sections.
+                  </p>
+                </div>
+                {/* Rewrite for AI button — optimises content based on selected category */}
+                <button
+                  type="button"
+                  onClick={handleRewrite}
+                  disabled={rewriting || !form.body.trim()}
+                  title={`Rewrite for AI retrieval (${form.category})`}
+                  className="shrink-0 flex items-center gap-1.5 rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-[10px] font-medium text-[var(--muted)] transition-colors hover:border-[var(--moss)] hover:text-[var(--foreground)] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {rewriting ? (
+                    <>
+                      <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="32" strokeDashoffset="12" strokeLinecap="round"/>
+                      </svg>
+                      Rewriting…
+                    </>
+                  ) : (
+                    <>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" fill="currentColor"/>
+                      </svg>
+                      Rewrite for AI
+                    </>
+                  )}
+                </button>
+              </div>
               <textarea
                 value={form.body}
                 onChange={(e) => set("body", e.target.value)}
@@ -183,6 +240,9 @@ function EntryFormModal({
                 rows={10}
                 className="mt-1.5 w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors font-mono leading-6 resize-y"
               />
+              {rewriteError && (
+                <p className="mt-1.5 text-[10px] text-[rgba(220,80,80,0.9)]">{rewriteError}</p>
+              )}
             </div>
 
             {/* Tags */}
@@ -279,13 +339,12 @@ export function KnowledgeShell({
   const [query, setQuery] = useState("");
   const [togglingActive, setTogglingActive] = useState(false);
   const [suggestions, setSuggestions] = useState<GapSuggestion[]>([]);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(!isDemo);
   const [prefillSuggestion, setPrefillSuggestion] = useState<GapSuggestion["suggested"] | null>(null);
 
   // Fetch gap suggestions once on mount (skip in demo mode)
   useEffect(() => {
     if (isDemo) return;
-    setSuggestionsLoading(true);
     fetch("/api/knowledge/gaps")
       .then((r) => r.ok ? r.json() : Promise.resolve({ suggestions: [] }))
       .then((data: { suggestions?: GapSuggestion[] }) => {
