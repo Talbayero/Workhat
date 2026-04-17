@@ -866,3 +866,23 @@ export function ThreadWorkspace({
               )}
 
               {/* Open issues */}
+              {conversation.profile.openIssues.length > 0 && (
+                <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                  <p className="eyebrow text-[9px] text-[var(--muted)]">Open issues</p>
+                  <ul className="mt-2 space-y-2">
+                    {conversation.profile.openIssues.map((issue) => (
+                      <li key={issue} className="flex gap-2 text-sm leading-5">
+                        <span className="shrink-0 text-[rgba(144,50,61,0.7)]">·</span>
+                        {issue}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
