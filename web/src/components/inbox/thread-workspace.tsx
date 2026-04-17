@@ -83,6 +83,14 @@ export function ThreadWorkspace({
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
 
+  // Self-learning: "Save correction?" banner
+  const [correctionBanner, setCorrectionBanner] = useState<{
+    aiDraftId: string;
+    sentReplyId: string;
+  } | null>(null);
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  const [correctionSaved, setCorrectionSaved] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom whenever messages change
@@ -203,6 +211,9 @@ export function ThreadWorkspace({
     const timestamp = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
     const textToSend = replyText;
 
+    // sentReplyId is populated from the API response when a draft was used
+    let replySentReplyId: string | null = null;
+
     try {
       if (!isDemo) {
         const endpoint =
@@ -219,9 +230,19 @@ export function ThreadWorkspace({
           ),
         });
 
+        const responseData = await response.json().catch(() => ({})) as {
+          error?: string;
+          hint?: string;
+          sentReplyId?: string | null;
+          analysisQueued?: boolean;
+        };
+
         if (!response.ok) {
-          const data = await response.json().catch(() => ({})) as { error?: string; hint?: string };
-          throw new Error([data.error, data.hint].filter(Boolean).join(" ") || `HTTP ${response.status}`);
+          throw new Error([responseData.error, responseData.hint].filter(Boolean).join(" ") || `HTTP ${response.status}`);
+        }
+
+        if (responseData.analysisQueued && responseData.sentReplyId) {
+          replySentReplyId = responseData.sentReplyId;
         }
       } else {
         // Mock network delay
@@ -244,6 +265,12 @@ export function ThreadWorkspace({
           textToSend,
         );
         setLastEditRecord(record);
+
+        // Show "Save correction?" banner when agent edited the draft
+        if (replySentReplyId && liveDraft?.id && record.editIntensity > 0) {
+          setCorrectionBanner({ aiDraftId: liveDraft.id, sentReplyId: replySentReplyId });
+          setCorrectionSaved(false);
+        }
       }
 
       setReplyText("");
@@ -256,7 +283,27 @@ export function ThreadWorkspace({
     }
   }
 
+  async function handleSaveCorrection() {
+    if (!correctionBanner || savingCorrection) return;
+    setSavingCorrection(true);
+    try {
+      await fetch("/api/knowledge/from-edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(correctionBanner),
+      });
+      setCorrectionSaved(true);
+    } catch {
+      // Silently dismiss — non-critical action
+      setCorrectionBanner(null);
+    } finally {
+      setSavingCorrection(false);
+    }
+  }
+
   const panelOpen = activePanel !== null;
+
+  const baseDir = isDemo ? "/demo" : "";
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -426,6 +473,55 @@ export function ThreadWorkspace({
                 <CloseIcon />
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Self-learning banner — prompts agent to save their correction as a knowledge entry */}
+        {correctionBanner && !isDemo && (
+          <div className="shrink-0 border-t border-[var(--line)] px-5 py-3">
+            {correctionSaved ? (
+              <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="status-dot status-dot-green" />
+                  <span className="text-xs text-[var(--muted)]">
+                    Knowledge entry saved — a manager can review and activate it in the{" "}
+                    <span className="text-[var(--foreground)]">Knowledge</span> tab.
+                  </span>
+                </div>
+                <button
+                  onClick={() => setCorrectionBanner(null)}
+                  className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                  aria-label="Dismiss"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[rgba(144,50,61,0.25)] bg-[rgba(73,17,28,0.1)] px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="status-dot status-dot-yellow shrink-0" />
+                  <span className="text-xs text-[var(--muted)]">
+                    You edited the AI draft — save this as a knowledge entry to improve future drafts?
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={handleSaveCorrection}
+                    disabled={savingCorrection}
+                    className="rounded-full bg-[var(--moss)] px-3 py-1 text-xs font-medium text-white disabled:opacity-50 transition-opacity"
+                  >
+                    {savingCorrection ? "Saving…" : "Save correction"}
+                  </button>
+                  <button
+                    onClick={() => setCorrectionBanner(null)}
+                    className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                    aria-label="Dismiss"
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -747,7 +843,7 @@ export function ThreadWorkspace({
                   <p className="mt-1 text-sm">{conversation.profile.tier}</p>
                 </div>
                 <Link
-                  href={`/contacts/${conversation.contactId}`}
+                  href={`${baseDir}/contacts/${conversation.contactId}`}
                   className="inline-flex rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] hover:bg-[var(--moss)] hover:text-white"
                 >
                   Open full contact record
@@ -770,25 +866,3 @@ export function ThreadWorkspace({
               )}
 
               {/* Open issues */}
-              {conversation.profile.openIssues.length > 0 && (
-                <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-                  <p className="eyebrow text-[9px] text-[var(--muted)]">
-                    Open issues
-                  </p>
-                  <ul className="mt-2 space-y-1.5">
-                    {conversation.profile.openIssues.map((issue) => (
-                      <li key={issue} className="flex gap-2 text-sm leading-5">
-                        <span className="shrink-0 text-[var(--muted)]">·</span>
-                        {issue}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}

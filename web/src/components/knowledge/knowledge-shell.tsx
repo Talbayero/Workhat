@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { knowledgeCategories, type KnowledgeEntry, type KnowledgeCategory } from "@/lib/mock-data";
 
@@ -9,6 +9,23 @@ type KnowledgeShellProps = {
   entries: KnowledgeEntry[];
   selectedEntry?: KnowledgeEntry | null;
   activeCategory?: KnowledgeCategory | "all";
+  isDemo?: boolean;
+  baseDir?: string;
+};
+
+// ── Gap suggestion type (mirrors GET /api/knowledge/gaps response) ────────────
+
+type GapSuggestion = {
+  category: string;
+  count: number;
+  sampleReasons: string[];
+  suggested: {
+    title: string;
+    summary: string;
+    body: string;
+    category: "policy" | "sop" | "tone" | "product" | "escalation";
+    tags: string[];
+  };
 };
 
 // ── Category pill ─────────────────────────────────────────────────────────────
@@ -250,11 +267,33 @@ function DeleteConfirm({ title, entryId, onClose, onDeleted }: {
 
 // ── Main shell ────────────────────────────────────────────────────────────────
 
-export function KnowledgeShell({ entries, selectedEntry = null, activeCategory = "all" }: KnowledgeShellProps) {
+export function KnowledgeShell({ 
+  entries, 
+  selectedEntry = null, 
+  activeCategory = "all",
+  isDemo = false,
+  baseDir = "",
+}: KnowledgeShellProps) {
   const router = useRouter();
   const [modal, setModal] = useState<"create" | "edit" | "delete" | null>(null);
   const [query, setQuery] = useState("");
   const [togglingActive, setTogglingActive] = useState(false);
+  const [suggestions, setSuggestions] = useState<GapSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [prefillSuggestion, setPrefillSuggestion] = useState<GapSuggestion["suggested"] | null>(null);
+
+  // Fetch gap suggestions once on mount (skip in demo mode)
+  useEffect(() => {
+    if (isDemo) return;
+    setSuggestionsLoading(true);
+    fetch("/api/knowledge/gaps")
+      .then((r) => r.ok ? r.json() : Promise.resolve({ suggestions: [] }))
+      .then((data: { suggestions?: GapSuggestion[] }) => {
+        setSuggestions(data.suggestions ?? []);
+      })
+      .catch(() => { /* non-critical */ })
+      .finally(() => setSuggestionsLoading(false));
+  }, [isDemo]);
 
   async function handleToggleActive() {
     if (!selectedEntry || togglingActive) return;
@@ -288,7 +327,18 @@ export function KnowledgeShell({ entries, selectedEntry = null, activeCategory =
   return (
     <>
       {modal === "create" && (
-        <EntryFormModal mode="create" onClose={() => setModal(null)} onSaved={refresh} />
+        <EntryFormModal
+          mode="create"
+          initial={prefillSuggestion ? {
+            title: prefillSuggestion.title,
+            summary: prefillSuggestion.summary,
+            body: prefillSuggestion.body,
+            category: prefillSuggestion.category,
+            tags: prefillSuggestion.tags.join(", "),
+          } : undefined}
+          onClose={() => { setModal(null); setPrefillSuggestion(null); }}
+          onSaved={() => { setPrefillSuggestion(null); refresh(); }}
+        />
       )}
       {modal === "edit" && selectedEntry && (
         <EntryFormModal
@@ -310,7 +360,7 @@ export function KnowledgeShell({ entries, selectedEntry = null, activeCategory =
           title={selectedEntry.title}
           entryId={selectedEntry.id}
           onClose={() => setModal(null)}
-          onDeleted={() => { setModal(null); router.push("/knowledge"); router.refresh(); }}
+          onDeleted={() => { setModal(null); router.push(`${baseDir}/knowledge`); router.refresh(); }}
         />
       )}
 
@@ -350,7 +400,7 @@ export function KnowledgeShell({ entries, selectedEntry = null, activeCategory =
                 return (
                   <Link
                     key={cat.id}
-                    href={cat.id === "all" ? "/knowledge" : `/knowledge?category=${cat.id}`}
+                    href={cat.id === "all" ? `${baseDir}/knowledge` : `${baseDir}/knowledge?category=${cat.id}`}
                     className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-sm transition-colors ${
                       isActive ? "bg-[var(--sage)] text-[var(--foreground)]" : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
                     }`}
@@ -381,7 +431,7 @@ export function KnowledgeShell({ entries, selectedEntry = null, activeCategory =
               return (
                 <Link
                   key={entry.id}
-                  href={`/knowledge/${entry.id}${activeCategory !== "all" ? `?category=${activeCategory}` : ""}`}
+                  href={`${baseDir}/knowledge/${entry.id}${activeCategory !== "all" ? `?category=${activeCategory}` : ""}`}
                   className={`block border-b px-2 py-3 transition-colors ${
                     isSelected
                       ? "rounded-[18px] border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
@@ -500,8 +550,8 @@ export function KnowledgeShell({ entries, selectedEntry = null, activeCategory =
                   <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
                     <p className="eyebrow text-[9px] text-[var(--muted)]">Quick links</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Link href="/inbox" className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] transition-colors hover:border-[var(--moss)]">Inbox</Link>
-                      <Link href="/dashboard" className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] transition-colors hover:border-[var(--moss)]">Dashboard</Link>
+                      <Link href={`${baseDir}/inbox`} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] transition-colors hover:border-[var(--moss)]">Inbox</Link>
+                      <Link href={`${baseDir}/dashboard`} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] transition-colors hover:border-[var(--moss)]">Dashboard</Link>
                     </div>
                   </section>
                 </aside>
@@ -520,9 +570,62 @@ export function KnowledgeShell({ entries, selectedEntry = null, activeCategory =
                   onClick={() => setModal("create")}
                   className="mt-5 rounded-full bg-[var(--moss)] px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
                 >
+           
                   Create first entry
                 </button>
               </div>
+
+            {/* AI-suggested entries — surfaces recurring knowledge gaps */}
+            {!isDemo && (suggestions.length > 0 || suggestionsLoading) && (
+              <div className="mt-6 w-full max-w-xl px-8">
+                <div className="rounded-[24px] border border-[var(--line)] bg-[var(--panel-strong)] p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="eyebrow text-[10px] text-[var(--muted)]">Self-learning</p>
+                      <h3 className="mt-1 text-base font-semibold">Suggested entries</h3>
+                    </div>
+                    {suggestionsLoading && (
+                      <span className="text-xs text-[var(--muted)]">Analysing patterns…</span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+                    Based on recurring agent edits in the last 30 days. Each suggestion targets a gap the AI keeps running into.
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {suggestions.map((s, i) => (
+                      <div
+                        key={i}
+                        className="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{s.suggested.title}</p>
+                            <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{s.suggested.summary}</p>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)] capitalize">
+                            {s.category}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                          <span className="text-[10px] text-[var(--muted)]">
+                            {s.count} edits in 30 days
+                          </span>
+                          <button
+                            onClick={() => {
+                              setPrefillSuggestion(s.suggested);
+                              setModal("create");
+                            }}
+                            className="rounded-full bg-[var(--moss)] px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90"
+                          >
+                            Create entry
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
             </div>
           )}
         </div>
