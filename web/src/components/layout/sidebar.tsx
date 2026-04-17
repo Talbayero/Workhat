@@ -86,12 +86,23 @@ const navItems = [
 const primaryItems = navItems.slice(0, 5);
 const configItems = navItems.slice(5);
 
+const demoUser: AuthUser = {
+  id: "demo-user",
+  email: "guest@work-hat.com",
+  user_metadata: { full_name: "Demo Guest" },
+};
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
+  
+  const isDemo = pathname.startsWith("/demo");
+  const baseDir = isDemo ? "/demo" : "";
 
   useEffect(() => {
+    if (isDemo) return;
+
     const supabase = createClient();
 
     // Get current session on mount
@@ -107,20 +118,26 @@ export function Sidebar() {
     );
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [isDemo]);
 
   async function handleSignOut() {
+    if (isDemo) {
+      router.push("/");
+      return;
+    }
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
   }
 
+  const activeUser = isDemo ? demoUser : user;
+
   // Derive display name from user metadata or email
   const displayName =
-    (user?.user_metadata?.full_name as string | undefined) ||
-    (user?.user_metadata?.name as string | undefined) ||
-    user?.email?.split("@")[0] ||
+    (activeUser?.user_metadata?.full_name as string | undefined) ||
+    (activeUser?.user_metadata?.name as string | undefined) ||
+    activeUser?.email?.split("@")[0] ||
     "Agent";
   const initials = displayName.slice(0, 1).toUpperCase();
 
@@ -139,11 +156,12 @@ export function Sidebar() {
           <p className="eyebrow px-3 pb-2 text-[9px] text-[var(--muted)]">Workspace</p>
           <div className="flex flex-col gap-0.5">
             {primaryItems.map((item) => {
-              const isActive = pathname.startsWith(item.href);
+              const fullHref = `${baseDir}${item.href}`;
+              const isActive = pathname.startsWith(fullHref);
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={fullHref}
                   className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors ${
                     isActive
                       ? "bg-[var(--moss)] text-white shadow-[0_0_0_1px_rgba(144,50,61,0.35)]"
@@ -162,11 +180,12 @@ export function Sidebar() {
           <p className="eyebrow px-3 pb-2 text-[9px] text-[var(--muted)]">Configure</p>
           <div className="flex flex-col gap-0.5">
             {configItems.map((item) => {
-              const isActive = pathname.startsWith(item.href);
+              const fullHref = `${baseDir}${item.href}`;
+              const isActive = pathname.startsWith(fullHref);
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={fullHref}
                   className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors ${
                     isActive
                       ? "bg-[var(--moss)] text-white shadow-[0_0_0_1px_rgba(144,50,61,0.35)]"
@@ -196,7 +215,7 @@ export function Sidebar() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-medium">{displayName}</p>
-            <p className="truncate text-[10px] text-[var(--muted)]">{user?.email ?? "Not signed in"}</p>
+            <p className="truncate text-[10px] text-[var(--muted)]">{activeUser?.email ?? "Not signed in"}</p>
           </div>
           {/* Sign out */}
           <button

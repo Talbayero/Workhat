@@ -1019,3 +1019,27 @@ export const conversationStatusLabel: Record<InboxConversation["status"], string
   resolved: "Resolved",
   archived: "Archived",
 };
+
+// --- Dashboard ---
+
+export const stats = {
+  totalEdits: 42,
+  acceptanceRate: 68,
+  avgEditIntensity: 24,
+  topEditType: "factual" as const,
+  byType: {
+    factual: 12,
+    tone: 8,
+    policy: 5,
+    missing_context: 10,
+    structure: 4,
+    full_rewrite: 3,
+    accepted: 0,
+  },
+};
+
+export const teamStats = [
+  { id: "1", name: "Marcos", acceptance: 72, volume: 156 },
+  { id: "2", name: "Anika", acceptance: 65, volume: 142 },
+  { id: "3", name: "Jordan", acceptance: 69, volume: 88 },
+];

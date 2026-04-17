@@ -103,7 +103,7 @@ function Hero() {
         <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link
             href="/demo/inbox"
-            className="flex h-12 flex-1 items-center justify-center rounded-full bg-[var(--foreground)] px-8 text-sm font-semibold text-[var(--background)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:flex-none"
+            className="flex h-12 flex-1 items-center justify-center rounded-full bg-[var(--moss)] px-8 text-sm font-semibold text-white transition-transform hover:scale-[1.02] active:scale-[0.98] sm:flex-none shadow-[0_0_20px_rgba(144,50,61,0.25)]"
           >
             Open Interactive Demo
           </Link>

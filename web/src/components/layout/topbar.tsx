@@ -51,7 +51,8 @@ const routeMeta: Record<string, RouteMeta> = {
 };
 
 function getPrimarySegment(pathname: string) {
-  const segment = pathname.split("/").filter(Boolean)[0];
+  const segments = pathname.split("/").filter(Boolean);
+  const segment = segments[0] === "demo" ? segments[1] : segments[0];
   return segment && routeMeta[segment] ? segment : "inbox";
 }
 
@@ -59,16 +60,23 @@ export function Topbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  
+  const isDemo = pathname.startsWith("/demo");
+  const baseDir = isDemo ? "/demo" : "";
+  
   const segment = getPrimarySegment(pathname);
   const meta = routeMeta[segment];
-  const isDetailRoute = pathname.split("/").filter(Boolean).length > 1;
+  
+  // Adjusted depth check for demo mode
+  const pathSegments = pathname.split("/").filter(Boolean);
+  const isDetailRoute = isDemo ? pathSegments.length > 2 : pathSegments.length > 1;
 
   return (
     <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[rgba(10,9,8,0.86)] backdrop-blur-xl">
       <div className="flex items-center justify-between gap-4 px-6 py-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">
-            <span className="eyebrow">Workspace</span>
+            <span className="eyebrow">{isDemo ? "Demo Workspace" : "Workspace"}</span>
             <span>/</span>
             <span>{meta.label}</span>
             {isDetailRoute ? (
@@ -81,7 +89,7 @@ export function Topbar() {
           <div className="mt-1 flex items-center gap-3">
             <h1 className="text-lg font-semibold tracking-tight">{meta.label}</h1>
             <span className="hidden rounded-full border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-2.5 py-1 text-[10px] text-[var(--muted)] md:inline-flex">
-              Harvest-inspired structure, Work Hat workflow
+              {isDemo ? "Safe Preview Mode — No real data affected" : "Harvest-inspired structure, Work Hat workflow"}
             </span>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">{meta.description}</p>
@@ -92,7 +100,7 @@ export function Topbar() {
             onSubmit={(e) => {
               e.preventDefault();
               const q = searchQuery.trim();
-              if (q) router.push(`/search?q=${encodeURIComponent(q)}`);
+              if (q) router.push(`${baseDir}/search?q=${encodeURIComponent(q)}`);
             }}
             className="hidden min-w-[240px] items-center gap-2 rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 lg:flex"
           >
@@ -111,7 +119,7 @@ export function Topbar() {
 
           {meta.actionLabel && meta.actionHref ? (
             <Link
-              href={meta.actionHref}
+              href={`${baseDir}${meta.actionHref}`}
               className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--moss-strong)]"
             >
               {meta.actionLabel}

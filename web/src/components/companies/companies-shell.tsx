@@ -17,6 +17,8 @@ type CompaniesShellProps = {
   companyContacts?: ContactRecord[];
   companyConversations?: InboxConversation[];
   activeView?: string;
+  isDemo?: boolean;
+  baseDir?: string;
 };
 
 const companyViews = [
@@ -176,6 +178,8 @@ export function CompaniesShell({
   companyContacts = [],
   companyConversations = [],
   activeView = "all",
+  isDemo = false,
+  baseDir = "",
 }: CompaniesShellProps) {
   const router = useRouter();
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
@@ -252,7 +256,7 @@ export function CompaniesShell({
                 return (
                   <Link
                     key={view.id}
-                    href={view.id === "all" ? "/companies" : `/companies?view=${view.id}`}
+                    href={view.id === "all" ? `${baseDir}/companies` : `${baseDir}/companies?view=${view.id}`}
                     className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-sm transition-colors ${
                       isActive ? "bg-[var(--sage)] text-[var(--foreground)]" : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
                     }`}
@@ -283,7 +287,7 @@ export function CompaniesShell({
               return (
                 <Link
                   key={company.id}
-                  href={`/companies/${company.id}${activeView !== "all" ? `?view=${activeView}` : ""}`}
+                  href={`${baseDir}/companies/${company.id}${activeView !== "all" ? `?view=${activeView}` : ""}`}
                   className={`block border-b px-2 py-3 transition-colors ${
                     isSelected
                       ? "rounded-[18px] border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
@@ -333,7 +337,7 @@ export function CompaniesShell({
                     >
                       Edit account
                     </button>
-                    <Link href="/contacts" className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white">
+                    <Link href={`${baseDir}/contacts`} className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white">
                       Add contact
                     </Link>
                   </div>
@@ -360,7 +364,7 @@ export function CompaniesShell({
                   <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
                     <div className="flex items-center justify-between gap-3">
                       <p className="eyebrow text-[9px] text-[var(--muted)]">Connected people</p>
-                      <Link href="/contacts" className="text-xs text-[var(--moss)]">All contacts</Link>
+                      <Link href={`${baseDir}/contacts`} className="text-xs text-[var(--moss)]">All contacts</Link>
                     </div>
                     {companyContacts.length === 0 ? (
                       <p className="mt-3 text-sm text-[var(--muted)]">No contacts linked to this company yet.</p>
@@ -369,7 +373,7 @@ export function CompaniesShell({
                         {companyContacts.map((contact) => (
                           <Link
                             key={contact.id}
-                            href={`/contacts/${contact.id}`}
+                            href={`${baseDir}/contacts/${contact.id}`}
                             className="block rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-3 transition-colors hover:border-[var(--line-strong)]"
                           >
                             <div className="flex items-center justify-between gap-2">
@@ -389,7 +393,7 @@ export function CompaniesShell({
                   <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
                     <div className="flex items-center justify-between gap-3">
                       <p className="eyebrow text-[9px] text-[var(--muted)]">Conversation history</p>
-                      <Link href="/inbox" className="text-xs text-[var(--moss)]">Open inbox</Link>
+                      <Link href={`${baseDir}/inbox`} className="text-xs text-[var(--moss)]">Open inbox</Link>
                     </div>
                     {companyConversations.length === 0 ? (
                       <p className="mt-3 text-sm text-[var(--muted)]">No conversations yet.</p>
@@ -398,7 +402,7 @@ export function CompaniesShell({
                         {companyConversations.map((conv) => (
                           <Link
                             key={conv.id}
-                            href={`/inbox/${conv.id}`}
+                            href={`${baseDir}/inbox/${conv.id}`}
                             className="block rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4 transition-colors hover:border-[var(--line-strong)]"
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -436,7 +440,7 @@ export function CompaniesShell({
                     <p className="eyebrow text-[9px] text-[var(--muted)]">Quick links</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {[["Contacts", "/contacts"], ["Inbox", "/inbox"], ["Dashboard", "/dashboard"]].map(([label, href]) => (
-                        <Link key={label} href={href} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] transition-colors hover:border-[var(--moss)]">
+                        <Link key={label} href={`${baseDir}${href}`} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] transition-colors hover:border-[var(--moss)]">
                           {label}
                         </Link>
                       ))}

@@ -138,11 +138,13 @@ function SetupTab({
   channel,
   team,
   onOpenTab,
+  baseDir = "",
 }: {
   org: OrgRecord | null;
   channel: ChannelRecord | null;
   team: TeamMember[];
   onOpenTab: (tab: SettingsTab) => void;
+  baseDir?: string;
 }) {
   const hasOrg = Boolean(org);
   const hasInboundAddress = Boolean(channel?.inboundAddress);
@@ -172,7 +174,7 @@ function SetupTab({
       label: "Add knowledge",
       description: "Upload SOPs, tone rules, and policies so AI drafts have useful context.",
       complete: hasKnowledgePath,
-      href: "/knowledge",
+      href: `${baseDir}/knowledge`,
       actionLabel: "Open knowledge",
     },
     {
@@ -216,7 +218,7 @@ function SetupTab({
               Run the onboarding wizard to generate the forwarding address.
             </p>
             <Link
-              href="/onboarding"
+              href={`${baseDir}/onboarding`}
               className="mt-3 inline-flex rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--moss-strong)]"
             >
               Open onboarding wizard
@@ -1226,42 +1228,56 @@ export function SettingsShell({
   team,
   callerRole,
   callerId,
+  isDemo = false,
+  baseDir = "",
 }: {
   org: OrgRecord | null;
   channel: ChannelRecord | null;
   team: TeamMember[];
   callerRole: string;
   callerId: string;
+  isDemo?: boolean;
+  baseDir?: string;
 }) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(
     org && channel?.inboundAddress ? "organization" : "setup"
   );
+  const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [pendingFields, setPendingFields] = useState<Record<string, string>>({});
+  const [saveFields, setSaveFields] = useState<Record<string, string>>({});
 
   const isAdmin = callerRole === "admin";
   const canManageTeam = isAdmin || callerRole === "manager";
 
-  function handleDirty() {
-    setIsDirty(true);
-    setSaveStatus("idle");
-  }
-
   async function handleSave() {
     setSaveStatus("saving");
+    setSaving(true);
+    
+    // In demo mode, we just simulate saving
+    if (isDemo) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      setSaving(false);
+      setSaveStatus("saved");
+      setIsDirty(false);
+      setTimeout(() => setSaveStatus("idle"), 2500);
+      return;
+    }
+
     try {
       const res = await fetch("/api/settings/org", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pendingFields),
+        body: JSON.stringify(saveFields),
       });
       if (!res.ok) throw new Error("Save failed");
       setSaveStatus("saved");
+      setSaving(false);
       setIsDirty(false);
       setTimeout(() => setSaveStatus("idle"), 2500);
     } catch {
       setSaveStatus("idle");
+      setSaving(false);
     }
   }
 
@@ -1272,6 +1288,7 @@ export function SettingsShell({
         channel={channel}
         team={team}
         onOpenTab={setActiveTab}
+        baseDir={baseDir}
       />
     ),
     organization: (
@@ -1279,8 +1296,8 @@ export function SettingsShell({
         org={org}
         channel={channel}
         canEdit={isAdmin}
-        onDirty={handleDirty}
-        onSaveFields={setPendingFields}
+        onDirty={() => setIsDirty(true)}
+        onSaveFields={(f) => setSaveFields((prev) => ({ ...prev, ...f }))}
       />
     ),
     team: (
@@ -1290,9 +1307,19 @@ export function SettingsShell({
         canManage={canManageTeam}
       />
     ),
-    channels: <ChannelsTab channel={channel} canEdit={isAdmin} onDirty={handleDirty} />,
-    ai: <AiTab onDirty={handleDirty} />,
-    billing: <BillingTab org={org} />,
+    channels: <ChannelsTab channel={channel} canEdit={isAdmin} onDirty={() => setIsDirty(true)} />,
+    ai: (
+      <SectionCard>
+        <h2 className="text-base font-semibold">AI Settings</h2>
+        <p className="mt-2 text-sm text-[var(--muted)]">Phase 2: Advanced model configuration and sampling parameters.</p>
+      </SectionCard>
+    ),
+    billing: (
+      <SectionCard>
+        <h2 className="text-base font-semibold">Billing & usage</h2>
+        <p className="mt-2 text-sm text-[var(--muted)]">Phase 2: Stripe integration and usage-based action logs.</p>
+      </SectionCard>
+    ),
   };
 
   return (

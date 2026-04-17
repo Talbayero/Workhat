@@ -109,13 +109,18 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  if (body.result === "flagged") {
-    await supabase
-      .from("conversations")
-      .update({ risk_level: "red" })
-      .eq("id", body.conversationId)
-      .eq("org_id", appUser.org_id);
-  }
+  const riskUpdate =
+    body.result === "approved"
+      ? "green"
+      : body.result === "flagged"
+        ? "red"
+        : "yellow";
+
+  await supabase
+    .from("conversations")
+    .update({ risk_level: riskUpdate })
+    .eq("id", body.conversationId)
+    .eq("org_id", appUser.org_id);
 
   return NextResponse.json({ ok: true, id: (data as { id: string }).id }, { status: 201 });
 }

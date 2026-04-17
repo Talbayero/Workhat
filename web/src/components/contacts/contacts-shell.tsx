@@ -18,6 +18,8 @@ type ContactsShellProps = {
   company?: CompanyRecord | null;
   linkedConversations?: InboxConversation[];
   activeView?: string;
+  isDemo?: boolean;
+  baseDir?: string;
 };
 
 // ── Status pill ───────────────────────────────────────────────────────────────
@@ -306,6 +308,8 @@ export function ContactsShell({
   company = null,
   linkedConversations = [],
   activeView = "all",
+  isDemo = false,
+  baseDir = "",
 }: ContactsShellProps) {
   const router = useRouter();
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
@@ -385,7 +389,7 @@ export function ContactsShell({
                 return (
                   <Link
                     key={view.id}
-                    href={view.id === "all" ? "/contacts" : `/contacts?view=${view.id}`}
+                    href={view.id === "all" ? `${baseDir}/contacts` : `${baseDir}/contacts?view=${view.id}`}
                     className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-sm transition-colors ${
                       isActive ? "bg-[var(--sage)] text-[var(--foreground)]" : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
                     }`}
@@ -416,7 +420,7 @@ export function ContactsShell({
               return (
                 <Link
                   key={contact.id}
-                  href={`/contacts/${contact.id}${activeView !== "all" ? `?view=${activeView}` : ""}`}
+                  href={`${baseDir}/contacts/${contact.id}${activeView !== "all" ? `?view=${activeView}` : ""}`}
                   className={`block border-b px-2 py-3 transition-colors ${
                     isSelected
                       ? "rounded-[18px] border-[var(--moss)] bg-[rgba(144,50,61,0.11)]"
@@ -469,7 +473,7 @@ export function ContactsShell({
                     >
                       Edit info
                     </button>
-                    <Link href="/inbox" className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white">
+                    <Link href={`${baseDir}/inbox`} className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white">
                       Open inbox
                     </Link>
                   </div>
@@ -497,7 +501,7 @@ export function ContactsShell({
                   <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
                     <div className="flex items-center justify-between gap-3">
                       <p className="eyebrow text-[9px] text-[var(--muted)]">Conversation history</p>
-                      <Link href="/inbox" className="text-xs text-[var(--moss)]">Open inbox</Link>
+                      <Link href={`${baseDir}/inbox`} className="text-xs text-[var(--moss)]">Open inbox</Link>
                     </div>
                     {linkedConversations.length === 0 ? (
                       <p className="mt-3 text-sm text-[var(--muted)]">No conversations yet.</p>
@@ -506,7 +510,7 @@ export function ContactsShell({
                         {linkedConversations.map((conv) => (
                           <Link
                             key={conv.id}
-                            href={`/inbox/${conv.id}`}
+                            href={`${baseDir}/inbox/${conv.id}`}
                             className="block rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4 transition-colors hover:border-[var(--line-strong)]"
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -550,7 +554,7 @@ export function ContactsShell({
                   {company && (
                     <section className="rounded-[20px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
                       <p className="eyebrow text-[9px] text-[var(--muted)]">Account</p>
-                      <Link href={`/companies/${company.id}`} className="mt-2 block text-sm font-medium transition-colors hover:text-[var(--moss)]">
+                      <Link href={`${baseDir}/companies/${company.id}`} className="mt-2 block text-sm font-medium transition-colors hover:text-[var(--moss)]">
                         {company.name}
                       </Link>
                       <p className="text-xs text-[var(--muted)]">{company.industry}</p>

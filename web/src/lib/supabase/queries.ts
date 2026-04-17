@@ -679,10 +679,31 @@ export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
        contacts(full_name, email, phone, tier, notes, tags),
        companies(name)`
     )
-    .or("risk_level.eq.red,ai_confidence.eq.red,ai_confidence.eq.yellow")
+    .or("risk_level.eq.red,risk_level.eq.yellow,ai_confidence.eq.red,ai_confidence.eq.yellow")
     .order("last_message_at", { ascending: false })
-    .limit(20);
+    .limit(30);
 
   if (error) return [];
-  return ((data ?? []) as unknown as DbConversation[]).map(dbConvToFrontend);
+
+  const candidates = ((data ?? []) as unknown as DbConversation[]);
+  const conversationIds = candidates.map((row) => row.id);
+  if (conversationIds.length === 0) return [];
+
+  const { data: reviewRows } = await supabase
+    .from("qa_reviews")
+    .select("conversation_id, result, created_at")
+    .in("conversation_id", conversationIds)
+    .order("created_at", { ascending: false });
+
+  const latestReviewResult = new Map<string, string | null>();
+  for (const review of (reviewRows ?? []) as { conversation_id: string; result: string | null }[]) {
+    if (!latestReviewResult.has(review.conversation_id)) {
+      latestReviewResult.set(review.conversation_id, review.result);
+    }
+  }
+
+  return candidates
+    .filter((row) => latestReviewResult.get(row.id) !== "approved")
+    .slice(0, 20)
+    .map(dbConvToFrontend);
 }
