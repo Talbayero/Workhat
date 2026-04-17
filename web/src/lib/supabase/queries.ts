@@ -105,7 +105,7 @@ function dbConvToFrontend(row: DbConversation): InboxConversation {
     intent: row.intent,
     messages: [], // populated separately in getConversationById
     aiDraft: {
-      rationale: "Awaiting AI draft generation (Phase 2).",
+      rationale: "No AI draft has been generated for this thread yet.",
       missingContext: [],
       suggestions: [],
       draftText: "",

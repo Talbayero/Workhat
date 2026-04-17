@@ -97,11 +97,44 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createClient();
 
+  const { data: conversation, error: conversationError } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("org_id", appUser.org_id)
+    .maybeSingle();
+
+  if (conversationError) {
+    return NextResponse.json({ error: conversationError.message }, { status: 500 });
+  }
+
+  if (!conversation) {
+    return NextResponse.json({ error: "Conversation not found for this workspace." }, { status: 404 });
+  }
+
+  if (editAnalysisId) {
+    const { data: analysis, error: analysisError } = await supabase
+      .from("edit_analyses")
+      .select("id")
+      .eq("id", editAnalysisId)
+      .eq("conversation_id", conversationId)
+      .eq("org_id", appUser.org_id)
+      .maybeSingle();
+
+    if (analysisError) {
+      return NextResponse.json({ error: analysisError.message }, { status: 500 });
+    }
+
+    if (!analysis) {
+      return NextResponse.json({ error: "Edit analysis not found for this conversation." }, { status: 404 });
+    }
+  }
+
   const { data, error } = await supabase
     .from("qa_reviews")
     .insert({
       org_id: appUser.org_id,
-      conversation_id: conversationId,
+      conversation_id: conversation.id,
       reviewed_by: appUser.id,
       result,
       score: normalizedScore,
