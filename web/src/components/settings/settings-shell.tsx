@@ -121,12 +121,13 @@ function TextInput({ value, onChange, placeholder, disabled }: {
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!checked)}
-      className={`relative h-6 w-10 rounded-full transition-colors ${checked ? "bg-[var(--moss)]" : "bg-[var(--sage)]"}`}
+      className={`relative h-6 w-10 shrink-0 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--moss)] ${checked ? "bg-[var(--moss)]" : "bg-[var(--sage)]"}`}
       aria-checked={checked}
       role="switch"
     >
-      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${checked ? "translate-x-5" : "translate-x-1"}`} />
+      <span className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${checked ? "translate-x-4" : "translate-x-0"}`} />
     </button>
   );
 }
