@@ -5,36 +5,11 @@ import {
   markGmailSyncSuccess,
   type EmailConnection,
 } from "@/lib/email-connector/gmail-importer";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-
-type AppUser = {
-  id: string;
-  org_id: string;
-  role: string;
-};
-
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[gmail/sync] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as AppUser | null;
-}
 
 export async function POST() {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "gmail/sync" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!["admin", "manager"].includes(appUser.role)) {
     return NextResponse.json({ error: "Only admins and managers can sync Gmail." }, { status: 403 });

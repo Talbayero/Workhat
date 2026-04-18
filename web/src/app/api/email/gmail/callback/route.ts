@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { encryptSecret } from "@/lib/email-connector/encryption";
 import {
   exchangeGmailCode,
@@ -8,16 +9,11 @@ import {
   tokenExpiryDate,
   watchGmailInbox,
 } from "@/lib/email-connector/google";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const STATE_COOKIE = "workhat_gmail_oauth_state";
 const RETURN_TO_COOKIE = "workhat_gmail_oauth_return_to";
-
-type AppUser = {
-  id: string;
-  org_id: string;
-  role: string;
-};
 
 type ProviderMetadata = Record<string, unknown>;
 
@@ -40,24 +36,6 @@ function connectorRedirect(req: NextRequest, params: Record<string, string>) {
   return response;
 }
 
-async function getAppUser(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[gmail/callback] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as AppUser | null;
-}
-
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const providerError = params.get("error");
@@ -77,7 +55,22 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = await createClient();
-  const appUser = await getAppUser(supabase);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return connectorRedirect(req, { emailError: "Sign in before connecting Gmail." });
+  }
+
+  let db: ReturnType<typeof createAdminClient>;
+  try {
+    db = createAdminClient();
+  } catch (error) {
+    console.error("[gmail/callback] admin client init failed:", error);
+    return connectorRedirect(req, {
+      emailError: "Gmail connector is unavailable. Ask an admin to verify the Supabase server key.",
+    });
+  }
+
+  const appUser = await getCurrentAppUser({ label: "gmail/callback", select: "id, org_id, role" });
   if (!appUser) {
     return connectorRedirect(req, {
       emailError: "Create your organization before connecting Gmail.",
@@ -98,7 +91,7 @@ export async function GET(req: NextRequest) {
     const profile = await fetchGmailProfile(token.access_token);
     const email = profile.emailAddress.toLowerCase();
 
-    const { data: existing, error: existingError } = await supabase
+    const { data: existing, error: existingError } = await db
       .from("email_connections")
       .select("id, refresh_token_ciphertext")
       .eq("org_id", appUser.org_id)
@@ -125,7 +118,7 @@ export async function GET(req: NextRequest) {
       token_type: token.token_type,
     };
 
-    const { data: connection, error: connectionError } = await supabase
+    const { data: connection, error: connectionError } = await db
       .from("email_connections")
       .upsert({
         org_id: appUser.org_id,
@@ -152,7 +145,7 @@ export async function GET(req: NextRequest) {
       throw new Error(connectionError?.message ?? "Failed to save Gmail connection.");
     }
 
-    const { data: channel, error: channelError } = await supabase
+    const { data: channel, error: channelError } = await db
       .from("channels")
       .select("id, config_json")
       .eq("org_id", appUser.org_id)
@@ -172,7 +165,7 @@ export async function GET(req: NextRequest) {
     };
 
     if (channel) {
-      const { error: channelUpdateError } = await supabase
+      const { error: channelUpdateError } = await db
         .from("channels")
         .update({
           provider: GMAIL_PROVIDER,
@@ -185,7 +178,7 @@ export async function GET(req: NextRequest) {
         throw new Error(channelUpdateError.message);
       }
     } else {
-      const { error: channelInsertError } = await supabase.from("channels").insert({
+      const { error: channelInsertError } = await db.from("channels").insert({
         org_id: appUser.org_id,
         type: "email",
         provider: GMAIL_PROVIDER,
@@ -203,7 +196,7 @@ export async function GET(req: NextRequest) {
       try {
         const watch = await watchGmailInbox({ accessToken: token.access_token, topicName });
         const expiration = new Date(Number(watch.expiration)).toISOString();
-        const { error: watchUpdateError } = await supabase
+        const { error: watchUpdateError } = await db
           .from("email_connections")
           .update({
             sync_status: "watching",
@@ -227,7 +220,7 @@ export async function GET(req: NextRequest) {
         }
       } catch (watchError) {
         const watchMessage = watchError instanceof Error ? watchError.message : "Gmail live watch setup failed.";
-        const { error: watchErrorUpdateError } = await supabase
+        const { error: watchErrorUpdateError } = await db
           .from("email_connections")
           .update({
             sync_status: "idle",

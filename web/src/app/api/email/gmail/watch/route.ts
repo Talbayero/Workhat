@@ -5,13 +5,8 @@ import {
   tokenExpiryDate,
   watchGmailInbox,
 } from "@/lib/email-connector/google";
-import { createClient } from "@/lib/supabase/server";
-
-type AppUser = {
-  id: string;
-  org_id: string;
-  role: string;
-};
+import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type EmailConnection = {
   id: string;
@@ -21,26 +16,8 @@ type EmailConnection = {
   provider_metadata: Record<string, unknown>;
 };
 
-async function getAppUser(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[gmail/watch] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as AppUser | null;
-}
-
 async function getFreshAccessToken(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  db: ReturnType<typeof createAdminClient>,
   connection: EmailConnection
 ) {
   if (!connection.refresh_token_ciphertext) {
@@ -57,7 +34,7 @@ async function getFreshAccessToken(
 
   const refreshed = await refreshGmailAccessToken(decryptSecret(connection.refresh_token_ciphertext));
   const encryptedAccessToken = encryptSecret(refreshed.access_token);
-  const { error: refreshUpdateError } = await supabase
+  const { error: refreshUpdateError } = await db
     .from("email_connections")
     .update({
       access_token_ciphertext: encryptedAccessToken,
@@ -83,14 +60,22 @@ export async function POST() {
     }, { status: 500 });
   }
 
-  const supabase = await createClient();
-  const appUser = await getAppUser(supabase);
+  const appUser = await getCurrentAppUser({ label: "gmail/watch" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!["admin", "manager"].includes(appUser.role)) {
     return NextResponse.json({ error: "Only admins and managers can enable Gmail watch." }, { status: 403 });
   }
 
-  const { data: connection, error } = await supabase
+  let db: ReturnType<typeof createAdminClient>;
+  try {
+    db = createAdminClient();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Admin client unavailable";
+    console.error("[gmail/watch] admin client init failed:", message);
+    return NextResponse.json({ error: "Gmail watch is unavailable — admin database key is not configured." }, { status: 503 });
+  }
+
+  const { data: connection, error } = await db
     .from("email_connections")
     .select("id, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, provider_metadata")
     .eq("org_id", appUser.org_id)
@@ -104,11 +89,11 @@ export async function POST() {
   }
 
   try {
-    const accessToken = await getFreshAccessToken(supabase, connection as EmailConnection);
+    const accessToken = await getFreshAccessToken(db, connection as EmailConnection);
     const watch = await watchGmailInbox({ accessToken, topicName });
     const expiration = new Date(Number(watch.expiration)).toISOString();
 
-    const { error: watchUpdateError } = await supabase
+    const { error: watchUpdateError } = await db
       .from("email_connections")
       .update({
         sync_status: "watching",
@@ -133,7 +118,7 @@ export async function POST() {
     return NextResponse.json({ ok: true, historyId: watch.historyId, expiration });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to enable Gmail watch.";
-    const { error: errorUpdateError } = await supabase
+    const { error: errorUpdateError } = await db
       .from("email_connections")
       .update({ sync_status: "error", error_message: message })
       .eq("id", (connection as EmailConnection).id);

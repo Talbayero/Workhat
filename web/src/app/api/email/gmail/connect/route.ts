@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 import { buildGmailAuthUrl, getGoogleRedirectUri } from "@/lib/email-connector/google";
 
@@ -32,16 +33,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const { data: appUser, error: appUserError } = await supabase
-    .from("users")
-    .select("id, org_id")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (appUserError) {
-    return connectorRedirect(req, { emailError: "Unable to verify your workspace. Try again." });
-  }
-
+  const appUser = await getCurrentAppUser({ label: "gmail/connect", select: "id, org_id, role" });
   if (!appUser) {
     return connectorRedirect(req, {
       emailError: "Create your organization before connecting Gmail.",

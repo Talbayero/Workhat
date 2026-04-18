@@ -1,33 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[email/connections] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
-}
+import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET() {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "email/connections" });
   if (!appUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  let db: ReturnType<typeof createAdminClient>;
+  try {
+    db = createAdminClient();
+  } catch (error) {
+    console.error("[email/connections] admin client init failed:", error);
+    return NextResponse.json({ error: "Email connector is unavailable." }, { status: 503 });
+  }
+
+  const { data, error } = await db
     .from("email_connections")
     .select(
       "id, provider, provider_account_email, display_name, status, sync_status, token_expires_at, last_history_id, watch_expires_at, last_sync_at, error_message, created_at, updated_at"
@@ -43,7 +32,7 @@ export async function GET() {
 }
 
 export async function DELETE(req: NextRequest) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "email/connections" });
   if (!appUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -57,8 +46,15 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "connectionId is required" }, { status: 422 });
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  let db: ReturnType<typeof createAdminClient>;
+  try {
+    db = createAdminClient();
+  } catch (error) {
+    console.error("[email/connections] admin client init failed:", error);
+    return NextResponse.json({ error: "Email connector is unavailable." }, { status: 503 });
+  }
+
+  const { data, error } = await db
     .from("email_connections")
     .update({
       access_token_ciphertext: null,

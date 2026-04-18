@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 
 type DiagnosticStatus = "pass" | "warn" | "fail";
 
@@ -10,25 +10,6 @@ type DiagnosticCheck = {
   status: DiagnosticStatus;
   message: string;
 };
-
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[gmail/diagnostics] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
-}
 
 function checkEnv(name: string, label: string, missingMessage: string, validator?: (value: string) => DiagnosticCheck) {
   const value = process.env[name];
@@ -110,7 +91,7 @@ function checkSupabaseAdmin(): DiagnosticCheck {
 }
 
 export async function GET() {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "gmail/diagnostics" });
   if (!appUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
