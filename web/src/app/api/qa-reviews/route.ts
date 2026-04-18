@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 
 /* POST /api/qa-reviews - submit a QA review for a conversation */
@@ -18,25 +19,6 @@ const VALID_CATEGORIES = new Set([
   "tone",
   "escalation",
 ]);
-
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[qa-reviews] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as AppUser | null;
-}
 
 function normalizeScore(score: unknown) {
   if (score === undefined || score === null || score === "") return null;
@@ -60,7 +42,7 @@ function normalizeCategories(categories: unknown) {
 }
 
 export async function POST(req: NextRequest) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser<AppUser>({ label: "qa-reviews" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!REVIEW_ROLES.has(appUser.role)) {
     return NextResponse.json({ error: "Only admins, managers, and QA reviewers can submit QA reviews." }, { status: 403 });
@@ -120,7 +102,8 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (conversationError) {
-    return NextResponse.json({ error: conversationError.message }, { status: 500 });
+    console.error("[qa-reviews] conversation lookup failed:", conversationError.message);
+    return NextResponse.json({ error: "Unable to verify this conversation." }, { status: 500 });
   }
 
   if (!conversation) {
@@ -137,7 +120,8 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (analysisError) {
-      return NextResponse.json({ error: analysisError.message }, { status: 500 });
+      console.error("[qa-reviews] edit analysis lookup failed:", analysisError.message);
+      return NextResponse.json({ error: "Unable to verify the edit analysis." }, { status: 500 });
     }
 
     if (!analysis) {
@@ -160,8 +144,9 @@ export async function POST(req: NextRequest) {
     .select("id")
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error || !data) {
+    console.error("[qa-reviews] review insert failed:", error?.message ?? "No review returned");
+    return NextResponse.json({ error: "Unable to save the QA review." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, reviewId: data.id }, { status: 201 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 
 /* ─────────────────────────────────────────────
@@ -52,26 +53,8 @@ async function refreshCompanyContactCount(
   }
 }
 
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[contacts] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
-}
-
 export async function POST(req: NextRequest) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "contacts" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
@@ -130,7 +113,8 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (companyError) {
-      return NextResponse.json({ error: companyError.message }, { status: 500 });
+      console.error("[contacts] company lookup failed:", companyError.message);
+      return NextResponse.json({ error: "Unable to verify this company." }, { status: 500 });
     }
 
     if (!company) {
@@ -157,11 +141,12 @@ export async function POST(req: NextRequest) {
     .select("id")
     .single();
 
-  if (error) {
-    if (error.code === "23505") {
+  if (error || !data) {
+    if (error?.code === "23505") {
       return NextResponse.json({ error: "A contact with this email already exists." }, { status: 409 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[contacts] contact insert failed:", error?.message ?? "No contact returned");
+    return NextResponse.json({ error: "Unable to create this contact." }, { status: 500 });
   }
 
   await refreshCompanyContactCount(supabase, appUser.org_id, companyId);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 
 /* PATCH/DELETE /api/companies/:id */
@@ -21,29 +22,15 @@ function normalizeTags(value: unknown) {
   return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
 }
 
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[companies/:id] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
-}
-
 type RouteContext = { params: Promise<{ companyId: string }> };
 
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const { companyId } = await ctx.params;
-  const appUser = await getAppUser();
+  if (!companyId?.trim()) {
+    return NextResponse.json({ error: "companyId is required." }, { status: 400 });
+  }
+
+  const appUser = await getCurrentAppUser({ label: "companies/:id" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
@@ -107,7 +94,9 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   if (error) {
     const status = error.code === "23505" ? 409 : 500;
-    return NextResponse.json({ error: error.message }, { status });
+    const message = error.code === "23505" ? "A company with this domain already exists." : "Unable to update this company.";
+    if (status === 500) console.error("[companies/:id] company update failed:", error.message);
+    return NextResponse.json({ error: message }, { status });
   }
 
   if (!data) return NextResponse.json({ error: "Company not found for this workspace." }, { status: 404 });
@@ -117,7 +106,11 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
 export async function DELETE(_req: NextRequest, ctx: RouteContext) {
   const { companyId } = await ctx.params;
-  const appUser = await getAppUser();
+  if (!companyId?.trim()) {
+    return NextResponse.json({ error: "companyId is required." }, { status: 400 });
+  }
+
+  const appUser = await getCurrentAppUser({ label: "companies/:id" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!["admin", "manager"].includes(appUser.role)) {
@@ -135,7 +128,9 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
 
   if (error) {
     const status = error.code === "23503" ? 409 : 500;
-    return NextResponse.json({ error: error.message }, { status });
+    const message = error.code === "23503" ? "This company still has linked records." : "Unable to delete this company.";
+    if (status === 500) console.error("[companies/:id] company delete failed:", error.message);
+    return NextResponse.json({ error: message }, { status });
   }
 
   if (!data) return NextResponse.json({ error: "Company not found for this workspace." }, { status: 404 });

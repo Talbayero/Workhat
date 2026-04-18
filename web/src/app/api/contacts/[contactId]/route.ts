@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 
 /* ─────────────────────────────────────────────
@@ -25,24 +26,6 @@ function normalizeTags(value: unknown) {
   }
 
   return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
-}
-
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[contacts/:id] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
 }
 
 async function refreshCompanyContactCount(
@@ -78,7 +61,11 @@ type RouteContext = { params: Promise<{ contactId: string }> };
 
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const { contactId } = await ctx.params;
-  const appUser = await getAppUser();
+  if (!contactId?.trim()) {
+    return NextResponse.json({ error: "contactId is required." }, { status: 400 });
+  }
+
+  const appUser = await getCurrentAppUser({ label: "contacts/:id" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
@@ -170,7 +157,10 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       .eq("org_id", appUser.org_id)
       .maybeSingle();
 
-    if (currentError) return NextResponse.json({ error: currentError.message }, { status: 500 });
+    if (currentError) {
+      console.error("[contacts/:id] contact lookup failed:", currentError.message);
+      return NextResponse.json({ error: "Unable to verify this contact." }, { status: 500 });
+    }
     if (!current) return NextResponse.json({ error: "Contact not found for this workspace." }, { status: 404 });
 
     currentCompanyId = current.company_id ?? null;
@@ -195,7 +185,8 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         .maybeSingle();
 
       if (companyError) {
-        return NextResponse.json({ error: companyError.message }, { status: 500 });
+        console.error("[contacts/:id] company lookup failed:", companyError.message);
+        return NextResponse.json({ error: "Unable to verify this company." }, { status: 500 });
       }
 
       if (!company) {
@@ -225,7 +216,9 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   if (error) {
     const status = error.code === "23505" ? 409 : 500;
-    return NextResponse.json({ error: error.message }, { status });
+    const message = error.code === "23505" ? "A contact with this email already exists." : "Unable to update this contact.";
+    if (status === 500) console.error("[contacts/:id] contact update failed:", error.message);
+    return NextResponse.json({ error: message }, { status });
   }
 
   if (!data) return NextResponse.json({ error: "Contact not found for this workspace." }, { status: 404 });
@@ -240,7 +233,11 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
 export async function DELETE(_req: NextRequest, ctx: RouteContext) {
   const { contactId } = await ctx.params;
-  const appUser = await getAppUser();
+  if (!contactId?.trim()) {
+    return NextResponse.json({ error: "contactId is required." }, { status: 400 });
+  }
+
+  const appUser = await getCurrentAppUser({ label: "contacts/:id" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!["admin", "manager"].includes(appUser.role)) {
@@ -258,7 +255,9 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
 
   if (error) {
     const status = error.code === "23503" ? 409 : 500;
-    return NextResponse.json({ error: error.message }, { status });
+    const message = error.code === "23503" ? "This contact is still linked to other records." : "Unable to delete this contact.";
+    if (status === 500) console.error("[contacts/:id] contact delete failed:", error.message);
+    return NextResponse.json({ error: message }, { status });
   }
 
   if (!data) return NextResponse.json({ error: "Contact not found for this workspace." }, { status: 404 });

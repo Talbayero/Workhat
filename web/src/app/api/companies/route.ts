@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 
 /* POST /api/companies — create company */
@@ -21,26 +22,8 @@ function normalizeTags(value: unknown) {
   return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
 }
 
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[companies] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
-}
-
 export async function POST(req: NextRequest) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "companies" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
@@ -87,9 +70,12 @@ export async function POST(req: NextRequest) {
     .select("id")
     .single();
 
-  if (error) {
-    const status = error.code === "23505" ? 409 : 500;
-    return NextResponse.json({ error: error.message }, { status });
+  if (error || !data) {
+    if (error?.code === "23505") {
+      return NextResponse.json({ error: "A company with this domain already exists." }, { status: 409 });
+    }
+    console.error("[companies] company insert failed:", error?.message ?? "No company returned");
+    return NextResponse.json({ error: "Unable to create this company." }, { status: 500 });
   }
 
   return NextResponse.json({ company: { id: data.id } }, { status: 201 });

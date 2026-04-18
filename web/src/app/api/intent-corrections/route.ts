@@ -1,6 +1,6 @@
 import { after, NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { suggestKeywordsFromCorrection } from "@/lib/ai/intent-classifier";
 
 /* ─────────────────────────────────────────────
@@ -23,44 +23,80 @@ import { suggestKeywordsFromCorrection } from "@/lib/ai/intent-classifier";
    Access: manager / admin / qa_reviewer.
 ───────────────────────────────────────────── */
 
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .single();
-  return data as { id: string; org_id: string; role: string } | null;
+type IntentCorrectionPayload = {
+  conversationId: string;
+  originalIntent: string;
+  correctedIntent: string;
+  closureNote: string | null;
+};
+
+function normalizeText(value: unknown) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+function validatePayload(value: unknown): IntentCorrectionPayload | { error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { error: "Invalid JSON body." };
+  }
+
+  const body = value as Record<string, unknown>;
+  const conversationId = normalizeText(body.conversationId);
+  const originalIntent = normalizeText(body.originalIntent);
+  const correctedIntent = normalizeText(body.correctedIntent);
+
+  if (!conversationId || !originalIntent || !correctedIntent) {
+    return { error: "conversationId, originalIntent, and correctedIntent are required." };
+  }
+
+  if (body.closureNote != null && typeof body.closureNote !== "string") {
+    return { error: "closureNote must be text." };
+  }
+
+  return {
+    conversationId,
+    originalIntent,
+    correctedIntent,
+    closureNote: normalizeText(body.closureNote),
+  };
+}
+
+function normalizeKeywords(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(
+    value
+      .filter((keyword): keyword is string => typeof keyword === "string")
+      .map((keyword) => keyword.trim())
+      .filter(Boolean)
+  ));
 }
 
 export async function POST(req: NextRequest) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "intent-corrections" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: {
-    conversationId?: string;
-    originalIntent?: string;
-    correctedIntent?: string;
-    closureNote?: string;
-  };
+  let payload: IntentCorrectionPayload | { error: string };
   try {
-    body = await req.json();
+    payload = validatePayload(await req.json());
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { conversationId, originalIntent, correctedIntent, closureNote } = body;
+  if ("error" in payload) {
+    return NextResponse.json({ error: payload.error }, { status: 400 });
+  }
 
-  if (!conversationId || !originalIntent || !correctedIntent) {
+  const { conversationId, originalIntent, correctedIntent, closureNote } = payload;
+  const adminState = createOptionalAdminClient();
+  if (!adminState.client) {
+    console.error("[intent-corrections] admin client unavailable:", adminState.reason);
     return NextResponse.json(
-      { error: "conversationId, originalIntent, and correctedIntent are required" },
-      { status: 400 }
+      { error: "Intent correction logging is temporarily unavailable. Please try again." },
+      { status: 503 }
     );
   }
-
-  const admin = createAdminClient();
+  const admin = adminState.client;
 
   // Verify the conversation belongs to this org
   const { data: conv, error: convError } = await admin
@@ -71,7 +107,8 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (convError) {
-    return NextResponse.json({ error: convError.message }, { status: 500 });
+    console.error("[intent-corrections] conversation lookup failed:", convError.message);
+    return NextResponse.json({ error: "Unable to verify this conversation." }, { status: 500 });
   }
 
   if (!conv) {
@@ -90,7 +127,8 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (firstMsgError) {
-    return NextResponse.json({ error: firstMsgError.message }, { status: 500 });
+    console.error("[intent-corrections] first message lookup failed:", firstMsgError.message);
+    return NextResponse.json({ error: "Unable to prepare correction context." }, { status: 500 });
   }
 
   const bodyPreview = (firstMsg?.body_text ?? "").slice(0, 500);
@@ -101,9 +139,9 @@ export async function POST(req: NextRequest) {
     .insert({
       org_id: appUser.org_id,
       conversation_id: conversationId,
-      original_intent: originalIntent.trim(),
-      corrected_intent: correctedIntent.trim(),
-      closure_note: closureNote?.trim() || null,
+      original_intent: originalIntent,
+      corrected_intent: correctedIntent,
+      closure_note: closureNote,
       subject: conv.subject || null,
       body_preview: bodyPreview || null,
       resolved_by: appUser.id,
@@ -112,9 +150,9 @@ export async function POST(req: NextRequest) {
     .select("id, was_changed")
     .single();
 
-  if (insertErr) {
-    console.error("[intent-corrections] Insert error:", insertErr.message);
-    return NextResponse.json({ error: insertErr.message }, { status: 500 });
+  if (insertErr || !correction) {
+    console.error("[intent-corrections] insert failed:", insertErr?.message ?? "No correction returned");
+    return NextResponse.json({ error: "Unable to save the intent correction." }, { status: 500 });
   }
 
   // If the intent was actually changed, fire async AI keyword suggestion
@@ -124,21 +162,21 @@ export async function POST(req: NextRequest) {
       .from("intents")
       .select("keywords")
       .eq("org_id", appUser.org_id)
-      .ilike("name", correctedIntent.trim())
+      .ilike("name", correctedIntent)
       .limit(1);
     const intentRow = intentRows?.[0] ?? null;
 
-    const existingKeywords = (intentRow?.keywords as string[]) ?? [];
+    const existingKeywords = normalizeKeywords(intentRow?.keywords);
 
     // Keep this Vercel-safe: after() allows the response to return while
     // ensuring the keyword suggestion write is still allowed to finish.
     after(async () => {
       try {
         const suggested = await suggestKeywordsFromCorrection({
-          correctedIntent: correctedIntent.trim(),
+          correctedIntent,
           subject: conv.subject ?? "",
           bodyPreview,
-          closureNote: closureNote?.trim() ?? "",
+          closureNote: closureNote ?? "",
           existingKeywords,
         });
 
@@ -146,7 +184,8 @@ export async function POST(req: NextRequest) {
           await admin
             .from("intent_corrections")
             .update({ suggested_keywords: suggested })
-            .eq("id", correction.id);
+            .eq("id", correction.id)
+            .eq("org_id", appUser.org_id);
         }
       } catch (err) {
         console.error("[intent-corrections] Keyword suggestion failed:", err instanceof Error ? err.message : err);
@@ -158,13 +197,21 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "intent-corrections" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!["manager", "admin", "qa_reviewer"].includes(appUser.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const admin = createAdminClient();
+  const adminState = createOptionalAdminClient();
+  if (!adminState.client) {
+    console.error("[intent-corrections] admin client unavailable:", adminState.reason);
+    return NextResponse.json(
+      { error: "Intent correction insights are temporarily unavailable. Please try again." },
+      { status: 503 }
+    );
+  }
+  const admin = adminState.client;
 
   // Fetch recent corrections (last 90 days)
   const since = new Date();
@@ -178,7 +225,10 @@ export async function GET() {
     .order("created_at", { ascending: false })
     .limit(200);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[intent-corrections] corrections lookup failed:", error.message);
+    return NextResponse.json({ error: "Unable to load intent corrections." }, { status: 500 });
+  }
 
   // Build pattern summary: count how many times X was corrected to Y
   const patterns: Record<string, { originalIntent: string; correctedIntent: string; count: number }> = {};

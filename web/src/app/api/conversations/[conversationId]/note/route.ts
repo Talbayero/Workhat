@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 
 type NotePayload = {
@@ -24,27 +25,22 @@ export async function POST(
   { params }: { params: Promise<{ conversationId: string }> }
 ) {
   const { conversationId } = await params;
-  const supabase = await createClient();
+  if (!conversationId?.trim()) {
+    return NextResponse.json({ error: "conversationId is required." }, { status: 400 });
+  }
 
-  // Authenticate
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const appUser = await getCurrentAppUser<{
+    id: string;
+    org_id: string;
+    role: string;
+    full_name?: string;
+  }>({ label: "conversation-note", select: "id, org_id, role, full_name" });
+  if (!appUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Get app user + org
-  const { data: appUser, error: userErr } = await supabase
-    .from("users")
-    .select("id, org_id, full_name")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (userErr || !appUser) {
-    return NextResponse.json({ error: "App user not found" }, { status: 403 });
-  }
-
-  const { id: userId, org_id: orgId, full_name: fullName } =
-    appUser as { id: string; org_id: string; full_name: string };
+  const supabase = await createClient();
+  const { id: userId, org_id: orgId, full_name: fullName } = appUser;
 
   // Validate body
   let payload: NotePayload | null;
@@ -65,7 +61,8 @@ export async function POST(
     .maybeSingle();
 
   if (conversationError) {
-    return NextResponse.json({ error: conversationError.message }, { status: 500 });
+    console.error("[note] conversation lookup failed:", conversationError.message);
+    return NextResponse.json({ error: "Unable to verify this conversation." }, { status: 500 });
   }
 
   if (!conversation) {
