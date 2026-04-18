@@ -6,11 +6,16 @@
  *   2. Sends a Supabase invite email (magic link tied to the org)
  *
  * Only admins and managers can invite. Duplicate invites are skipped gracefully.
+ *
+ * Note: all users table writes use the admin client because the RLS policy
+ * users_insert_admin restricts inserts to admins, but managers are also
+ * permitted to invite at the application layer. The admin client is safe here
+ * because the app-layer role check runs before any DB write.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createOptionalAdminClient } from "@/lib/supabase/admin";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 
 type InviteBody = {
   emails: string[];
@@ -41,34 +46,17 @@ function validateBody(raw: unknown): InviteBody | null {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
+  const caller = await getCurrentAppUser({ label: "invite", select: "id, org_id, role" });
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Authenticate calling user
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Get calling user's app record — must be admin or manager
-  const { data: caller, error: callerErr } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (callerErr || !caller) {
-    return NextResponse.json({ error: "App user not found" }, { status: 403 });
-  }
-
-  const { org_id: orgId, role: callerRole } =
-    caller as { id: string; org_id: string; role: string };
-
-  if (!["admin", "manager"].includes(callerRole)) {
+  if (!["admin", "manager"].includes(caller.role)) {
     return NextResponse.json(
       { error: "Only admins and managers can invite team members" },
       { status: 403 }
     );
   }
+
+  const { org_id: orgId } = caller;
 
   // Validate body
   let body: InviteBody | null;
@@ -84,27 +72,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { emails, role } = body;
-
-  // Use the shared admin client — includes key validation and proper error messages.
-  // Avoids silently passing undefined if SUPABASE_SERVICE_ROLE_KEY is missing.
-  let adminClient: ReturnType<typeof createAdminClient>;
-  try {
-    adminClient = createAdminClient();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Admin client unavailable";
-    console.error("[invite] admin client init failed:", message);
+  const adminState = createOptionalAdminClient();
+  if (!adminState.client) {
+    console.error("[invite] admin client unavailable:", adminState.reason);
     return NextResponse.json(
-      { error: "Invitations are unavailable — SUPABASE_SERVICE_ROLE_KEY is not configured." },
+      { error: "Invitations are unavailable — admin database key is not configured." },
       { status: 503 }
     );
   }
+  const adminClient = adminState.client;
 
+  const { emails, role } = body;
   const results: { email: string; status: "invited" | "already_exists" | "error" }[] = [];
 
   for (const email of emails) {
     // Check if a user with this email already exists in the org
-    const { data: existing, error: existingError } = await supabase
+    const { data: existing, error: existingError } = await adminClient
       .from("users")
       .select("id, status")
       .eq("org_id", orgId)
@@ -122,8 +105,10 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // Create a pending users row so we know which org they belong to when they sign in
-    const { error: insertErr } = await supabase.from("users").insert({
+    // Create a pending users row so we know which org they belong to when they sign in.
+    // Uses admin client because users_insert_admin RLS blocks non-admin inserts, but
+    // managers are permitted to invite at the application layer (checked above).
+    const { error: insertErr } = await adminClient.from("users").insert({
       org_id: orgId,
       auth_user_id: null, // filled in when they accept the invite
       full_name: email.split("@")[0],
@@ -149,9 +134,7 @@ export async function POST(req: NextRequest) {
     if (inviteErr) {
       console.error("[invite] supabase invite failed:", inviteErr.message);
       // Delete the pending row so the invite can be cleanly retried.
-      // user_status enum only has 'pending' | 'active' | 'disabled' — there is no
-      // error state, so removing the row is cleaner than leaving a stuck ghost record.
-      const { error: cleanupError } = await supabase
+      const { error: cleanupError } = await adminClient
         .from("users")
         .delete()
         .eq("org_id", orgId)

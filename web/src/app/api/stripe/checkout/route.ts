@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createCheckoutSession, type StripePlan } from "@/lib/stripe";
+import { getCurrentAppUser, type CurrentAppUser } from "@/lib/auth/app-user";
 
 /* ─────────────────────────────────────────────
    POST /api/stripe/checkout
@@ -10,37 +10,26 @@ import { createCheckoutSession, type StripePlan } from "@/lib/stripe";
    Body: { plan: "pro" | "scale", billing: "monthly" | "annual" }
 ───────────────────────────────────────────── */
 
+type CheckoutAppUser = CurrentAppUser & {
+  email: string;
+  organizations: { id: string; slug: string; name: string } | { id: string; slug: string; name: string }[] | null;
+};
+
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const appUser = await getCurrentAppUser<CheckoutAppUser>({
+      label: "stripe/checkout",
+      select: "id, org_id, role, email, organizations(id, slug, name)",
+    });
+
+    if (!appUser) {
       return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
     }
 
-    // Get org for this user
-    const { data: appUser, error: appUserError } = await supabase
-      .from("users")
-      .select("org_id, organizations(id, slug, name)")
-      .eq("auth_user_id", user.id)
-      .maybeSingle();
-
-    if (appUserError) {
-      return NextResponse.json({ error: appUserError.message }, { status: 500 });
-    }
-
-    if (!appUser) {
-      return NextResponse.json({ error: "No org found — complete onboarding first" }, { status: 400 });
-    }
-
-    const raw = (appUser as unknown as {
-      org_id: string;
-      organizations: { id: string; slug: string; name: string } | { id: string; slug: string; name: string }[];
-    });
-
-    const org = Array.isArray(raw.organizations) ? raw.organizations[0] : raw.organizations;
+    const raw = appUser.organizations;
+    const org = Array.isArray(raw) ? raw[0] : raw;
     if (!org) {
-      return NextResponse.json({ error: "Org not found" }, { status: 400 });
+      return NextResponse.json({ error: "No org found — complete onboarding first" }, { status: 400 });
     }
 
     let body: Record<string, unknown>;
@@ -71,7 +60,7 @@ export async function POST(req: NextRequest) {
       billing: billing as "monthly" | "annual",
       orgId: org.id,
       orgSlug: org.slug,
-      customerEmail: user.email ?? "",
+      customerEmail: appUser.email ?? "",
       successUrl: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${origin}/pricing`,
     });
