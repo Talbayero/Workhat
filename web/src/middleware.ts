@@ -1,38 +1,57 @@
 import { createServerClient } from "@supabase/ssr";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { applyApiGatewayHeaders, guardApiRequest } from "@/lib/security/api-gateway";
+
+/**
+ * Next.js middleware — runs on every non-static request.
+ *
+ * Responsibilities (in order):
+ *   1. API gateway — rate limiting, IP blacklisting, body-size caps
+ *   2. Session refresh — re-issue expiring Supabase cookies so every server
+ *      component in this request reads a valid session
+ *   3. Auth routing:
+ *       - Public routes pass through freely
+ *       - Unauthenticated API requests → 401 JSON
+ *       - Unauthenticated page requests → /login?next=<path>
+ *       - Authenticated users on /login → /inbox
+ */
 
 type CookieItem = { name: string; value: string; options?: Record<string, unknown> };
 
-// ── Route classification ────────────────────────────────────────────────────
+// ── Route classification ─────────────────────────────────────────────────────
 
-/** Routes that only unauthenticated users should reach (redirect authed users away). */
-const AUTH_ROUTES = new Set(["/login"]);
-
-/** Routes that require a valid session (unauthenticated users are redirected to /login). */
-const PROTECTED_PREFIXES = [
-  "/dashboard",
-  "/inbox",
-  "/contacts",
-  "/companies",
-  "/knowledge",
-  "/search",
-  "/settings",
-  "/checkout",
-  "/onboarding",
-];
-
-function isProtected(pathname: string) {
-  return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
+/** Paths that do NOT require authentication. */
+function isPublic(pathname: string): boolean {
+  // Marketing / landing
+  if (pathname === "/" || pathname === "/pricing" || pathname === "/compare") return true;
+  // Internationalized marketing routes (/en/..., /es/...)
+  if (pathname.match(/^\/(en|es)(\/|$)/)) return true;
+  // Auth flows (magic link, OAuth callback)
+  if (pathname.startsWith("/auth/")) return true;
+  // Demo routes (no auth needed)
+  if (pathname.startsWith("/demo/")) return true;
+  // Public API routes
+  if (pathname.startsWith("/api/inbound/")) return true;
+  if (pathname.startsWith("/api/stripe/webhook")) return true;
+  if (pathname.startsWith("/api/waitlist")) return true;
+  if (pathname.startsWith("/api/email/gmail/")) return true; // OAuth connect/callback flow
+  // Login page itself
+  if (pathname === "/login") return true;
+  return false;
 }
 
 // ── Middleware ───────────────────────────────────────────────────────────────
 
-export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-  // Supabase requires a response object it can attach Set-Cookie headers to
-  // when it refreshes an expiring session token.
-  let response = NextResponse.next({ request: req });
+  // ── 1. API gateway (rate limits, blacklists, body-size caps) ───────────────
+  const gatewayResponse = await guardApiRequest(request);
+  if (gatewayResponse) return gatewayResponse;
+
+  // ── 2. Session refresh via Supabase ────────────────────────────────────────
+  // We need a mutable response object so Supabase can write refreshed cookies.
+  let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,13 +59,11 @@ export async function middleware(req: NextRequest) {
     {
       cookies: {
         getAll() {
-          return req.cookies.getAll();
+          return request.cookies.getAll();
         },
         setAll(cookiesToSet: CookieItem[]) {
-          // Write cookies onto the outgoing request so server components
-          // that run after middleware can read the refreshed session.
-          cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value));
-          response = NextResponse.next({ request: req });
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
           );
@@ -55,33 +72,47 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // getUser() validates the session with Supabase auth server on every call
-  // and refreshes the token if needed — never use getSession() here because
-  // it only reads the local cookie without server-side validation.
+  // IMPORTANT: always use getUser() — it validates against the Supabase Auth
+  // server. Never use getSession() here; it only reads the local cookie and
+  // can be spoofed by a crafted cookie value.
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Unauthenticated → redirect to /login, preserving the intended destination.
-  if (!user && isProtected(pathname)) {
-    const loginUrl = req.nextUrl.clone();
+  // ── 3. Auth routing ────────────────────────────────────────────────────────
+
+  // Redirect authenticated users away from the login page.
+  if (user && pathname === "/login") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/inbox";
+    url.search = "";
+    return applyApiGatewayHeaders(NextResponse.redirect(url));
+  }
+
+  // Public routes always pass through.
+  if (isPublic(pathname)) {
+    return applyApiGatewayHeaders(response);
+  }
+
+  // Protected route — no valid session.
+  if (!user) {
+    if (pathname.startsWith("/api/")) {
+      // API callers expect JSON, not an HTML redirect.
+      return applyApiGatewayHeaders(
+        NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      );
+    }
+    // Page route — redirect to /login preserving the intended destination.
+    const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    return applyApiGatewayHeaders(NextResponse.redirect(loginUrl));
   }
 
-  // Authenticated → redirect away from auth-only pages.
-  if (user && AUTH_ROUTES.has(pathname)) {
-    const homeUrl = req.nextUrl.clone();
-    homeUrl.pathname = "/inbox";
-    homeUrl.search = "";
-    return NextResponse.redirect(homeUrl);
-  }
-
-  return response;
+  return applyApiGatewayHeaders(response);
 }
 
-// Only run on pages — skip API routes, static assets, and Next.js internals.
+// Run on all routes except static assets and Next.js internals.
 export const config = {
   matcher: [
-    "/((?!api/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|eot|otf|css|js)$).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|eot|otf|css|js)$).*)",
   ],
 };
