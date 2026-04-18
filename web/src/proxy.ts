@@ -19,6 +19,7 @@ const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/onboarding", "/pricing
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
+  if (pathname.match(/^\/(en|es)(\/|$)/)) return true;
   if (pathname.startsWith("/auth/")) return true;
   if (pathname.startsWith("/demo/")) return true;
   if (pathname.startsWith("/api/inbound/")) return true;
@@ -32,6 +33,13 @@ function isPublic(pathname: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  
+  const isMarketingRoute = pathname === "/" || pathname === "/pricing" || pathname === "/compare";
+  if (isMarketingRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/en${pathname === "/" ? "" : pathname}`;
+    return NextResponse.redirect(url);
+  }
 
   const gatewayResponse = await guardApiRequest(request);
   if (gatewayResponse) return gatewayResponse;
