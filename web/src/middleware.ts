@@ -6,7 +6,7 @@ type CookieItem = { name: string; value: string; options?: Record<string, unknow
 // ── Route classification ────────────────────────────────────────────────────
 
 /** Routes that only unauthenticated users should reach (redirect authed users away). */
-const AUTH_ROUTES = new Set(["/login", "/onboarding"]);
+const AUTH_ROUTES = new Set(["/login"]);
 
 /** Routes that require a valid session (unauthenticated users are redirected to /login). */
 const PROTECTED_PREFIXES = [
@@ -18,6 +18,7 @@ const PROTECTED_PREFIXES = [
   "/search",
   "/settings",
   "/checkout",
+  "/onboarding",
 ];
 
 function isProtected(pathname: string) {
