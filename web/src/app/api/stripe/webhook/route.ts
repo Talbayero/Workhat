@@ -31,7 +31,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  const supabase = createAdminClient();
+  let supabase: ReturnType<typeof createAdminClient>;
+  try {
+    supabase = createAdminClient();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Admin client unavailable";
+    console.error("[stripe/webhook] admin client init failed:", message);
+    return NextResponse.json({ error: "Webhook handler unavailable" }, { status: 503 });
+  }
 
   try {
     switch (event.type) {
@@ -40,7 +47,7 @@ export async function POST(req: NextRequest) {
         const meta = session.metadata as Record<string, string> | undefined;
         if (!meta?.org_id) break;
 
-        await supabase
+        const { error } = await supabase
           .from("organizations")
           .update({
             crm_plan: (meta.plan ?? "pro") as string,
@@ -50,7 +57,7 @@ export async function POST(req: NextRequest) {
           })
           .eq("id", meta.org_id);
 
-        console.log(`[stripe/webhook] Activated ${meta.plan} trial for org ${meta.org_id}`);
+        if (error) throw error;
         break;
       }
 
@@ -62,12 +69,12 @@ export async function POST(req: NextRequest) {
         const status = sub.status as string;
         const crm_plan = meta.plan ?? "pro";
 
-        await supabase
+        const { error } = await supabase
           .from("organizations")
           .update({ crm_plan, plan_status: status })
           .eq("id", meta.org_id);
 
-        console.log(`[stripe/webhook] Updated org ${meta.org_id} → ${crm_plan} (${status})`);
+        if (error) throw error;
         break;
       }
 
@@ -76,12 +83,12 @@ export async function POST(req: NextRequest) {
         const meta = sub.metadata as Record<string, string> | undefined;
         if (!meta?.org_id) break;
 
-        await supabase
+        const { error } = await supabase
           .from("organizations")
           .update({ crm_plan: "starter", plan_status: "canceled", stripe_subscription_id: null })
           .eq("id", meta.org_id);
 
-        console.log(`[stripe/webhook] Downgraded org ${meta.org_id} to starter`);
+        if (error) throw error;
         break;
       }
 
@@ -91,11 +98,12 @@ export async function POST(req: NextRequest) {
           ?.metadata as Record<string, string> | undefined;
         if (!orgId?.org_id) break;
 
-        await supabase
+        const { error } = await supabase
           .from("organizations")
           .update({ plan_status: "past_due" })
           .eq("id", orgId.org_id);
 
+        if (error) throw error;
         break;
       }
 

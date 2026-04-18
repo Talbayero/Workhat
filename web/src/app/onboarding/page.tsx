@@ -116,10 +116,13 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
     const emailError = params.get("emailError");
 
     if (connected === "gmail") {
-      setUrlMessage({ type: "success", message: "Gmail connected. Work Hat can now use this mailbox directly." });
+      setUrlMessage({ type: "success", message: "Gmail connected. We are importing recent conversations now." });
+      void syncGmail();
     } else if (emailError) {
       setUrlMessage({ type: "error", message: emailError });
     }
+    // OAuth return params should only be consumed once on page load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -202,12 +205,12 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
   return (
     <div className="space-y-4 mt-5">
       <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended</p>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended · no forwarding required</p>
         <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-base font-semibold">Connect Gmail directly</h3>
+            <h3 className="text-base font-semibold">Connect your Gmail inbox</h3>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Work Hat connects with OAuth, stores tokens encrypted, and prepares this mailbox for direct sync and sending.
+              Sign in with Google, approve Work Hat, and we handle sync, importing, and sending from this mailbox.
             </p>
           </div>
           {gmailConnection?.status === "connected" ? (
@@ -218,7 +221,7 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
                 disabled={syncing}
                 className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {syncing ? "Syncing..." : "Sync Gmail"}
+                {syncing ? "Importing..." : "Import latest email"}
               </button>
               <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-300">
                 Connected
@@ -229,15 +232,15 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
                 disabled={watching}
                 className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] disabled:opacity-50"
               >
-                {watching ? "Starting watch..." : "Start live watch"}
+                {watching ? "Repairing..." : "Repair live updates"}
               </button>
             </div>
           ) : (
             <a
-              href="/api/email/gmail/connect"
+              href={`/api/email/gmail/connect?returnTo=${encodeURIComponent("/onboarding?step=inbox")}`}
               className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-center text-xs font-medium text-white transition-opacity hover:opacity-90"
             >
-              Connect Gmail
+              Sign in with Google
             </a>
           )}
         </div>
@@ -246,11 +249,11 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
           <div className="mt-4 rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs">
             <p className="font-medium">{gmailConnection.provider_account_email}</p>
             <p className="mt-1 text-[var(--muted)]">
-              Status: {gmailConnection.status} · Sync: {gmailConnection.sync_status}
+              {gmailConnection.status === "connected" ? "Ready for shared inbox replies" : `Status: ${gmailConnection.status}`}
+              {gmailConnection.sync_status ? ` · Sync: ${gmailConnection.sync_status}` : ""}
               {gmailConnection.last_sync_at ? ` · Last sync ${new Date(gmailConnection.last_sync_at).toLocaleString()}` : ""}
-              {gmailConnection.last_history_id ? ` · History ${gmailConnection.last_history_id}` : ""}
               {gmailConnection.watch_expires_at
-                ? ` · Watch until ${new Date(gmailConnection.watch_expires_at).toLocaleDateString()}`
+                ? ` · Live updates active until ${new Date(gmailConnection.watch_expires_at).toLocaleDateString()}`
                 : ""}
             </p>
           </div>
@@ -299,38 +302,22 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
         </div>
       </div>
 
-      <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Fallback forwarding address</p>
-        <p className="mt-2 text-xs leading-6 text-[var(--muted)]">
-          If direct connection is not available, forward your support mailbox to this address.
-          Every forwarded email creates a conversation in your inbox automatically.
+      <details className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+        <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
+          Need a fallback forwarding address?
+        </summary>
+        <p className="mt-3 text-xs leading-6 text-[var(--muted)]">
+          Use this only if Google sign-in is unavailable. Every forwarded email creates a conversation automatically.
         </p>
         <div
-          className="mt-3 flex items-center justify-between gap-3 rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-3 font-mono text-sm cursor-pointer"
+          className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-3 font-mono text-sm"
           onClick={() => navigator.clipboard?.writeText(inboundAddress)}
           title="Click to copy"
         >
           <span>{inboundAddress}</span>
           <span className="text-[10px] text-[var(--muted)]">click to copy</span>
         </div>
-      </div>
-      <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4 space-y-2 text-sm">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Forwarding setup</p>
-        <p className="text-[var(--muted)]">
-          1. Go to your email provider (Gmail, Google Workspace, Outlook, etc.)
-        </p>
-        <p className="text-[var(--muted)]">
-          2. Find &quot;Forwarding&quot; in settings and add the address above
-        </p>
-        <p className="text-[var(--muted)]">
-          3. Confirm the verification email that arrives in your inbox
-        </p>
-      </div>
-      <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
-        <p className="text-xs text-[var(--muted)]">
-          Direct email connection is the long-term path. Forwarding remains available for providers or teams that need a simpler fallback.
-        </p>
-      </div>
+      </details>
     </div>
   );
 }
@@ -542,7 +529,7 @@ const STEP_META: { id: StepId; title: string; description: string }[] = [
   {
     id: "inbox",
     title: "Connect your inbox",
-    description: "Connect Gmail directly, then keep forwarding as a fallback.",
+    description: "Sign in with Google so Work Hat can import and reply from your mailbox.",
   },
   {
     id: "knowledge",

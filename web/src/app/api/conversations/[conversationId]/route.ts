@@ -7,11 +7,15 @@ async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+  if (error) {
+    console.error("[conversations/:id] app user lookup failed:", error.message);
+    return null;
+  }
   return data as { id: string; org_id: string; role: string } | null;
 }
 
@@ -35,7 +39,11 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   let body: Record<string, unknown>;
   try {
-    body = await req.json() as Record<string, unknown>;
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
@@ -43,14 +51,14 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const updates: Record<string, unknown> = {};
 
   if ("status" in body) {
-    if (!VALID_STATUSES.has(body.status as string)) {
+    if (typeof body.status !== "string" || !VALID_STATUSES.has(body.status)) {
       return NextResponse.json({ error: "Invalid status value." }, { status: 422 });
     }
     updates.status = body.status;
   }
 
   if ("priority" in body) {
-    if (!VALID_PRIORITIES.has(body.priority as string)) {
+    if (typeof body.priority !== "string" || !VALID_PRIORITIES.has(body.priority)) {
       return NextResponse.json({ error: "Invalid priority value." }, { status: 422 });
     }
     updates.priority = body.priority;

@@ -11,6 +11,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 
 const STATE_COOKIE = "workhat_gmail_oauth_state";
+const RETURN_TO_COOKIE = "workhat_gmail_oauth_return_to";
 
 type AppUser = {
   id: string;
@@ -20,13 +21,22 @@ type AppUser = {
 
 type ProviderMetadata = Record<string, unknown>;
 
-function onboardingRedirect(req: NextRequest, params: Record<string, string>) {
-  const url = new URL("/onboarding", req.url);
-  url.searchParams.set("step", "inbox");
+function getSafeReturnTo(req: NextRequest) {
+  const returnTo = req.cookies.get(RETURN_TO_COOKIE)?.value;
+  if (!returnTo || !returnTo.startsWith("/") || returnTo.startsWith("//") || returnTo.includes("\\")) {
+    return "/onboarding?step=inbox";
+  }
+
+  return returnTo;
+}
+
+function connectorRedirect(req: NextRequest, params: Record<string, string>) {
+  const url = new URL(getSafeReturnTo(req), req.url);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
   const response = NextResponse.redirect(url);
   response.cookies.delete(STATE_COOKIE);
+  response.cookies.delete(RETURN_TO_COOKIE);
   return response;
 }
 
@@ -52,30 +62,30 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const providerError = params.get("error");
   if (providerError) {
-    return onboardingRedirect(req, { emailError: `Google denied access: ${providerError}` });
+    return connectorRedirect(req, { emailError: `Google denied access: ${providerError}` });
   }
 
   const state = params.get("state");
   const expectedState = req.cookies.get(STATE_COOKIE)?.value;
   if (!state || !expectedState || state !== expectedState) {
-    return onboardingRedirect(req, { emailError: "Gmail connection expired. Try again." });
+    return connectorRedirect(req, { emailError: "Gmail connection expired. Try again." });
   }
 
   const code = params.get("code");
   if (!code) {
-    return onboardingRedirect(req, { emailError: "Google did not return an authorization code." });
+    return connectorRedirect(req, { emailError: "Google did not return an authorization code." });
   }
 
   const supabase = await createClient();
   const appUser = await getAppUser(supabase);
   if (!appUser) {
-    return onboardingRedirect(req, {
+    return connectorRedirect(req, {
       emailError: "Create your organization before connecting Gmail.",
     });
   }
 
   if (!["admin", "manager"].includes(appUser.role)) {
-    return onboardingRedirect(req, {
+    return connectorRedirect(req, {
       emailError: "Only admins and managers can connect shared inboxes.",
     });
   }
@@ -105,7 +115,7 @@ export async function GET(req: NextRequest) {
       : (existing as { refresh_token_ciphertext?: string } | null)?.refresh_token_ciphertext;
 
     if (!refreshTokenCiphertext) {
-      return onboardingRedirect(req, {
+      return connectorRedirect(req, {
         emailError: "Google did not return a refresh token. Reconnect and approve offline access.",
       });
     }
@@ -239,9 +249,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return onboardingRedirect(req, { connected: GMAIL_PROVIDER });
+    return connectorRedirect(req, { connected: GMAIL_PROVIDER });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gmail connection failed.";
-    return onboardingRedirect(req, { emailError: message });
+    return connectorRedirect(req, { emailError: message });
   }
 }

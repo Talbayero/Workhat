@@ -22,11 +22,17 @@ async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, full_name")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[conversations] app user lookup failed:", error.message);
+    return null;
+  }
+
   return data as { id: string; org_id: string; full_name: string } | null;
 }
 
@@ -47,7 +53,11 @@ export async function POST(req: NextRequest) {
 
   let body: Record<string, unknown>;
   try {
-    body = await req.json() as Record<string, unknown>;
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
   }
@@ -72,7 +82,16 @@ export async function POST(req: NextRequest) {
   if (!firstMessage) return NextResponse.json({ error: "Message body is required." }, { status: 400 });
 
   const supabase = await createClient();
-  const admin = createAdminClient();
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (error) {
+    console.error("[conversations] admin client unavailable:", error);
+    return NextResponse.json(
+      { error: "Conversation creation is unavailable because admin database access is not configured." },
+      { status: 503 }
+    );
+  }
   const { org_id: orgId } = appUser;
 
   // Classify intent: use DB-driven classifier unless caller provided an explicit override
@@ -114,12 +133,17 @@ export async function POST(req: NextRequest) {
 
   // 1. Find or create contact
   let contactId: string;
-  const { data: existingContact } = await supabase
+  const { data: existingContact, error: existingContactError } = await supabase
     .from("contacts")
-      .select("id")
-      .eq("org_id", orgId)
-      .eq("email", contactEmail)
-      .maybeSingle();
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("email", contactEmail)
+    .maybeSingle();
+
+  if (existingContactError) {
+    console.error("[conversations] contact lookup failed:", existingContactError.message);
+    return NextResponse.json({ error: "Failed to look up contact." }, { status: 500 });
+  }
 
   if (existingContact) {
     contactId = existingContact.id;
@@ -159,12 +183,17 @@ export async function POST(req: NextRequest) {
   let companyId: string | null = null;
   const domain = contactEmail.split("@")[1];
   if (domain && !GENERIC_DOMAINS.has(domain)) {
-    const { data: existingCompany } = await supabase
+    const { data: existingCompany, error: existingCompanyError } = await supabase
       .from("companies")
       .select("id")
       .eq("org_id", orgId)
       .eq("domain", domain)
       .maybeSingle();
+
+    if (existingCompanyError) {
+      console.error("[conversations] company lookup failed:", existingCompanyError.message);
+      return NextResponse.json({ error: "Failed to look up company." }, { status: 500 });
+    }
 
     if (existingCompany) {
       companyId = existingCompany.id;
@@ -198,12 +227,17 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. Get the org's default email channel
-  const { data: channel } = await supabase
+  const { data: channel, error: channelError } = await supabase
     .from("channels")
     .select("id")
     .eq("org_id", orgId)
     .eq("type", "email")
     .maybeSingle();
+
+  if (channelError) {
+    console.error("[conversations] channel lookup failed:", channelError.message);
+    return NextResponse.json({ error: "Failed to look up email channel." }, { status: 500 });
+  }
 
   if (!channel) {
     return NextResponse.json({ error: "No email channel found. Complete onboarding first." }, { status: 400 });

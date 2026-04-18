@@ -817,6 +817,20 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
     void refreshDiagnostics();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    const emailError = params.get("emailError");
+
+    if (connected === "gmail") {
+      setConnectionNotice("Gmail connected. Work Hat can now import conversations and send replies from that mailbox.");
+      setSetupPath(null);
+      void refreshConnections();
+    } else if (emailError) {
+      setConnectionError(emailError);
+    }
+  }, []);
+
   async function refreshConnections() {
     setConnectionsLoading(true);
     setConnectionError(null);
@@ -928,17 +942,16 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
             <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended</p>
             <p className="mt-1 text-base font-semibold">Work Hat Gmail connector</p>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
-              Connect Gmail directly so Work Hat can import conversations, keep a live watch, and send replies from the same mailbox.
-              Forwarding stays available as a fallback.
+              The simplest setup for non-technical teams: sign in with Google, approve access, and Work Hat handles importing and replies.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {canEdit ? (
               <Link
-                href="/api/email/gmail/connect"
+                href={`/api/email/gmail/connect?returnTo=${encodeURIComponent("/settings?tab=channels")}`}
                 className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
               >
-                {isConnected ? "Reconnect Gmail" : "Connect Gmail"}
+                {isConnected ? "Reconnect with Google" : "Sign in with Google"}
               </Link>
             ) : (
               <span className="rounded-full border border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
@@ -962,9 +975,9 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-semibold">No Gmail account connected yet</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                  Once connected, this panel will show sync health, live watch status, and the mailbox used for replies.
-                </p>
+              <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                Choose Sign in with Google. Your client only approves access — no forwarding rules or technical setup needed.
+              </p>
               </div>
               <span className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(144,50,61,0.45)] px-3 py-1.5 text-xs text-[var(--muted)]">
                 <span className="h-2 w-2 rounded-full bg-[var(--moss)] opacity-40" />
@@ -1001,14 +1014,14 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                     disabled={!canEdit || !isConnected || connectionAction !== null}
                     className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-45"
                   >
-                    {connectionAction === "sync" ? "Syncing..." : "Sync now"}
+                    {connectionAction === "sync" ? "Importing..." : "Import latest email"}
                   </button>
                   <button
                     onClick={() => runConnectionAction("watch")}
                     disabled={!canEdit || !isConnected || connectionAction !== null}
                     className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-45"
                   >
-                    {connectionAction === "watch" ? "Starting..." : "Start live watch"}
+                    {connectionAction === "watch" ? "Repairing..." : "Repair live updates"}
                   </button>
                   <button
                     onClick={disconnectConnection}
@@ -1142,7 +1155,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           <p className="eyebrow text-[9px] text-[var(--muted)]">Setup guide</p>
           <p className="mt-1 text-base font-semibold">Connect your support email</p>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-            Choose how you want to route emails into Work Hat. No technical setup required on your end.
+            Start with Google sign-in. Forwarding is only a fallback for teams that cannot approve OAuth yet.
           </p>
 
           {/* Path selector */}
@@ -1160,7 +1173,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                 <p className="text-sm font-semibold">Gmail / Google Workspace</p>
               </div>
               <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-                Forward your existing support@ or hello@ email here. Takes 2 minutes.
+                Recommended. The user signs in with Google and Work Hat handles sync and sending.
               </p>
             </button>
 
@@ -1177,7 +1190,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                 <p className="text-sm font-semibold">Use address directly</p>
               </div>
               <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-                Share your Work Hat address as your support email. Simplest setup.
+                Fallback option. Share or forward to the Work Hat inbound address manually.
               </p>
             </button>
           </div>
@@ -1185,29 +1198,48 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           {/* Gmail instructions */}
           {setupPath === "gmail" && (
             <div className="mt-4 rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
-              <p className="text-sm font-semibold">Forward Gmail to Work Hat</p>
-              <ol className="mt-4 space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold">Connect Gmail with one approval</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                    This is the Work Hat Email Connector path: no routing rules, no copy/paste setup, no admin console unless Google requires approval.
+                  </p>
+                </div>
+                {canEdit ? (
+                  <Link
+                    href={`/api/email/gmail/connect?returnTo=${encodeURIComponent("/settings?tab=channels")}`}
+                    className="w-fit rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
+                  >
+                    Sign in with Google
+                  </Link>
+                ) : (
+                  <span className="w-fit rounded-full border border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
+                    Admin access required
+                  </span>
+                )}
+              </div>
+
+              <ol className="mt-5 space-y-4">
                 {[
                   {
                     step: "1",
-                    title: "Open Gmail Settings",
-                    body: "In Gmail, click the gear icon → See all settings → Forwarding and POP/IMAP tab.",
+                    title: "Click Sign in with Google",
+                    body: "The user chooses the support mailbox they want Work Hat to manage.",
                   },
                   {
                     step: "2",
-                    title: "Add a forwarding address",
-                    body: "Click \"Add a forwarding address\" and enter your Work Hat inbound address:",
-                    code: inboundAddress,
+                    title: "Approve Work Hat access",
+                    body: "Google asks for permission to read recent mail and send replies from the connected mailbox.",
                   },
                   {
                     step: "3",
-                    title: "Confirm the forwarding email",
-                    body: "Google sends a confirmation email. The verification link will appear as a conversation in your Work Hat inbox — open it and click the link.",
+                    title: "Return to Work Hat",
+                    body: "The mailbox is saved, tokens are encrypted, and the channel is linked to your workspace automatically.",
                   },
                   {
                     step: "4",
-                    title: "Enable forwarding",
-                    body: "Back in Gmail settings, select \"Forward a copy of incoming mail\" and choose your Work Hat address. Save.",
+                    title: "Import and reply",
+                    body: "Use Import latest email to bring in recent conversations, then reply from the Work Hat inbox.",
                   },
                 ].map((s) => (
                   <li key={s.step} className="flex gap-3">
@@ -1217,24 +1249,15 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{s.title}</p>
                       <p className="mt-0.5 text-xs leading-5 text-[var(--muted)]">{s.body}</p>
-                      {s.code && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <code className="flex-1 overflow-x-auto rounded-[10px] border border-[var(--line)] bg-[var(--sage)] px-3 py-2 text-xs font-mono">
-                            {s.code}
-                          </code>
-                          <CopyButton value={s.code} />
-                        </div>
-                      )}
                     </div>
                   </li>
                 ))}
               </ol>
 
               <div className="mt-5 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
-                <p className="text-[10px] font-medium text-[var(--muted)] uppercase tracking-widest">Google Workspace</p>
+                <p className="text-[10px] font-medium text-[var(--muted)] uppercase tracking-widest">Google Workspace note</p>
                 <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
-                  For Workspace accounts, go to Admin console → Apps → Google Workspace → Gmail → Routing →
-                  Add a routing rule to forward matching emails to your Work Hat address.
+                  Some Workspace domains require an admin to approve the app once. After approval, future users can connect with the same simple Google sign-in flow.
                 </p>
               </div>
             </div>

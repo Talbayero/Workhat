@@ -442,11 +442,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  console.log(
-    `[inbound] Created message ${message!.id} on conversation ${conversationId} ` +
-    `(org: ${orgId}, intent: ${intent}, risk: ${riskLevel})`
-  );
-
   return NextResponse.json({
     ok: true,
     conversationId,
