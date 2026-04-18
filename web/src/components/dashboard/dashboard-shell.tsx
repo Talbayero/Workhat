@@ -4,6 +4,7 @@ import Link from "next/link";
 import { QAQueue } from "@/components/dashboard/qa-queue";
 import { type EditTypeKey, type DashboardStats, type EditLogEntry, type KnowledgeHealthPattern, type IntentStat } from "@/lib/supabase/queries";
 import type { InboxConversation } from "@/lib/mock-data";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 const editTypeLabel: Record<EditTypeKey, string> = {
   accepted: "Accepted",
@@ -355,11 +356,17 @@ export function DashboardShell({
           <RecentEditLog log={log} baseDir={baseDir} />
         </div>
 
-        <QAQueue queue={qaQueue} isDemo={isDemo} baseDir={baseDir} />
+        <ErrorBoundary title="QA queue failed to load" inline>
+          <QAQueue queue={qaQueue} isDemo={isDemo} baseDir={baseDir} />
+        </ErrorBoundary>
 
-        <IntentStatsCard stats={intentStats} baseDir={baseDir} />
+        <ErrorBoundary title="Intent stats failed to load" inline>
+          <IntentStatsCard stats={intentStats} baseDir={baseDir} />
+        </ErrorBoundary>
 
-        <KnowledgeHealthCard patterns={knowledgeHealth} stats={stats} baseDir={baseDir} />
+        <ErrorBoundary title="Knowledge health failed to load" inline>
+          <KnowledgeHealthCard patterns={knowledgeHealth} stats={stats} baseDir={baseDir} />
+        </ErrorBoundary>
 
       </div>
     </main>

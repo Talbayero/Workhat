@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
 import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
 import type { ConfidenceLevel } from "@/lib/ai/types";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 type LocalMessage = InboxConversation["messages"][number];
 type ConversationStatus = InboxConversation["status"];
@@ -946,6 +947,7 @@ export function ThreadWorkspace({
       >
         {/* AI Draft panel */}
         {activePanel === "ai" && (
+          <ErrorBoundary title="AI Draft panel error" inline>
           <div className="flex h-full w-[320px] flex-col overflow-hidden">
             {/* Panel header */}
             <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
@@ -1089,10 +1091,12 @@ export function ThreadWorkspace({
               )}
             </div>
           </div>
+          </ErrorBoundary>
         )}
 
         {/* Customer profile panel */}
         {activePanel === "profile" && (
+          <ErrorBoundary title="Profile panel error" inline>
           <div className="flex h-full w-[320px] flex-col overflow-hidden">
             <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
               <div className="flex items-center justify-between">
@@ -1171,6 +1175,7 @@ export function ThreadWorkspace({
               )}
             </div>
           </div>
+          </ErrorBoundary>
         )}
       </div>
     </div>
