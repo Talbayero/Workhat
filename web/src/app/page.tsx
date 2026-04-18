@@ -13,18 +13,15 @@ function NavBar() {
     <header className="sticky top-0 z-50 border-b border-[var(--line)] bg-[rgba(10,9,8,0.85)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[var(--moss)]">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="1" y="4" width="12" height="9" rx="1.5" stroke="white" strokeWidth="1.5" />
-              <path d="M1 8.5h3.5l1.5 1.5h3l1.5-1.5H13" stroke="white" strokeWidth="1.4" strokeLinejoin="round" />
-            </svg>
+          <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[var(--line)] border border-[var(--line-strong)]">
+            <img src="/logo.png" alt="Work Hat" className="h-5 w-5 object-contain drop-shadow-md" />
           </div>
           <span className="text-sm font-semibold tracking-tight">Work Hat</span>
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">
-          <Link href="#demo" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
-          <Link href="#compare" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
+          <Link href="/#demo" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
+          <Link href="/#compare" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
           <Link href="/pricing" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Pricing</Link>
         </nav>
 
@@ -408,11 +405,8 @@ function Footer() {
       <div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 sm:flex-row">
         <div>
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-5 w-5 items-center justify-center rounded-[5px] bg-[var(--moss)]">
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <rect x="0.5" y="2.5" width="9" height="7" rx="1.2" stroke="white" strokeWidth="1.2" />
-                <path d="M0.5 6h2.5l1 1h2l1-1H9.5" stroke="white" strokeWidth="1" strokeLinejoin="round" />
-              </svg>
+            <div className="flex h-5 w-5 items-center justify-center rounded-[5px] bg-[var(--line)] border border-[var(--line-strong)]">
+              <img src="/logo.png" alt="Work Hat" className="h-3.5 w-3.5 object-contain opacity-80" />
             </div>
             <span className="text-xs font-semibold text-[var(--foreground)]">Work Hat</span>
           </Link>
@@ -425,9 +419,9 @@ function Footer() {
           <div>
             <p className="mb-3 text-[10px] font-medium tracking-widest text-[var(--muted)] uppercase">Product</p>
             <nav className="flex flex-col gap-2">
-              <Link href="#demo" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
-              <Link href="#features" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Features</Link>
-              <Link href="#compare" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
+              <Link href="/#demo" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
+              <Link href="/#features" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Features</Link>
+              <Link href="/#compare" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
               <Link href="/pricing" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Pricing</Link>
             </nav>
           </div>
