@@ -88,7 +88,9 @@ export function assertGoogleOAuthConfig() {
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required");
+    throw new Error(
+      "Gmail connector is not configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel, then redeploy."
+    );
   }
 
   return { clientId, clientSecret };
