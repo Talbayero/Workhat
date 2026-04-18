@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { invalidateIntentCache } from "@/lib/ai/intent-classifier";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 
 /* ─────────────────────────────────────────────
    PATCH  /api/intents/:id  — update intent
@@ -26,29 +26,11 @@ function normalizeOptionalString(value: unknown) {
   return value.trim() || null;
 }
 
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[intents/:id] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
-}
-
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ intentId: string }> }
 ) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "intents/:id", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!["manager", "admin"].includes(appUser.role)) {
     return NextResponse.json({ error: "Forbidden — managers only" }, { status: 403 });
@@ -147,7 +129,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ intentId: string }> }
 ) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "intents/:id", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!["manager", "admin"].includes(appUser.role)) {
     return NextResponse.json({ error: "Forbidden — managers only" }, { status: 403 });

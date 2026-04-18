@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
 import { entryFromCorrection } from "@/lib/ai/knowledge-gen";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 
 /* ─────────────────────────────────────────────
    POST /api/knowledge/from-edit
@@ -19,26 +20,8 @@ import { entryFromCorrection } from "@/lib/ai/knowledge-gen";
    The entry is created with is_active=false so a manager must review it.
 ───────────────────────────────────────────── */
 
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[from-edit] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
-}
-
 export async function POST(req: NextRequest) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "from-edit", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;

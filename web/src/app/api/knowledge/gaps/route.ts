@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { entryFromGapPattern } from "@/lib/ai/knowledge-gen";
 import type { GeneratedKnowledgeEntry } from "@/lib/ai/knowledge-gen";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 
 /* ─────────────────────────────────────────────
    GET /api/knowledge/gaps
@@ -31,26 +31,8 @@ const MIN_OCCURRENCES = 3;  // minimum edits to surface a pattern
 const MAX_PATTERNS = 5;     // cap to keep LLM cost predictable
 const SAMPLE_REASONS = 5;   // reasons to pass into the LLM prompt
 
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[knowledge/gaps] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
-}
-
 export async function GET() {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "knowledge/gaps", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let admin: ReturnType<typeof createAdminClient>;

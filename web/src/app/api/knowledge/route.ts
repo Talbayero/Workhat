@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 
 /* ─────────────────────────────────────────────
    GET  /api/knowledge  — list entries for org
@@ -39,27 +40,8 @@ function getAdminOrResponse() {
   }
 }
 
-// ── Auth helper ────────────────────────────────────────────────────────────
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[knowledge] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; role: string } | null;
-}
-
 export async function GET() {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "knowledge", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = await createClient();
@@ -74,7 +56,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "knowledge", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;

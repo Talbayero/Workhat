@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 
 /* GET /api/search?q=term — cross-resource full-text search */
 
@@ -28,27 +29,11 @@ function mergeById<T extends SearchRecord>(...groups: Array<T[] | null | undefin
   return merged;
 }
 
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-  if (error) {
-    console.error("[search] app user lookup failed:", error.message);
-    return null;
-  }
-  return data as { id: string; org_id: string } | null;
-}
-
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (!q) return NextResponse.json({ conversations: [], contacts: [], companies: [] });
 
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser({ label: "search", select: "id, org_id" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = await createClient();
