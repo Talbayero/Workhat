@@ -10,6 +10,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const showSidebar =
     pathname !== "/" &&
+    !pathname.match(/^\/(en|es)(\/|$)/) &&
     !NO_SIDEBAR_ROUTES.some((route) => pathname.startsWith(route));
 
   if (!showSidebar) {

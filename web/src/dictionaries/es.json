@@ -1,0 +1,194 @@
+{
+  "nav": {
+    "howItWorks": "Cómo funciona",
+    "demo": "Demo",
+    "compare": "Comparar",
+    "pricing": "Precios",
+    "signIn": "Iniciar sesión",
+    "tryDemo": "Probar Demo",
+    "getEarlyAccess": "Obtener acceso anticipado",
+    "getStartedFree": "Empezar gratis"
+  },
+  "footer": {
+    "tagline": "El sistema operativo de soporte que te dice por qué tu IA se equivoca.",
+    "product": "Producto",
+    "account": "Cuenta",
+    "bookDemo": "Agendar demo",
+    "rights": "Todos los derechos reservados."
+  },
+  "home": {
+    "hero": {
+      "eyebrow": "SISTEMA OPERATIVO DE SOPORTE PARA LÍDERES DE OPS",
+      "headlinePart1": "Deja de adivinar por qué la IA se equivoca",
+      "headlinePart2": "en tus respuestas.",
+      "subheadline": "Construido para líderes de operaciones que han probado todas las herramientas de respuesta de IA y aún terminan reescribiendo todo.",
+      "subheadlineHighlight": "Work Hat te dice el porqué.",
+      "points": [
+        "Cada edición que hace tu equipo se clasifica automáticamente",
+        "La IA lee todo el contexto del cliente + empresa antes de redactar",
+        "El panel muestra exactamente dónde falla la IA — y el porqué"
+      ],
+      "cta": "Abrir Demo Interactiva",
+      "placeholder": "tu@empresa.com",
+      "trust": "No se requiere tarjeta de crédito. Sin ruido. Revisamos cada solicitud."
+    },
+    "howItWorks": {
+      "eyebrow": "Cómo funciona",
+      "title": "Un centro de comando de soporte que demuestra su trabajo",
+      "desc": "Inspirada en sistemas de producto enfocados, esta demo abarca todo el ciclo de soporte: triaje, orientación de IA, ediciones humanas e inteligencia de control de calidad en una sola interfaz operativa."
+    },
+    "steps": [
+      {
+        "num": "01",
+        "title": "Correo entrante. Contexto ensamblado.",
+        "body": "El correo entrante a través de nuestro conector de Gmail se vincula al contacto y la empresa. La clasificación avanzada de intenciones permite un enrutamiento instantáneo basado en habilidades antes de que alguien abra el hilo."
+      },
+      {
+        "num": "02",
+        "title": "La IA redacta usando lo que realmente sabe.",
+        "body": "El borrador se construye a partir de 5 capas: el comportamiento del sistema, política de la organización, base de conocimientos, historial y un esquema de salida estructurado. El puntaje de confianza y riesgos siempre se muestran — nunca se ocultan."
+      },
+      {
+        "num": "03",
+        "title": "Ediciones de agentes. Todo es capturado.",
+        "body": "Al modificar y enviar un borrador, Work Hat ejecuta un análisis de 3 pasos: diff a nivel de palabra, clasificador heurístico y verificación por LLM. El tipo de edición y el puntaje de intensidad se almacenan permanentemente."
+      }
+    ],
+    "features": {
+      "eyebrow": "Funcionalidades",
+      "title": "Creado para el líder de operaciones que dirige todo el sistema",
+      "items": [
+        {
+          "title": "Borradores de IA basados en contexto",
+          "body": "Cada borrador lee el historial completo del cliente, nivel de la empresa, propietario de la cuenta y política organizativa. No solo el último mensaje."
+        },
+        {
+          "title": "Análisis de edición y Autoaprendizaje",
+          "body": "Análisis de 3 pasos en cada envío: diff → clasificación heurística → verificación LLM. Las correcciones alimentan un panel de autoaprendizaje en tiempo real."
+        },
+        {
+          "title": "Panel de mejora de IA",
+          "body": "Tasa de aceptación, intensidad de edición y cola de control de calidad, todo construido a partir de datos reales de envíos. Nada de adivinanzas."
+        },
+        {
+          "title": "Base de conocimientos y Búsqueda global",
+          "body": "Documentos de políticas, SOPs, guías de tono: almacenados, versionados y recuperados mediante búsqueda global rápida en cada borrador."
+        },
+        {
+          "title": "Clasificación de intención y Enrutamiento",
+          "body": "Cada hilo se categoriza automáticamente por intención con etiquetas visuales dinámicas, permitiendo enrutamiento basado en habilidades antes de abrirlo."
+        },
+        {
+          "title": "Integración Profunda",
+          "body": "Conéctate directamente con Gmail y maneja tu flujo de soporte de forma fluida con altas medidas de seguridad a nivel de organización y asientos humanos ilimitados."
+        }
+      ]
+    },
+    "waitlist": {
+      "eyebrow": "Acceso anticipado",
+      "title": "Únete a la lista de espera",
+      "desc": "Work Hat está en acceso anticipado. Revisamos cada solicitud e incorporamos a equipos que se preocupan seriamente por medir la calidad de su IA en soporte.",
+      "or": "o",
+      "talk": "Habla con nosotros directamente — teddyalbayero@work-hat.com"
+    }
+  },
+  "compare": {
+    "eyebrow": "Comparar vs Alternativas",
+    "title": "Por qué los líderes de ops superan a los tradicionales",
+    "descHeader": "Los helpdesks heredados añaden IA a sistemas ya pesados, tratándola como un generador de texto rápido. Work Hat fue construido para resolver la mayor limitación de la IA en soporte operativo:",
+    "descBold": "imprevisibilidad",
+    "descFooter": ". Te damos control sistémico total, mostrando exactamente dónde y por qué falla la IA, integrando automáticamente esas correcciones en su memoria semántica.",
+    "points": [
+      {
+        "title": "1. Contexto Profundo",
+        "body": "La mayoría lee solo el último mensaje. Work Hat inyecta todo el historial, el tier de la empresa y la política dinámica al prompt antes de redactar."
+      },
+      {
+        "title": "2. Análisis Granular",
+        "body": "En lugar de aceptar ciegamente la respuesta, registramos cada edición por intensidad y tipo (Tono, Brecha de Política, Error), descubriendo zonas de fallo."
+      },
+      {
+        "title": "3. Autoaprendizaje",
+        "body": "No es solo registro de datos. Las ediciones y correcciones alimentan permanentemente nuestro panel, actualizando dinámicamente las intenciones."
+      }
+    ],
+    "table": {
+      "you": "tú",
+      "features": {
+        "generation": "Generación de borradores IA",
+        "context": "Contexto del cliente en borradores",
+        "edit": "Captura y análisis de edición",
+        "improvement": "Rastreo de mejora de IA",
+        "knowledge": "Base de conocimientos",
+        "pricing": "Punto de entrada de precios"
+      },
+      "workhat": {
+        "generation": "Adaptable al contexto (historial + política + conocimiento)",
+        "context": "Historial completo, tier, perfil, política",
+        "edit": "Sí — tipo, intensidad, clasificación",
+        "improvement": "Sí — panel y cola de control de calidad",
+        "knowledge": "Búsqueda semántica en cada borrador",
+        "pricing": "Gratis (50 borradores/mes) → $49/mes Base + Uso"
+      },
+      "disclaimer": "Comparación basada en documentación pública y páginas de precios hasta 2026. Work Hat es producto independiente no afiliado a estos productos."
+    }
+  },
+  "pricing": {
+    "eyebrow": "PRECIOS",
+    "title": "Precios simples y honestos",
+    "desc": "Empieza gratis, escala cuando necesites más. Sin impuestos por asiento humano en las conversaciones, sin cobros ocultos.",
+    "toggle": {
+      "monthly": "Mensual",
+      "annual": "Anual",
+      "save": "Ahorra 20%"
+    },
+    "popular": "MÁS POPULAR",
+    "billedAnnually": "Facturado anualmente",
+    "billedMonthly": "Facturado mensualmente",
+    "freeTier": {
+      "name": "Starter",
+      "tagline": "Para probar el ciclo",
+      "seats": "Asientos humanos ilimitados",
+      "agents": "Agentes IA ilimitados",
+      "drafts": "50 borradores IA / mes"
+    },
+    "proTier": {
+      "name": "Pro",
+      "tagline": "Para equipos en crecimiento",
+      "seats": "Asientos humanos ilimitados",
+      "agents": "Agentes IA ilimitados",
+      "drafts": "500 borradores IA incluidos",
+      "overage": "$0.10 por borrador adicional"
+    },
+    "scaleTier": {
+      "name": "Scale",
+      "tagline": "Para gran volumen",
+      "seats": "Asientos humanos ilimitados",
+      "agents": "Agentes IA ilimitados",
+      "drafts": "2,500 borradores IA incluidos",
+      "overage": "$0.08 por borrador adicional"
+    },
+    "cta": "Empezar ahora",
+    "faq": {
+      "title": "Preguntas Frecuentes",
+      "items": [
+        {
+          "q": "¿Qué pasa si supero mi límite de borradores mensual?",
+          "a": "En lugar de cortarte el servicio, simplemente pagas el porcentaje de borrador adicional estipulado en tu plan. Esto garantiza que tu soporte fluya sin interrupciones."
+        },
+        {
+          "q": "¿Cobran por asiento de agente humano?",
+          "a": "No. Work Hat cobra según el cómputo de IA (borradores), no por humanos. Queremos que todo tu equipo ayude a corregir y educar el modelo."
+        },
+        {
+          "q": "¿Puedo cambiar mi plan en cualquier momento?",
+          "a": "Sí. Las mejoras se prorratean de inmediato y las reducciones de plan se reflejarán a inicios del ciclo de facturación subsecuente."
+        },
+        {
+          "q": "¿Qué se considera un 'borrador de IA'?",
+          "a": "Cualquier ocasión en que la IA genere completamente una respuesta en una conversación con clientes. Las ediciones manuales posteriores por agentes humanos son gratuitas."
+        }
+      ]
+    }
+  }
+}

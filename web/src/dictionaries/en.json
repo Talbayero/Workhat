@@ -1,0 +1,194 @@
+{
+  "nav": {
+    "howItWorks": "How it works",
+    "demo": "Demo",
+    "compare": "Compare",
+    "pricing": "Pricing",
+    "signIn": "Sign in",
+    "tryDemo": "Try Demo",
+    "getEarlyAccess": "Get early access",
+    "getStartedFree": "Get started free"
+  },
+  "footer": {
+    "tagline": "The support OS that tells you why your AI is wrong.",
+    "product": "Product",
+    "account": "Account",
+    "bookDemo": "Book a demo",
+    "rights": "All rights reserved."
+  },
+  "home": {
+    "hero": {
+      "eyebrow": "Support OS for ops leads",
+      "headlinePart1": "Stop guessing why AI gets",
+      "headlinePart2": "your replies wrong.",
+      "subheadline": "Built for ops leads who've tried every AI reply tool and still end up rewriting everything.",
+      "subheadlineHighlight": "Work Hat tells you why.",
+      "points": [
+        "Every edit your team makes is classified automatically",
+        "AI reads the full customer + company context before drafting",
+        "Dashboard shows exactly where the AI is failing — and why"
+      ],
+      "cta": "Open Interactive Demo",
+      "placeholder": "your@company.com",
+      "trust": "No credit card. No noise. We review every request."
+    },
+    "howItWorks": {
+      "eyebrow": "How it works",
+      "title": "A support command center that shows its work",
+      "desc": "Inspired by focused product systems, this demo frames the whole support loop: triage, AI guidance, human edits, and QA intelligence in one connected operating surface."
+    },
+    "steps": [
+      {
+        "num": "01",
+        "title": "Email in. Context assembled.",
+        "body": "Inbound email via our Gmail connector gets matched to the contact and company. Advanced intent classification enables instant skill-based routing before anyone opens the thread."
+      },
+      {
+        "num": "02",
+        "title": "AI drafts using what it actually knows.",
+        "body": "The draft is built from 5 layers: your system behavior, org policy, knowledge base snippets, conversation history, and a structured output schema. Confidence score and risk flags are always surfaced — never hidden."
+      },
+      {
+        "num": "03",
+        "title": "Agent edits. Everything is captured.",
+        "body": "When your team modifies the draft and sends, Work Hat runs a 3-step analysis: word-level diff, heuristic classifier, LLM verification. Edit type (tone, policy gap, factual error, full rewrite) and intensity score are stored permanently."
+      }
+    ],
+    "features": {
+      "eyebrow": "Features",
+      "title": "Built for the ops lead who runs the whole support system",
+      "items": [
+        {
+          "title": "Context-aware AI drafts",
+          "body": "Every draft reads the full customer history, company tier, account owner, and your org policy. Not just the last message."
+        },
+        {
+          "title": "Edit analysis & Self-learning",
+          "body": "3-step analysis on every send: diff → heuristic classification → LLM verification. Corrections feed into a self-learning panel dynamically."
+        },
+        {
+          "title": "AI improvement dashboard",
+          "body": "Acceptance rate, edit intensity, edit reason breakdown, and QA queue — all built from real send data. Not a guess."
+        },
+        {
+          "title": "Knowledge base & Global Search",
+          "body": "Policy docs, SOPs, tone guides — stored, versioned, and retrieved by fast, global search query handling on every single draft."
+        },
+        {
+          "title": "Intent classification & Skill-routing",
+          "body": "Every thread is automatically categorized by intent with dynamic UI pills, enabling skill-based routing before anyone opens the thread."
+        },
+        {
+          "title": "Deep Platform Integrations",
+          "body": "Plug directly into Gmail and handle your support flow smoothly with robust org-level security guards and unlimited human seats."
+        }
+      ]
+    },
+    "waitlist": {
+      "eyebrow": "Early access",
+      "title": "Join the waitlist",
+      "desc": "Work Hat is in early access. We review every request and onboard teams that are serious about measuring AI quality in their support operations.",
+      "or": "or",
+      "talk": "Talk to us directly — teddyalbayero@work-hat.com"
+    }
+  },
+  "compare": {
+    "eyebrow": "Compare vs Legacy",
+    "title": "Why ops leads outgrow the incumbents",
+    "descHeader": "Legacy helpdesks bolt AI onto an already bloated system, treating it as a quick text generator. Work Hat was built from the ground up to solve AI's biggest limitation in support ops:",
+    "descBold": "unpredictability",
+    "descFooter": ". We give you full systemic control, showing you exactly where the AI is failing, why it's failing, and automatically looping those corrections back into its semantic memory.",
+    "points": [
+      {
+        "title": "1. Deep Context",
+        "body": "Most tools only read the last customer message. Work Hat injects full relationship history, company tiers, and dynamic organizational policy directly into the prompt before generating a draft."
+      },
+      {
+        "title": "2. Granular Analysis",
+        "body": "Instead of blindly accepting a response, we track every human edit by intensity and type (Tone, Policy Gap, Factual Error), letting ops leaders pinpoint exact failure zones in their knowledge base."
+      },
+      {
+        "title": "3. Self-Learning",
+        "body": "It isn't just logging data. Edits and corrections are continuously rolled into our self-learning corrections panel, dynamically updating intent classifications over time to raise the acceptance rate natively."
+      }
+    ],
+    "table": {
+      "you": "you",
+      "features": {
+        "generation": "AI draft generation",
+        "context": "Customer context in drafts",
+        "edit": "Edit capture + analysis",
+        "improvement": "AI improvement tracking",
+        "knowledge": "Knowledge base for drafts",
+        "pricing": "Pricing entry point"
+      },
+      "workhat": {
+        "generation": "Context-aware (history + policy + knowledge)",
+        "context": "Full history, tier, company, policy",
+        "edit": "Yes — type, intensity, classification",
+        "improvement": "Yes — dashboard + QA queue",
+        "knowledge": "Semantic search on every draft",
+        "pricing": "Free (50 AI drafts/mo) → $49/mo Base + Usage"
+      },
+      "disclaimer": "Comparison based on publicly available documentation and pricing pages as of 2026. Work Hat is independently built and not affiliated with any compared product."
+    }
+  },
+  "pricing": {
+    "eyebrow": "PRICING",
+    "title": "Simple, honest pricing",
+    "desc": "Start free, upgrade when you need more. No seat taxes on conversations, no hidden AI call fees.",
+    "toggle": {
+      "monthly": "Monthly",
+      "annual": "Annual",
+      "save": "Save 20%"
+    },
+    "popular": "MOST POPULAR",
+    "billedAnnually": "Billed annually",
+    "billedMonthly": "Billed monthly",
+    "freeTier": {
+      "name": "Starter",
+      "tagline": "For testing the loop",
+      "seats": "Unlimited human seats",
+      "agents": "Unlimited AI agents",
+      "drafts": "50 AI drafts per month"
+    },
+    "proTier": {
+      "name": "Pro",
+      "tagline": "For growing teams",
+      "seats": "Unlimited human seats",
+      "agents": "Unlimited AI agents",
+      "drafts": "500 AI drafts included",
+      "overage": "$0.10 per additional draft"
+    },
+    "scaleTier": {
+      "name": "Scale",
+      "tagline": "For high volume",
+      "seats": "Unlimited human seats",
+      "agents": "Unlimited AI agents",
+      "drafts": "2,500 AI drafts included",
+      "overage": "$0.08 per additional draft"
+    },
+    "cta": "Get started",
+    "faq": {
+      "title": "Frequently asked questions",
+      "items": [
+        {
+          "q": "What happens if I go over my monthly draft limit?",
+          "a": "Instead of hard-cutting you off, you simply pay the per-draft overage fee listed on your plan. This ensures your support keeps flowing uninterrupted."
+        },
+        {
+          "q": "Do you charge per human agent seat?",
+          "a": "No. Work Hat charges based on AI compute (drafts), not human head count. We want your whole team helping to correct and train the model."
+        },
+        {
+          "q": "Can I upgrade or downgrade at any time?",
+          "a": "Yes. Upgrades are prorated immediately, and downgrades take effect at the start of your next billing cycle."
+        },
+        {
+          "q": "What counts as an 'AI draft'?",
+          "a": "Any time the AI fully generates a response for a customer conversation. Subsequent manual edits by your human agents are free and actively train the system."
+        }
+      ]
+    }
+  }
+}
