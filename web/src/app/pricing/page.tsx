@@ -132,8 +132,8 @@ export default function PricingPage() {
           </Link>
 
           <nav className="hidden items-center gap-6 md:flex">
-            <Link href="/#demo" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
-            <Link href="/#compare" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
+            <Link href="/demo/inbox" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
+            <Link href="/compare" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
             <Link href="/pricing" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Pricing</Link>
           </nav>
 

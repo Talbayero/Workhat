@@ -20,8 +20,8 @@ function NavBar() {
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">
-          <Link href="/#demo" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
-          <Link href="/#compare" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
+          <Link href="/demo/inbox" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
+          <Link href="/compare" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
           <Link href="/pricing" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Pricing</Link>
         </nav>
 
@@ -120,10 +120,10 @@ function Hero() {
 
 function WalkthroughSection() {
   return (
-    <section id="demo" className="px-6 py-16">
+    <section id="how-it-works" className="px-6 py-16">
       <div className="mx-auto max-w-6xl">
         <div className="mb-10 max-w-2xl">
-          <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--muted)]">Interactive demo</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--muted)]">How it works</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">
             A support command center that shows its work
           </h2>
@@ -232,132 +232,6 @@ function Features() {
   );
 }
 
-function ComparisonTable() {
-  const rows = [
-    {
-      feature: "AI draft generation",
-      workhat: { val: "Context-aware (history + policy + knowledge)", good: true },
-      intercom: { val: "Copilot suggestions", good: null },
-      zendesk: { val: "Basic macros + AI assist", good: null },
-      front: { val: "AI drafts (no context depth)", good: null },
-    },
-    {
-      feature: "Customer context in drafts",
-      workhat: { val: "Full history, tier, company, policy", good: true },
-      intercom: { val: "Partial — same session", good: null },
-      zendesk: { val: "Ticket history only", good: null },
-      front: { val: "Thread history", good: null },
-    },
-    {
-      feature: "Edit capture + analysis",
-      workhat: { val: "Yes — type, intensity, classification", good: true },
-      intercom: { val: "No", good: false },
-      zendesk: { val: "No", good: false },
-      front: { val: "No", good: false },
-    },
-    {
-      feature: "AI improvement tracking",
-      workhat: { val: "Yes — dashboard + QA queue", good: true },
-      intercom: { val: "No", good: false },
-      zendesk: { val: "No", good: false },
-      front: { val: "No", good: false },
-    },
-    {
-      feature: "Knowledge base for drafts",
-      workhat: { val: "Semantic search on every draft", good: true },
-      intercom: { val: "Article suggestions", good: null },
-      zendesk: { val: "Macros + article suggestions", good: null },
-      front: { val: "Snippets only", good: null },
-    },
-    {
-      feature: "Pricing entry point",
-      workhat: { val: "Free (50 AI drafts/mo) → $49/mo Base + Usage", good: true },
-      intercom: { val: "$74+/mo per seat + $0.99/resolution", good: false },
-      zendesk: { val: "$69+/mo per agent + $50/mo AI Add-on", good: false },
-      front: { val: "$19+/agent/mo", good: null },
-    },
-  ];
-
-  const cols = ["Work Hat", "Intercom", "Zendesk", "Front"];
-
-  return (
-    <section id="compare" className="px-6 py-16">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-8 max-w-xl">
-          <p className="text-[10px] font-medium tracking-[0.16em] text-[var(--muted)] uppercase">Compare</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-            Why ops leads outgrow the incumbents
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-            Intercom, Zendesk, and Front are built for volume. Work Hat is built for teams that want to know exactly where their AI is failing — and fix it.
-          </p>
-        </div>
-
-        <div className="grain-panel overflow-hidden rounded-[24px] border border-[var(--line)]">
-          {/* Header row */}
-          <div className="grid grid-cols-5 border-b border-[var(--line)]">
-            <div className="px-4 py-3" />
-            {cols.map((col, i) => (
-              <div
-                key={col}
-                className={`px-4 py-3 text-xs font-semibold ${
-                  i === 0 ? "text-[var(--moss)]" : "text-[var(--muted)]"
-                }`}
-              >
-                {col}
-                {i === 0 && (
-                  <span className="ml-2 rounded-full bg-[rgba(144,50,61,0.15)] border border-[rgba(144,50,61,0.3)] px-2 py-0.5 text-[9px]">
-                    you
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Data rows */}
-          {rows.map((row, ri) => (
-            <div
-              key={ri}
-              className={`grid grid-cols-5 ${ri < rows.length - 1 ? "border-b border-[var(--line)]" : ""}`}
-            >
-              <div className="px-4 py-3.5 text-xs font-medium text-[var(--foreground)]">
-                {row.feature}
-              </div>
-              {[row.workhat, row.intercom, row.zendesk, row.front].map((cell, ci) => (
-                <div key={ci} className={`px-4 py-3.5 ${ci === 0 ? "bg-[rgba(144,50,61,0.04)]" : ""}`}>
-                  <div className="flex items-start gap-1.5">
-                    {cell.good === true && (
-                      <div className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full bg-emerald-500/15 flex items-center justify-center">
-                        <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      </div>
-                    )}
-                    {cell.good === false && (
-                      <div className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full bg-[rgba(144,50,61,0.15)] flex items-center justify-center">
-                        <div className="h-0.5 w-2 rounded-full bg-[var(--moss)] opacity-60" />
-                      </div>
-                    )}
-                    {cell.good === null && (
-                      <div className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full bg-[var(--sage)] flex items-center justify-center">
-                        <div className="h-1 w-1 rounded-full bg-[var(--muted)]" />
-                      </div>
-                    )}
-                    <span className={`text-xs leading-5 ${ci === 0 ? "text-[var(--foreground)]" : "text-[var(--muted)]"}`}>
-                      {cell.val}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-
-        <p className="mt-3 text-[10px] text-[var(--muted)]">
-          Comparison based on publicly available documentation and pricing pages as of 2026. Work Hat is independently built and not affiliated with any compared product.
-        </p>
-      </div>
-    </section>
-  );
-}
 
 function WaitlistSection() {
   return (
@@ -419,9 +293,9 @@ function Footer() {
           <div>
             <p className="mb-3 text-[10px] font-medium tracking-widest text-[var(--muted)] uppercase">Product</p>
             <nav className="flex flex-col gap-2">
-              <Link href="/#demo" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
+              <Link href="/demo/inbox" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
               <Link href="/#features" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Features</Link>
-              <Link href="/#compare" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
+              <Link href="/compare" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
               <Link href="/pricing" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Pricing</Link>
             </nav>
           </div>
@@ -453,7 +327,6 @@ export default function LandingPage() {
         <WalkthroughSection />
         <HowItWorks />
         <Features />
-        <ComparisonTable />
         <WaitlistSection />
       </main>
       <Footer />
