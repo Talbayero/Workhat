@@ -1,7 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { SettingsShell } from "@/components/settings/settings-shell";
 
-export default async function SettingsPage() {
+type SettingsPageProps = {
+  searchParams: Promise<{ tab?: string }>;
+};
+
+export default async function SettingsPage({ searchParams }: SettingsPageProps) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -69,6 +74,7 @@ export default async function SettingsPage() {
       team={teamData as { id: string; full_name: string; email: string; role: string; status: string }[]}
       callerRole={callerRole}
       callerId={callerId}
+      initialTab={tab}
     />
   );
 }

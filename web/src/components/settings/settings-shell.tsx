@@ -2141,12 +2141,15 @@ function BillingTab({ org }: { org: OrgRecord | null }) {
 
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
+const VALID_TABS = new Set<SettingsTab>(["setup", "organization", "team", "channels", "ai", "intents", "billing"]);
+
 export function SettingsShell({
   org,
   channel,
   team,
   callerRole,
   callerId,
+  initialTab,
   isDemo = false,
   baseDir = "",
 }: {
@@ -2155,12 +2158,18 @@ export function SettingsShell({
   team: TeamMember[];
   callerRole: string;
   callerId: string;
+  initialTab?: string;
   isDemo?: boolean;
   baseDir?: string;
 }) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>(
-    org && channel?.inboundAddress ? "organization" : "setup"
-  );
+  const resolvedInitialTab: SettingsTab =
+    initialTab && VALID_TABS.has(initialTab as SettingsTab)
+      ? (initialTab as SettingsTab)
+      : org && channel?.inboundAddress
+        ? "organization"
+        : "setup";
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>(resolvedInitialTab);
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [saveFields, setSaveFields] = useState<Record<string, string>>({});
