@@ -28,15 +28,18 @@ const dynamicBlacklistTtlMs = Number(process.env.SECURITY_DYNAMIC_BLACKLIST_TTL_
 const buckets = new Map<string, RateBucket>();
 const dynamicBlacklist = new Map<string, BlacklistEntry>();
 
-const routePolicies: RoutePolicy[] = [
-  { id: "public-waitlist", methods: ["POST"], windowMs: minute, maxRequests: 8, captchaAfter: 3, blacklistAfter: 3, maxBodyBytes: 8_192 },
-  { id: "inbound-email-webhook", methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 4, maxBodyBytes: 2_000_000 },
-  { id: "gmail-push-webhook", methods: ["POST"], windowMs: minute, maxRequests: 240, blacklistAfter: 4, maxBodyBytes: 64_000 },
-  { id: "stripe-webhook", methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 4, maxBodyBytes: 256_000 },
-  { id: "expensive-ai", methods: ["POST"], windowMs: minute, maxRequests: 30, blacklistAfter: 3, maxBodyBytes: 64_000 },
-  { id: "email-connector", windowMs: minute, maxRequests: 60, blacklistAfter: 3, maxBodyBytes: 128_000 },
-  { id: "api-default", windowMs: minute, maxRequests: 180, blacklistAfter: 4, maxBodyBytes: 512_000 },
-];
+const POLICIES: Record<string, RoutePolicy> = {
+  "public-waitlist":       { id: "public-waitlist",       methods: ["POST"], windowMs: minute, maxRequests: 8,   captchaAfter: 3, blacklistAfter: 3, maxBodyBytes: 8_192 },
+  "inbound-email-webhook": { id: "inbound-email-webhook", methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 4, maxBodyBytes: 2_000_000 },
+  "gmail-push-webhook":    { id: "gmail-push-webhook",    methods: ["POST"], windowMs: minute, maxRequests: 240, blacklistAfter: 4, maxBodyBytes: 64_000 },
+  "stripe-webhook":        { id: "stripe-webhook",        methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 4, maxBodyBytes: 256_000 },
+  // All LLM-backed routes (30 req/min). knowledge/gaps gets its own tighter cap below.
+  "expensive-ai":          { id: "expensive-ai",          windowMs: minute, maxRequests: 30,  blacklistAfter: 3, maxBodyBytes: 64_000 },
+  "email-connector":       { id: "email-connector",       windowMs: minute, maxRequests: 60,  blacklistAfter: 3, maxBodyBytes: 128_000 },
+  "api-default":           { id: "api-default",           windowMs: minute, maxRequests: 180, blacklistAfter: 4, maxBodyBytes: 512_000 },
+  // knowledge/gaps fires up to 5 parallel LLM calls per request — intentionally tight.
+  "knowledge-gaps":        { id: "knowledge-gaps",        methods: ["GET"], windowMs: minute, maxRequests: 6, blacklistAfter: 2, maxBodyBytes: 0 },
+};
 
 function getStaticBlacklist() {
   return new Set(
@@ -57,13 +60,19 @@ export function getClientIp(request: NextRequest) {
 }
 
 function getRoutePolicy(pathname: string): RoutePolicy {
-  if (pathname === "/api/waitlist") return routePolicies[0];
-  if (pathname.startsWith("/api/inbound/email")) return routePolicies[1];
-  if (pathname.startsWith("/api/email/gmail/push")) return routePolicies[2];
-  if (pathname.startsWith("/api/stripe/webhook")) return routePolicies[3];
-  if (pathname.startsWith("/api/ai/")) return routePolicies[4];
-  if (pathname.startsWith("/api/email/")) return routePolicies[5];
-  return routePolicies[6];
+  if (pathname === "/api/waitlist")                      return POLICIES["public-waitlist"];
+  if (pathname.startsWith("/api/inbound/email"))         return POLICIES["inbound-email-webhook"];
+  if (pathname.startsWith("/api/email/gmail/push"))      return POLICIES["gmail-push-webhook"];
+  if (pathname.startsWith("/api/stripe/webhook"))        return POLICIES["stripe-webhook"];
+  if (pathname.startsWith("/api/ai/"))                   return POLICIES["expensive-ai"];
+  if (pathname.startsWith("/api/email/"))                return POLICIES["email-connector"];
+  // LLM-backed knowledge and intent routes — must be ordered before api-default.
+  // knowledge/gaps fires up to 5 parallel LLM calls per request — tightest cap.
+  if (pathname.startsWith("/api/knowledge/gaps"))        return POLICIES["knowledge-gaps"];
+  if (pathname.startsWith("/api/knowledge/from-edit"))   return POLICIES["expensive-ai"];
+  if (pathname.startsWith("/api/knowledge/rewrite"))     return POLICIES["expensive-ai"];
+  if (pathname.startsWith("/api/intent-corrections"))    return POLICIES["expensive-ai"];
+  return POLICIES["api-default"];
 }
 
 function gatewayJson(body: Record<string, unknown>, status: number) {
