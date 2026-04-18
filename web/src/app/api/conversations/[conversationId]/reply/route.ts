@@ -16,8 +16,9 @@
 import { randomUUID } from "crypto";
 import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { runEditAnalysis } from "@/lib/ai/analysis";
 import { sendConversationReplyWithGmail } from "@/lib/email-connector/gmail-sender";
 
@@ -35,6 +36,8 @@ type OutboundResult = {
   simulated?: boolean;
 };
 
+type AdminDb = NonNullable<ReturnType<typeof createOptionalAdminClient>["client"]>;
+
 function validateBody(raw: unknown): ReplyPayload | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
@@ -49,7 +52,7 @@ function validateBody(raw: unknown): ReplyPayload | null {
 }
 
 async function buildManualTestOutbound(
-  db: ReturnType<typeof createAdminClient>,
+  db: AdminDb,
   orgId: string,
   conversationId: string
 ): Promise<OutboundResult | null> {
@@ -170,27 +173,23 @@ export async function POST(
   { params }: { params: Promise<{ conversationId: string }> }
 ) {
   const { conversationId } = await params;
-  const supabase = await createClient();
+  if (!conversationId?.trim()) {
+    return NextResponse.json({ error: "conversationId is required." }, { status: 400 });
+  }
 
-  // Authenticate
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const appUser = await getCurrentAppUser<{
+    id: string;
+    org_id: string;
+    role: string;
+    full_name?: string;
+    email?: string;
+  }>({ label: "reply", select: "id, org_id, role, full_name, email" });
+  if (!appUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Get app user + org
-  const { data: appUser, error: userErr } = await supabase
-    .from("users")
-    .select("id, org_id, full_name, email")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (userErr || !appUser) {
-    return NextResponse.json({ error: "App user not found" }, { status: 403 });
-  }
-
-  const { id: userId, org_id: orgId, full_name: fullName } =
-    appUser as { id: string; org_id: string; full_name: string; email: string };
+  const supabase = await createClient();
+  const { id: userId, org_id: orgId, full_name: fullName } = appUser;
 
   // Validate body
   let payload: ReplyPayload | null;
@@ -213,7 +212,8 @@ export async function POST(
     .maybeSingle();
 
   if (conversationError) {
-    return NextResponse.json({ error: conversationError.message }, { status: 500 });
+    console.error("[reply] conversation lookup failed:", conversationError.message);
+    return NextResponse.json({ error: "Unable to verify this conversation." }, { status: 500 });
   }
 
   if (!conversation) {
@@ -230,7 +230,8 @@ export async function POST(
       .maybeSingle();
 
     if (aiDraftError) {
-      return NextResponse.json({ error: aiDraftError.message }, { status: 500 });
+      console.error("[reply] ai draft lookup failed:", aiDraftError.message);
+      return NextResponse.json({ error: "Unable to verify the AI draft." }, { status: 500 });
     }
 
     if (!aiDraft) {
@@ -241,17 +242,15 @@ export async function POST(
     }
   }
 
-  let admin: ReturnType<typeof createAdminClient>;
-  try {
-    admin = createAdminClient();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Admin client unavailable";
-    console.error("[reply] admin client init failed:", message);
+  const adminState = createOptionalAdminClient();
+  if (!adminState.client) {
+    console.error("[reply] admin client unavailable:", adminState.reason);
     return NextResponse.json(
-      { error: "Reply sending is unavailable — admin database key is not configured." },
+      { error: "Reply sending is temporarily unavailable. Please try again." },
       { status: 503 }
     );
   }
+  const admin = adminState.client;
 
   let outbound: OutboundResult | null;
   try {
@@ -263,7 +262,8 @@ export async function POST(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gmail send failed.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    console.error("[reply] Gmail send failed:", message);
+    return NextResponse.json({ error: "Unable to send this reply through Gmail. Please try again." }, { status: 502 });
   }
 
   if (!outbound) {

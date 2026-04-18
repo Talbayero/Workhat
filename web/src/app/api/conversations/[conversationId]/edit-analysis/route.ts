@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(
@@ -13,24 +14,14 @@ export async function GET(
   { params }: { params: Promise<{ conversationId: string }> }
 ) {
   const { conversationId } = await params;
+  if (!conversationId?.trim()) {
+    return NextResponse.json({ error: "conversationId is required." }, { status: 400 });
+  }
+
   const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: appUser, error: userErr } = await supabase
-    .from("users")
-    .select("id, org_id")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (userErr || !appUser) {
-    return NextResponse.json({ error: "App user not found" }, { status: 403 });
-  }
-
-  const { org_id: orgId } = appUser as { id: string; org_id: string };
+  const appUser = await getCurrentAppUser({ label: "edit-analysis" });
+  if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const orgId = appUser.org_id;
 
   const { data: conversation, error: conversationError } = await supabase
     .from("conversations")
@@ -40,7 +31,8 @@ export async function GET(
     .maybeSingle();
 
   if (conversationError) {
-    return NextResponse.json({ error: conversationError.message }, { status: 500 });
+    console.error("[edit-analysis] conversation lookup failed:", conversationError.message);
+    return NextResponse.json({ error: "Unable to verify this conversation." }, { status: 500 });
   }
 
   if (!conversation) {
@@ -56,7 +48,7 @@ export async function GET(
 
   if (error) {
     console.error("[edit-analysis] query failed:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Unable to load edit analysis." }, { status: 500 });
   }
 
   return NextResponse.json({ analyses: data ?? [] });

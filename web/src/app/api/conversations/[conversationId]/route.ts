@@ -1,23 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 
 /* PATCH /api/conversations/:id — update status, priority, assignee, tags */
-
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-  if (error) {
-    console.error("[conversations/:id] app user lookup failed:", error.message);
-    return null;
-  }
-  return data as { id: string; org_id: string; role: string } | null;
-}
 
 const VALID_STATUSES = new Set(["open", "waiting_on_customer", "waiting_on_internal", "in_progress", "resolved", "archived"]);
 const VALID_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
@@ -34,7 +19,11 @@ function normalizeTags(value: unknown) {
 
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const { conversationId } = await ctx.params;
-  const appUser = await getAppUser();
+  if (!conversationId?.trim()) {
+    return NextResponse.json({ error: "conversationId is required." }, { status: 400 });
+  }
+
+  const appUser = await getCurrentAppUser({ label: "conversations/:id" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
@@ -97,7 +86,10 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     .select("id")
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[conversations/:id] conversation update failed:", error.message);
+    return NextResponse.json({ error: "Unable to update this conversation." }, { status: 500 });
+  }
   if (!data) return NextResponse.json({ error: "Conversation not found for this workspace." }, { status: 404 });
 
   return NextResponse.json({ ok: true });

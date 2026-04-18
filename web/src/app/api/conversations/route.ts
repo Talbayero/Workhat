@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createOptionalAdminClient } from "@/lib/supabase/admin";
 
 /* ─────────────────────────────────────────────
    POST /api/conversations
@@ -18,24 +19,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
    }
 ───────────────────────────────────────────── */
 
-async function getAppUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, org_id, full_name")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[conversations] app user lookup failed:", error.message);
-    return null;
-  }
-
-  return data as { id: string; org_id: string; full_name: string } | null;
-}
-
 const GENERIC_DOMAINS = new Set([
   "gmail.com", "yahoo.com", "hotmail.com", "outlook.com",
   "icloud.com", "me.com", "aol.com", "protonmail.com", "live.com",
@@ -47,8 +30,15 @@ function normalizeOptionalString(value: unknown) {
   return value.trim() || null;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function POST(req: NextRequest) {
-  const appUser = await getAppUser();
+  const appUser = await getCurrentAppUser<{
+    id: string;
+    org_id: string;
+    role: string;
+    full_name?: string;
+  }>({ label: "conversations", select: "id, org_id, role, full_name" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
@@ -75,23 +65,22 @@ export async function POST(req: NextRequest) {
   if (explicitIntent === undefined) return NextResponse.json({ error: "Intent must be text." }, { status: 400 });
 
   const contactEmail = contactEmailRaw?.toLowerCase();
-  if (!contactEmail || !contactEmail.includes("@")) {
+  if (!contactEmail || !EMAIL_RE.test(contactEmail)) {
     return NextResponse.json({ error: "Valid contact email is required." }, { status: 400 });
   }
   if (!subject) return NextResponse.json({ error: "Subject is required." }, { status: 400 });
   if (!firstMessage) return NextResponse.json({ error: "Message body is required." }, { status: 400 });
 
   const supabase = await createClient();
-  let admin: ReturnType<typeof createAdminClient>;
-  try {
-    admin = createAdminClient();
-  } catch (error) {
-    console.error("[conversations] admin client unavailable:", error);
+  const adminState = createOptionalAdminClient();
+  if (!adminState.client) {
+    console.error("[conversations] admin client unavailable:", adminState.reason);
     return NextResponse.json(
-      { error: "Conversation creation is unavailable because admin database access is not configured." },
+      { error: "Conversation creation is temporarily unavailable. Please try again." },
       { status: 503 }
     );
   }
+  const admin = adminState.client;
   const { org_id: orgId } = appUser;
 
   // Classify intent: use DB-driven classifier unless caller provided an explicit override
@@ -154,7 +143,8 @@ export async function POST(req: NextRequest) {
       .eq("org_id", orgId);
 
     if (contactUpdateErr) {
-      return NextResponse.json({ error: contactUpdateErr.message }, { status: 500 });
+      console.error("[conversations] contact activity update failed:", contactUpdateErr.message);
+      return NextResponse.json({ error: "Failed to update contact activity." }, { status: 500 });
     }
   } else {
     const rawName = contactName || contactEmail.split("@")[0];
@@ -174,6 +164,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (contactErr || !newContact) {
+      console.error("[conversations] contact create failed:", contactErr?.message ?? "No contact returned");
       return NextResponse.json({ error: "Failed to create contact." }, { status: 500 });
     }
     contactId = newContact.id;
@@ -205,11 +196,12 @@ export async function POST(req: NextRequest) {
         .select("id")
         .single();
 
-      if (companyErr) {
-        return NextResponse.json({ error: companyErr.message }, { status: 500 });
+      if (companyErr || !newCompany) {
+        console.error("[conversations] company create failed:", companyErr?.message ?? "No company returned");
+        return NextResponse.json({ error: "Failed to create company." }, { status: 500 });
       }
 
-      companyId = newCompany?.id ?? null;
+      companyId = newCompany.id;
     }
 
     if (companyId) {
@@ -221,7 +213,8 @@ export async function POST(req: NextRequest) {
         .is("company_id", null);
 
       if (companyLinkErr) {
-        return NextResponse.json({ error: companyLinkErr.message }, { status: 500 });
+        console.error("[conversations] contact company link failed:", companyLinkErr.message);
+        return NextResponse.json({ error: "Failed to link contact to company." }, { status: 500 });
       }
     }
   }
@@ -266,6 +259,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (convErr || !conversation) {
+    console.error("[conversations] conversation create failed:", convErr?.message ?? "No conversation returned");
     return NextResponse.json({ error: "Failed to create conversation." }, { status: 500 });
   }
 
@@ -285,7 +279,8 @@ export async function POST(req: NextRequest) {
   });
 
   if (messageErr) {
-    return NextResponse.json({ error: messageErr.message }, { status: 500 });
+    console.error("[conversations] opening message create failed:", messageErr.message);
+    return NextResponse.json({ error: "Failed to create opening message." }, { status: 500 });
   }
 
   return NextResponse.json({ conversationId, contactId, companyId }, { status: 201 });

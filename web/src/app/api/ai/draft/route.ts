@@ -19,6 +19,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 import { generateDraft, PROMPT_VERSION } from "@/lib/ai";
 import { generateEmbedding } from "@/lib/embeddings";
@@ -227,7 +228,8 @@ async function assembleContext(
     .maybeSingle();
 
   if (convErr || !convData) {
-    throw new Error(`Conversation not found: ${conversationId}`);
+    if (convErr) console.error("[ai/draft] conversation lookup failed:", convErr.message);
+    throw new Error("Conversation not found for this workspace.");
   }
 
   const conv = convData as unknown as DbConversationFull;
@@ -319,8 +321,8 @@ async function persistDraft(
     .select("id")
     .single();
 
-  if (error) {
-    console.error("[ai/draft] persist failed:", error.message);
+  if (error || !data) {
+    console.error("[ai/draft] persist failed:", error?.message ?? "No draft returned");
     return null;
   }
 
@@ -401,28 +403,8 @@ async function emitUsageEvent(
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
 
-  // Authenticate
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Get app user + org
-  const { data: appUser, error: userErr } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (userErr || !appUser) {
-    return NextResponse.json(
-      { error: "App user not found — ensure onboarding is complete" },
-      { status: 403 }
-    );
-  }
+  const appUser = await getCurrentAppUser({ label: "ai/draft" });
+  if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // Validate request
   let body: DraftRequestBody | null;
@@ -447,11 +429,12 @@ export async function POST(req: NextRequest) {
       .select("id")
       .eq("id", sourceMessageId)
       .eq("conversation_id", conversationId)
-      .eq("org_id", appUser.org_id as string)
+      .eq("org_id", appUser.org_id)
       .maybeSingle();
 
     if (sourceMessageError) {
-      return NextResponse.json({ error: sourceMessageError.message }, { status: 500 });
+      console.error("[ai/draft] source message lookup failed:", sourceMessageError.message);
+      return NextResponse.json({ error: "Unable to verify the source message." }, { status: 500 });
     }
 
     if (!sourceMessage) {
@@ -463,11 +446,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Check AI action quota before touching OpenAI
-  const quota = await checkAIQuota(supabase, appUser.org_id as string);
+  const quota = await checkAIQuota(supabase, appUser.org_id);
   if (!quota.allowed) {
     return NextResponse.json(
-      {
-        error: "AI action limit reached",
+    {
+      error: "AI action limit reached",
         detail: `Your ${quota.plan} plan includes ${quota.limit} AI actions per month. You have used ${quota.used}. Upgrade to continue.`,
         used: quota.used,
         limit: quota.limit,
@@ -480,7 +463,7 @@ export async function POST(req: NextRequest) {
   // Assemble context
   let context: ConversationContext;
   try {
-    context = await assembleContext(supabase, conversationId, appUser.org_id as string);
+    context = await assembleContext(supabase, conversationId, appUser.org_id);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load conversation";
     return NextResponse.json({ error: message }, { status: 404 });
@@ -497,7 +480,7 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : "AI generation failed";
     console.error("[ai/draft] generation error:", message);
     return NextResponse.json(
-      { error: "AI draft generation failed", detail: message },
+      { error: "AI draft generation failed. Please try again." },
       { status: 502 }
     );
   }
@@ -507,8 +490,8 @@ export async function POST(req: NextRequest) {
     supabase,
     conversationId,
     sourceMessageId,
-    appUser.id as string,
-    appUser.org_id as string,
+    appUser.id,
+    appUser.org_id,
     result
   );
 
@@ -529,8 +512,8 @@ export async function POST(req: NextRequest) {
     try {
       await emitUsageEvent(
         supabase,
-        appUser.org_id as string,
-        appUser.id as string,
+        appUser.org_id,
+        appUser.id,
         conversationId,
         result.latencyMs
       );
