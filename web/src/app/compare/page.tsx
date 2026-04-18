@@ -89,16 +89,45 @@ function ComparisonTable() {
   const cols = ["Work Hat", "Intercom", "Zendesk", "Front"];
 
   return (
-    <section className="px-6 py-20 min-h-[calc(100vh-160px)] flex flex-col justify-center">
+    <div className="relative isolate px-6 pt-24 pb-20 flex flex-col justify-center min-h-[calc(100vh-160px)]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          background: "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(144,50,61,0.20) 0%, transparent 60%)",
+        }}
+      />
+      
       <div className="mx-auto max-w-5xl w-full">
-        <div className="mb-10 max-w-2xl text-center mx-auto">
-          <p className="text-[10px] font-medium tracking-[0.16em] text-[var(--muted)] uppercase">Compare</p>
+        <div className="mb-14 max-w-3xl text-center mx-auto">
+          <p className="text-[10px] font-medium tracking-[0.16em] text-[var(--muted)] uppercase">Compare vs Legacy</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight md:text-5xl">
             Why ops leads outgrow the incumbents
           </h1>
-          <p className="mt-4 text-sm leading-6 text-[var(--muted)]">
-            Most helpdesks just treat AI as a quick text generator. Work Hat is built specifically for teams that want full systemic control, letting you know exactly where your AI is failing — and proactively fixing it through self-learning.
+          <p className="mt-5 text-sm leading-6 text-[var(--muted)]">
+            Legacy helpdesks bolt AI onto an already bloated system, treating it as a quick text generator. Work Hat was built from the ground up to solve AI&apos;s biggest limitation in support ops: <strong>unpredictability</strong>. We give you full systemic control, showing you exactly where the AI is failing, why it&apos;s failing, and automatically looping those corrections back into its semantic memory.
           </p>
+
+          <div className="mt-10 grid gap-6 sm:grid-cols-3 text-left">
+            <div className="grain-panel border border-[var(--line)] rounded-2xl p-5">
+              <h3 className="text-sm font-semibold text-[var(--moss)]">1. Deep Context</h3>
+              <p className="mt-2 text-[11px] leading-5 text-[var(--muted)]">
+                Most tools only read the last customer message. Work Hat injects full relationship history, company tiers, and dynamic organizational policy directly into the prompt before generating a draft.
+              </p>
+            </div>
+            <div className="grain-panel border border-[var(--line)] rounded-2xl p-5">
+              <h3 className="text-sm font-semibold text-[#a9927d]">2. Granular Analysis</h3>
+              <p className="mt-2 text-[11px] leading-5 text-[var(--muted)]">
+                Instead of blindly accepting a response, we track every human edit by intensity and type (Tone, Policy Gap, Factual Error), letting ops leaders pinpoint exact failure zones in their knowledge base.
+              </p>
+            </div>
+            <div className="grain-panel border border-[var(--line)] rounded-2xl p-5">
+              <h3 className="text-sm font-semibold text-[#78a17a]">3. Self-Learning</h3>
+              <p className="mt-2 text-[11px] leading-5 text-[var(--muted)]">
+                It isn&apos;t just logging data. Edits and corrections are continuously rolled into our self-learning corrections panel, dynamically updating intent classifications over time to raise the acceptance rate natively.
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="grain-panel overflow-hidden rounded-[24px] border border-[var(--line)]">
@@ -159,11 +188,11 @@ function ComparisonTable() {
           ))}
         </div>
 
-        <p className="mt-4 text-center text-[10px] text-[var(--muted)]">
+        <p className="mt-6 text-center text-[10px] text-[var(--muted)]">
           Comparison based on publicly available documentation and pricing pages as of 2026. Work Hat is independently built and not affiliated with any compared product.
         </p>
       </div>
-    </section>
+    </div>
   );
 }
 
