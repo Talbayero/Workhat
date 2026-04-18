@@ -1,9 +1,25 @@
 import Link from "next/link";
 import { AnimatedPreview } from "@/components/marketing/animated-preview";
 import { WaitlistForm } from "@/components/marketing/waitlist-form";
-import { getDictionary } from "@/lib/dictionaries";
+import { type Dictionary, type Locale, getDictionary } from "@/lib/dictionaries";
 
-export const NavBar = ({ dict, lang }: { dict: any; lang: string }) => {
+type PageParams = Promise<{ lang: string }>;
+
+function normalizeLocale(lang: string): Locale {
+  return lang === "es" ? "es" : "en";
+}
+
+export const NavBar = ({
+  dict,
+  lang,
+  routePath = "",
+}: {
+  dict: Dictionary["nav"];
+  lang: Locale;
+  routePath?: string;
+}) => {
+  const switchPath = routePath === "/" ? "" : routePath;
+
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--line)] bg-[rgba(10,9,8,0.85)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
@@ -23,8 +39,8 @@ export const NavBar = ({ dict, lang }: { dict: any; lang: string }) => {
 
         <div className="flex items-center gap-3">
           <div className="hidden items-center gap-2 border-r border-[var(--line)] pr-3 mr-1 sm:flex">
-             <Link href={`/en${typeof window !== 'undefined' ? window.location.pathname.replace(/^\/(en|es)/, '') : ''}`} className={`text-xs font-medium transition-colors ${lang === 'en' ? 'text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-white'}`}>EN</Link>
-             <Link href={`/es${typeof window !== 'undefined' ? window.location.pathname.replace(/^\/(en|es)/, '') : ''}`} className={`text-xs font-medium transition-colors ${lang === 'es' ? 'text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-white'}`}>ES</Link>
+             <Link href={`/en${switchPath}`} className={`text-xs font-medium transition-colors ${lang === 'en' ? 'text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-white'}`}>EN</Link>
+             <Link href={`/es${switchPath}`} className={`text-xs font-medium transition-colors ${lang === 'es' ? 'text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-white'}`}>ES</Link>
           </div>
           <Link href="/login" className="hidden text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)] sm:block">
             {dict.signIn}
@@ -47,7 +63,7 @@ export const NavBar = ({ dict, lang }: { dict: any; lang: string }) => {
   );
 };
 
-export const Footer = ({ dict, lang }: { dict: any; lang: string }) => {
+export const Footer = ({ dict, lang }: { dict: Dictionary; lang: Locale }) => {
   return (
     <footer className="border-t border-[var(--line)] px-6 py-10">
       <div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 sm:flex-row">
@@ -59,13 +75,13 @@ export const Footer = ({ dict, lang }: { dict: any; lang: string }) => {
             <span className="text-xs font-semibold text-[var(--foreground)]">Work Hat</span>
           </Link>
           <p className="mt-2 max-w-[200px] text-[11px] leading-5 text-[var(--muted)]">
-            {dict.tagline}
+            {dict.footer.tagline}
           </p>
         </div>
 
         <div className="flex flex-wrap gap-12">
           <div>
-            <p className="mb-3 text-[10px] font-medium tracking-widest text-[var(--muted)] uppercase">{dict.product}</p>
+            <p className="mb-3 text-[10px] font-medium tracking-widest text-[var(--muted)] uppercase">{dict.footer.product}</p>
             <nav className="flex flex-col gap-2">
               <Link href={`/${lang}#how-it-works`} className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.nav.howItWorks}</Link>
               <Link href="/demo/inbox" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.nav.demo}</Link>
@@ -75,25 +91,25 @@ export const Footer = ({ dict, lang }: { dict: any; lang: string }) => {
             </nav>
           </div>
           <div>
-            <p className="mb-3 text-[10px] font-medium tracking-widest text-[var(--muted)] uppercase">{dict.account}</p>
+            <p className="mb-3 text-[10px] font-medium tracking-widest text-[var(--muted)] uppercase">{dict.footer.account}</p>
             <nav className="flex flex-col gap-2">
               <Link href="/login" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.nav.signIn}</Link>
               <Link href="#waitlist" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.nav.getEarlyAccess}</Link>
-              <a href="mailto:teddyalbayero@work-hat.com?subject=Work Hat demo request" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.bookDemo}</a>
+              <a href="mailto:teddyalbayero@work-hat.com?subject=Work Hat demo request" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.footer.bookDemo}</a>
             </nav>
           </div>
         </div>
       </div>
 
       <div className="mx-auto mt-10 flex max-w-5xl items-center justify-between border-t border-[var(--line)] pt-6 text-[10px] text-[var(--muted)]">
-        <p>© {new Date().getFullYear()} Work Hat. {dict.rights}</p>
+        <p>© {new Date().getFullYear()} Work Hat. {dict.footer.rights}</p>
         <p>work-hat.com</p>
       </div>
     </footer>
   );
 };
 
-function Hero({ dict }: { dict: any }) {
+function Hero({ dict }: { dict: Dictionary["home"]["hero"] }) {
   return (
     <section className="relative overflow-hidden px-6 pb-20 pt-20">
       <div
@@ -150,7 +166,7 @@ function Hero({ dict }: { dict: any }) {
   );
 }
 
-function WalkthroughSection({ dict }: { dict: any }) {
+function WalkthroughSection({ dict }: { dict: Dictionary["home"]["howItWorks"] }) {
   return (
     <section id="how-it-works" className="px-6 py-16">
       <div className="mx-auto max-w-6xl">
@@ -169,12 +185,12 @@ function WalkthroughSection({ dict }: { dict: any }) {
   );
 }
 
-function HowItWorks({ dict }: { dict: any }) {
+function HowItWorks({ dict }: { dict: Dictionary["home"]["steps"] }) {
   return (
     <section className="px-6 py-16">
       <div className="mx-auto max-w-5xl">
         <div className="grid gap-px overflow-hidden rounded-[24px] border border-[var(--line)] sm:grid-cols-3">
-          {dict.map((step: any, i: number) => (
+          {dict.map((step, i) => (
             <div
               key={step.num}
               className={`grain-panel px-6 py-7 ${i < dict.length - 1 ? "border-b border-[var(--line)] sm:border-b-0 sm:border-r" : ""}`}
@@ -190,7 +206,7 @@ function HowItWorks({ dict }: { dict: any }) {
   );
 }
 
-function Features({ dict }: { dict: any }) {
+function Features({ dict }: { dict: Dictionary["home"]["features"] }) {
   return (
     <section id="features" className="px-6 py-16">
       <div className="mx-auto max-w-5xl">
@@ -202,7 +218,7 @@ function Features({ dict }: { dict: any }) {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {dict.items.map((f: any, i: number) => (
+          {dict.items.map((f, i) => (
             <div key={i} className="grain-panel rounded-[22px] border border-[var(--line)] px-5 py-5">
               <div className="mb-3 flex h-7 w-7 items-center justify-center rounded-[8px] border border-[rgba(144,50,61,0.3)] bg-[rgba(144,50,61,0.08)]">
                 <span className="font-mono text-[10px] font-bold text-[var(--moss)]">
@@ -219,7 +235,7 @@ function Features({ dict }: { dict: any }) {
   );
 }
 
-function WaitlistSection({ dict }: { dict: any }) {
+function WaitlistSection({ dict }: { dict: Dictionary["home"]["waitlist"] }) {
   return (
     <section id="waitlist" className="relative px-6 py-20">
       <div
@@ -259,7 +275,9 @@ function WaitlistSection({ dict }: { dict: any }) {
   );
 }
 
-export default async function LandingPage({ params: { lang } }: { params: { lang: string } }) {
+export default async function LandingPage({ params }: { params: PageParams }) {
+  const { lang: rawLang } = await params;
+  const lang = normalizeLocale(rawLang);
   const dict = await getDictionary(lang);
   
   return (
@@ -272,7 +290,7 @@ export default async function LandingPage({ params: { lang } }: { params: { lang
         <Features dict={dict.home.features} />
         <WaitlistSection dict={dict.home.waitlist} />
       </main>
-      <Footer dict={dict.footer} lang={lang} />
+      <Footer dict={dict} lang={lang} />
     </div>
   );
 }

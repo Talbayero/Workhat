@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import type { Dictionary } from "@/lib/dictionaries";
 
-function FAQSection({ dict }: { dict: any }) {
+type PricingDictionary = Dictionary["pricing"];
+
+function FAQSection({ dict }: { dict: PricingDictionary }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
@@ -11,7 +14,7 @@ function FAQSection({ dict }: { dict: any }) {
       <div className="mx-auto max-w-3xl">
         <h2 className="mb-8 text-2xl font-semibold tracking-tight">{dict.faq.title}</h2>
         <div className="space-y-4">
-          {dict.faq.items.map((faq: any, i: number) => (
+          {dict.faq.items.map((faq, i) => (
             <div
               key={i}
               className="grain-panel overflow-hidden rounded-[16px] border border-[var(--line)] transition-colors hover:border-[var(--line-strong)]"
@@ -44,7 +47,7 @@ function FAQSection({ dict }: { dict: any }) {
   );
 }
 
-export function PricingClient({ dict }: { dict: any }) {
+export function PricingClient({ dict }: { dict: PricingDictionary }) {
   const [annual, setAnnual] = useState(true);
 
   const plans = [

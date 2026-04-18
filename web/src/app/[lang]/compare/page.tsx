@@ -1,8 +1,15 @@
-import Link from "next/link";
 import { NavBar, Footer } from "../page";
-import { getDictionary } from "@/lib/dictionaries";
+import { type Locale, getDictionary } from "@/lib/dictionaries";
 
-export default async function ComparePage({ params: { lang } }: { params: { lang: string } }) {
+type PageParams = Promise<{ lang: string }>;
+
+function normalizeLocale(lang: string): Locale {
+  return lang === "es" ? "es" : "en";
+}
+
+export default async function ComparePage({ params }: { params: PageParams }) {
+  const { lang: rawLang } = await params;
+  const lang = normalizeLocale(rawLang);
   const dict = await getDictionary(lang);
 
   const features = [
@@ -48,7 +55,7 @@ export default async function ComparePage({ params: { lang } }: { params: { lang
 
   return (
     <div className="min-h-screen">
-      <NavBar dict={dict.nav} lang={lang} />
+      <NavBar dict={dict.nav} lang={lang} routePath="/compare" />
       <div className="relative isolate px-6 pt-24 pb-20 flex flex-col justify-center min-h-[calc(100vh-160px)]">
         <div
           aria-hidden
@@ -69,7 +76,7 @@ export default async function ComparePage({ params: { lang } }: { params: { lang
             </p>
 
             <div className="mt-10 grid gap-6 sm:grid-cols-3 text-left">
-              {dict.compare.points.map((pt: any) => (
+              {dict.compare.points.map((pt) => (
                 <div key={pt.title} className="grain-panel border border-[var(--line)] rounded-2xl p-5">
                   <h3 className="text-sm font-semibold text-[var(--moss)]">{pt.title}</h3>
                   <p className="mt-2 text-[11px] leading-5 text-[var(--muted)]">{pt.body}</p>
@@ -118,7 +125,7 @@ export default async function ComparePage({ params: { lang } }: { params: { lang
           </p>
         </div>
       </div>
-      <Footer dict={dict.footer} lang={lang} />
+      <Footer dict={dict} lang={lang} />
     </div>
   );
 }
