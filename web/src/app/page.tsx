@@ -13,8 +13,8 @@ function NavBar() {
     <header className="sticky top-0 z-50 border-b border-[var(--line)] bg-[rgba(10,9,8,0.85)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[var(--sage)] border border-[var(--line-strong)]">
-            <img src="/logo.png" alt="Work Hat" className="h-5 w-5 object-contain drop-shadow-md" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[var(--sky)] border border-transparent">
+            <img src="/logo.png" alt="Work Hat" className="h-5 w-5 object-contain" />
           </div>
           <span className="text-sm font-semibold tracking-tight">Work Hat</span>
         </Link>
@@ -280,8 +280,8 @@ function Footer() {
       <div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 sm:flex-row">
         <div>
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-5 w-5 items-center justify-center rounded-[5px] bg-[var(--sage)] border border-[var(--line-strong)]">
-              <img src="/logo.png" alt="Work Hat" className="h-3.5 w-3.5 object-contain opacity-80" />
+            <div className="flex h-5 w-5 items-center justify-center rounded-[5px] bg-[var(--sky)] border border-transparent">
+              <img src="/logo.png" alt="Work Hat" className="h-3.5 w-3.5 object-contain" />
             </div>
             <span className="text-xs font-semibold text-[var(--foreground)]">Work Hat</span>
           </Link>
