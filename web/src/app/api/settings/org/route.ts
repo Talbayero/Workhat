@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -25,28 +26,11 @@ function isValidTimezone(value: string) {
   }
 }
 
-async function getCallerAndOrg(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: appUser, error } = await supabase
-    .from("users")
-    .select("id, org_id, role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[settings/org] caller lookup failed:", error.message);
-    return null;
-  }
-
-  return appUser as { id: string; org_id: string; role: string } | null;
-}
-
 export async function GET() {
-  const supabase = await createClient();
-  const caller = await getCallerAndOrg(supabase);
+  const caller = await getCurrentAppUser({ label: "settings/org", select: "id, org_id, role" });
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const supabase = await createClient();
 
   const { data: org, error } = await supabase
     .from("organizations")
@@ -84,13 +68,14 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
-  const supabase = await createClient();
-  const caller = await getCallerAndOrg(supabase);
+  const caller = await getCurrentAppUser({ label: "settings/org", select: "id, org_id, role" });
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   if (caller.role !== "admin") {
     return NextResponse.json({ error: "Only admins can update org settings" }, { status: 403 });
   }
+
+  const supabase = await createClient();
 
   let body: Record<string, unknown>;
   try {
