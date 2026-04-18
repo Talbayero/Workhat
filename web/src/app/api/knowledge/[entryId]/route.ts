@@ -64,7 +64,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
 
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const { entryId } = await ctx.params;
-  const appUser = await getCurrentAppUser({ label: "knowledge/:id", select: "id, org_id, role" });
+  const appUser = await getCurrentAppUser({ label: "knowledge/:id", select: "id, org_id, role, email" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
@@ -92,9 +92,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const updatedBy = user?.email?.split("@")[0] ?? "agent";
+  const updatedBy = (appUser as { email?: string }).email?.split("@")[0] ?? "agent";
 
   const updates: Record<string, unknown> = {
     last_updated: new Date().toISOString().split("T")[0],

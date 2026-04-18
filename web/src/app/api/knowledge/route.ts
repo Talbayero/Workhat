@@ -56,7 +56,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const appUser = await getCurrentAppUser({ label: "knowledge", select: "id, org_id, role" });
+  const appUser = await getCurrentAppUser({ label: "knowledge", select: "id, org_id, role, email" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
@@ -89,10 +89,8 @@ export async function POST(req: NextRequest) {
   const { admin, response } = getAdminOrResponse();
   if (!admin) return response;
 
-  // Get the agent's display name for updated_by
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const updatedBy = user?.email?.split("@")[0] ?? "agent";
+  // Use email from the already-resolved app user — avoids a second auth round-trip
+  const updatedBy = (appUser as { email?: string }).email?.split("@")[0] ?? "agent";
 
   // Create the entry
   const { data: entry, error: entryErr } = await admin

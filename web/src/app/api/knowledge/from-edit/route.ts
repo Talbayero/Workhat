@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
 import { entryFromCorrection } from "@/lib/ai/knowledge-gen";
@@ -21,7 +20,7 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
 ───────────────────────────────────────────── */
 
 export async function POST(req: NextRequest) {
-  const appUser = await getCurrentAppUser({ label: "from-edit", select: "id, org_id, role" });
+  const appUser = await getCurrentAppUser({ label: "from-edit", select: "id, org_id, role, email" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
@@ -142,9 +141,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Persist inactive entry ───────────────────────────────────────────────
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const updatedBy = user?.email?.split("@")[0] ?? "agent";
+  const updatedBy = (appUser as { email?: string }).email?.split("@")[0] ?? "agent";
 
   const { data: entry, error: insertErr } = await admin
     .from("knowledge_entries")
