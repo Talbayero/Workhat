@@ -145,7 +145,7 @@ function HowItWorks() {
     {
       num: "01",
       title: "Email in. Context assembled.",
-      body: "Inbound email lands, gets matched to the contact and company record, and every prior conversation is pulled. Risk level and intent are tagged before anyone opens the thread.",
+      body: "Inbound email via our Gmail connector gets matched to the contact and company. Advanced intent classification enables instant skill-based routing before anyone opens the thread.",
     },
     {
       num: "02",
@@ -186,24 +186,24 @@ function Features() {
       body: "Every draft reads the full customer history, company tier, account owner, and your org policy. Not just the last message.",
     },
     {
-      title: "Edit analysis pipeline",
-      body: "3-step analysis on every send: diff → heuristic classification → LLM verification. Stores edit type and intensity permanently.",
+      title: "Edit analysis & Self-learning",
+      body: "3-step analysis on every send: diff → heuristic classification → LLM verification. Corrections feed into a self-learning panel dynamically.",
     },
     {
       title: "AI improvement dashboard",
       body: "Acceptance rate, edit intensity, edit reason breakdown, and QA queue — all built from real send data. Not a guess.",
     },
     {
-      title: "Knowledge base with semantic search",
-      body: "Policy docs, SOPs, tone guides — stored, versioned, and retrieved by semantic search on every single draft.",
+      title: "Knowledge base & Global Search",
+      body: "Policy docs, SOPs, tone guides — stored, versioned, and retrieved by fast, global search query handling on every single draft.",
     },
     {
-      title: "Risk and confidence scoring",
-      body: "Every thread is scored before your team opens it. Red flags surface automatically. Low-confidence drafts are clearly marked.",
+      title: "Intent classification & Skill-routing",
+      body: "Every thread is automatically categorized by intent with dynamic UI pills, enabling skill-based routing before anyone opens the thread.",
     },
     {
-      title: "Multi-agent workspace",
-      body: "Roles: admin, manager, agent, QA reviewer. Invite by email in seconds. Full audit trail per org.",
+      title: "Deep Platform Integrations",
+      body: "Plug directly into Gmail and handle your support flow smoothly with robust org-level security guards and unlimited human seats.",
     },
   ];
 
@@ -274,9 +274,9 @@ function ComparisonTable() {
     },
     {
       feature: "Pricing entry point",
-      workhat: { val: "Free tier → $49/mo", good: true },
-      intercom: { val: "$74+/mo per seat", good: false },
-      zendesk: { val: "$69+/mo per agent", good: false },
+      workhat: { val: "Free (50 AI drafts/mo) → $49/mo Base + Usage", good: true },
+      intercom: { val: "$74+/mo per seat + $0.99/resolution", good: false },
+      zendesk: { val: "$69+/mo per agent + $50/mo AI Add-on", good: false },
       front: { val: "$19+/agent/mo", good: null },
     },
   ];
