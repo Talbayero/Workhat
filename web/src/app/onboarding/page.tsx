@@ -44,6 +44,31 @@ function fallbackInboundAddress(slug: string) {
   return slug ? `inbound+${slug}@work-hat.com` : "inbound@work-hat.com";
 }
 
+function friendlyEmailConnectorMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("google_client") ||
+    normalized.includes("not configured") ||
+    normalized.includes("server key") ||
+    normalized.includes("supabase") ||
+    normalized.includes("admin database") ||
+    normalized.includes("environment")
+  ) {
+    return "Gmail connection is not ready yet. Please contact your Work Hat administrator.";
+  }
+
+  if (normalized.includes("denied") || normalized.includes("not approved") || normalized.includes("cancelled")) {
+    return "Google sign-in was cancelled or access was not approved. Please try again when you are ready.";
+  }
+
+  if (normalized.includes("expired")) {
+    return "Your Google sign-in session expired. Please try again.";
+  }
+
+  return message;
+}
+
 // ── Reusable input components ─────────────────────────────────────────────────
 
 function InputField({
@@ -119,7 +144,7 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
       setUrlMessage({ type: "success", message: "Gmail connected. We are importing recent conversations now." });
       void syncGmail();
     } else if (emailError) {
-      setUrlMessage({ type: "error", message: emailError });
+      setUrlMessage({ type: "error", message: friendlyEmailConnectorMessage(emailError) });
     }
     // OAuth return params should only be consumed once on page load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,7 +169,9 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
       const data = await response.json() as { connections?: EmailConnection[] };
       setConnections(data.connections ?? []);
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : "Unable to load email connections.");
+      setConnectionError(
+        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Unable to load email connections.")
+      );
     } finally {
       setLoadingConnections(false);
     }
@@ -171,7 +198,9 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
       );
       await loadConnections();
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : "Gmail sync failed.");
+      setConnectionError(
+        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Gmail sync failed.")
+      );
     } finally {
       setSyncing(false);
     }
@@ -196,7 +225,9 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
       );
       await loadConnections();
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : "Failed to enable Gmail live watch.");
+      setConnectionError(
+        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Failed to enable Gmail live watch.")
+      );
     } finally {
       setWatching(false);
     }

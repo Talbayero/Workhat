@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const STATE_COOKIE = "workhat_gmail_oauth_state";
 const RETURN_TO_COOKIE = "workhat_gmail_oauth_return_to";
+const CONNECTOR_NOT_READY_MESSAGE = "Gmail connection is not ready yet. Please contact your Work Hat administrator.";
 
 type ProviderMetadata = Record<string, unknown>;
 
@@ -40,7 +41,9 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const providerError = params.get("error");
   if (providerError) {
-    return connectorRedirect(req, { emailError: `Google denied access: ${providerError}` });
+    return connectorRedirect(req, {
+      emailError: "Google sign-in was cancelled or access was not approved. Please try again when you are ready.",
+    });
   }
 
   const state = params.get("state");
@@ -51,7 +54,7 @@ export async function GET(req: NextRequest) {
 
   const code = params.get("code");
   if (!code) {
-    return connectorRedirect(req, { emailError: "Google did not return an authorization code." });
+    return connectorRedirect(req, { emailError: "Google sign-in did not finish. Please try again." });
   }
 
   const supabase = await createClient();
@@ -65,9 +68,7 @@ export async function GET(req: NextRequest) {
     db = createAdminClient();
   } catch (error) {
     console.error("[gmail/callback] admin client init failed:", error);
-    return connectorRedirect(req, {
-      emailError: "Gmail connector is unavailable. Ask an admin to verify the Supabase server key.",
-    });
+    return connectorRedirect(req, { emailError: CONNECTOR_NOT_READY_MESSAGE });
   }
 
   const appUser = await getCurrentAppUser({ label: "gmail/callback", select: "id, org_id, role" });
@@ -244,7 +245,7 @@ export async function GET(req: NextRequest) {
 
     return connectorRedirect(req, { connected: GMAIL_PROVIDER });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Gmail connection failed.";
-    return connectorRedirect(req, { emailError: message });
+    console.error("[gmail/callback] OAuth callback failed:", error);
+    return connectorRedirect(req, { emailError: CONNECTOR_NOT_READY_MESSAGE });
   }
 }

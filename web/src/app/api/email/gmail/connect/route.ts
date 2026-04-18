@@ -6,6 +6,7 @@ import { buildGmailAuthUrl, getGoogleRedirectUri } from "@/lib/email-connector/g
 
 const STATE_COOKIE = "workhat_gmail_oauth_state";
 const RETURN_TO_COOKIE = "workhat_gmail_oauth_return_to";
+const CONNECTOR_NOT_READY_MESSAGE = "Gmail connection is not ready yet. Please contact your Work Hat administrator.";
 
 function getSafeReturnTo(req: NextRequest) {
   const returnTo = req.nextUrl.searchParams.get("returnTo") ?? req.nextUrl.searchParams.get("next");
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
 
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Gmail connection failed.";
-    return connectorRedirect(req, { emailError: message });
+    console.error("[gmail/connect] OAuth setup failed:", error);
+    return connectorRedirect(req, { emailError: CONNECTOR_NOT_READY_MESSAGE });
   }
 }

@@ -82,6 +82,31 @@ const roleLabel: Record<string, string> = {
   admin: "Admin",
 };
 
+function friendlyEmailConnectorMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("google_client") ||
+    normalized.includes("not configured") ||
+    normalized.includes("server key") ||
+    normalized.includes("supabase") ||
+    normalized.includes("admin database") ||
+    normalized.includes("environment")
+  ) {
+    return "Gmail connection is not ready yet. Please contact your Work Hat administrator.";
+  }
+
+  if (normalized.includes("denied") || normalized.includes("not approved") || normalized.includes("cancelled")) {
+    return "Google sign-in was cancelled or access was not approved. Please try again when you are ready.";
+  }
+
+  if (normalized.includes("expired")) {
+    return "Your Google sign-in session expired. Please try again.";
+  }
+
+  return message;
+}
+
 // ── Shared UI components ───────────────────────────────────────────────────────
 
 function SectionCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -827,7 +852,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
       setSetupPath(null);
       void refreshConnections();
     } else if (emailError) {
-      setConnectionError(emailError);
+      setConnectionError(friendlyEmailConnectorMessage(emailError));
     }
   }, []);
 
@@ -842,7 +867,9 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
       }
       setConnections(Array.isArray(payload.connections) ? payload.connections : []);
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : "Could not load email connections.");
+      setConnectionError(
+        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Could not load email connections.")
+      );
     } finally {
       setConnectionsLoading(false);
     }
@@ -878,7 +905,9 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
       setConnectionNotice(action === "sync" ? "Gmail sync finished. New mail should now appear in the inbox." : "Live Gmail watch is active.");
       await refreshConnections();
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : "Connection action failed.");
+      setConnectionError(
+        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Connection action failed.")
+      );
     } finally {
       setConnectionAction(null);
     }
@@ -898,7 +927,9 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
       setConnectionNotice("Gmail has been disconnected. You can reconnect whenever you are ready.");
       await refreshConnections();
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : "Could not disconnect Gmail.");
+      setConnectionError(
+        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Could not disconnect Gmail.")
+      );
     } finally {
       setConnectionAction(null);
     }
