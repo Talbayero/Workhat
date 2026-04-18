@@ -81,14 +81,14 @@ async function getGmailConnection(db: SupabaseDb, orgId: string) {
     .eq("provider", "gmail")
     .eq("status", "connected")
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
   return data as EmailConnection;
 }
 
 async function getGmailThreadContext(db: SupabaseDb, orgId: string, conversationId: string) {
-  const { data } = await db
+  const { data, error } = await db
     .from("messages")
     .select("metadata_json")
     .eq("org_id", orgId)
@@ -96,8 +96,9 @@ async function getGmailThreadContext(db: SupabaseDb, orgId: string, conversation
     .eq("direction", "inbound")
     .order("created_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
+  if (error) throw new Error(error.message);
   if (!data) return { threadId: null, messageId: null } satisfies GmailThreadContext;
 
   const metadata = (data as { metadata_json?: Record<string, unknown> }).metadata_json ?? {};
@@ -129,7 +130,7 @@ export async function sendConversationReplyWithGmail({
     .select("id, subject, contacts(email)")
     .eq("id", conversationId)
     .eq("org_id", orgId)
-    .single();
+    .maybeSingle();
 
   if (conversationError || !conversation) {
     throw new Error("Conversation not found.");

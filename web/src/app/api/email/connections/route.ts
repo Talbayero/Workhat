@@ -6,11 +6,16 @@ async function getAppUser() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[email/connections] app user lookup failed:", error.message);
+    return null;
+  }
 
   return data as { id: string; org_id: string; role: string } | null;
 }
@@ -53,7 +58,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("email_connections")
     .update({
       access_token_ciphertext: null,
@@ -69,10 +74,16 @@ export async function DELETE(req: NextRequest) {
       watch_expires_at: null,
     })
     .eq("id", connectionId)
-    .eq("org_id", appUser.org_id);
+    .eq("org_id", appUser.org_id)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (!data) {
+    return NextResponse.json({ error: "Email connection not found for this workspace." }, { status: 404 });
   }
 
   return NextResponse.json({ ok: true });

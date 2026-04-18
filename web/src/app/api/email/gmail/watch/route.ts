@@ -25,11 +25,16 @@ async function getAppUser(supabase: Awaited<ReturnType<typeof createClient>>) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[gmail/watch] app user lookup failed:", error.message);
+    return null;
+  }
 
   return data as AppUser | null;
 }
@@ -52,7 +57,7 @@ async function getFreshAccessToken(
 
   const refreshed = await refreshGmailAccessToken(decryptSecret(connection.refresh_token_ciphertext));
   const encryptedAccessToken = encryptSecret(refreshed.access_token);
-  await supabase
+  const { error: refreshUpdateError } = await supabase
     .from("email_connections")
     .update({
       access_token_ciphertext: encryptedAccessToken,
@@ -62,6 +67,10 @@ async function getFreshAccessToken(
       error_message: null,
     })
     .eq("id", connection.id);
+
+  if (refreshUpdateError) {
+    throw new Error(refreshUpdateError.message);
+  }
 
   return refreshed.access_token;
 }
@@ -88,7 +97,7 @@ export async function POST() {
     .eq("provider", "gmail")
     .eq("status", "connected")
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !connection) {
     return NextResponse.json({ error: "Connect Gmail before enabling live watch." }, { status: 400 });
@@ -99,7 +108,7 @@ export async function POST() {
     const watch = await watchGmailInbox({ accessToken, topicName });
     const expiration = new Date(Number(watch.expiration)).toISOString();
 
-    await supabase
+    const { error: watchUpdateError } = await supabase
       .from("email_connections")
       .update({
         sync_status: "watching",
@@ -117,13 +126,18 @@ export async function POST() {
       })
       .eq("id", (connection as EmailConnection).id);
 
+    if (watchUpdateError) {
+      throw new Error(watchUpdateError.message);
+    }
+
     return NextResponse.json({ ok: true, historyId: watch.historyId, expiration });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to enable Gmail watch.";
-    await supabase
+    const { error: errorUpdateError } = await supabase
       .from("email_connections")
       .update({ sync_status: "error", error_message: message })
       .eq("id", (connection as EmailConnection).id);
+    if (errorUpdateError) console.warn("[gmail/watch] failed to persist watch error:", errorUpdateError.message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

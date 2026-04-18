@@ -22,11 +22,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const { data: appUser } = await supabase
+  const { data: appUser, error: appUserError } = await supabase
     .from("users")
     .select("id, org_id")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (appUserError) {
+    return onboardingRedirect(req, { emailError: "Unable to verify your workspace. Try again." });
+  }
 
   if (!appUser) {
     return onboardingRedirect(req, {

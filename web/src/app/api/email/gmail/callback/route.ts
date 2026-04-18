@@ -34,11 +34,16 @@ async function getAppUser(supabase: Awaited<ReturnType<typeof createClient>>) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[gmail/callback] app user lookup failed:", error.message);
+    return null;
+  }
 
   return data as AppUser | null;
 }
@@ -83,13 +88,17 @@ export async function GET(req: NextRequest) {
     const profile = await fetchGmailProfile(token.access_token);
     const email = profile.emailAddress.toLowerCase();
 
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from("email_connections")
       .select("id, refresh_token_ciphertext")
       .eq("org_id", appUser.org_id)
       .eq("provider", GMAIL_PROVIDER)
       .eq("provider_account_email", email)
-      .single();
+      .maybeSingle();
+
+    if (existingError) {
+      throw new Error(existingError.message);
+    }
 
     const refreshTokenCiphertext = token.refresh_token
       ? encryptSecret(token.refresh_token)
@@ -133,12 +142,16 @@ export async function GET(req: NextRequest) {
       throw new Error(connectionError?.message ?? "Failed to save Gmail connection.");
     }
 
-    const { data: channel } = await supabase
+    const { data: channel, error: channelError } = await supabase
       .from("channels")
       .select("id, config_json")
       .eq("org_id", appUser.org_id)
       .eq("type", "email")
-      .single();
+      .maybeSingle();
+
+    if (channelError) {
+      throw new Error(channelError.message);
+    }
 
     const channelConfig = {
       ...((channel as { config_json?: Record<string, unknown> } | null)?.config_json ?? {}),
@@ -149,7 +162,7 @@ export async function GET(req: NextRequest) {
     };
 
     if (channel) {
-      await supabase
+      const { error: channelUpdateError } = await supabase
         .from("channels")
         .update({
           provider: GMAIL_PROVIDER,
@@ -157,14 +170,22 @@ export async function GET(req: NextRequest) {
           config_json: channelConfig,
         })
         .eq("id", (channel as { id: string }).id);
+
+      if (channelUpdateError) {
+        throw new Error(channelUpdateError.message);
+      }
     } else {
-      await supabase.from("channels").insert({
+      const { error: channelInsertError } = await supabase.from("channels").insert({
         org_id: appUser.org_id,
         type: "email",
         provider: GMAIL_PROVIDER,
         status: "active",
         config_json: channelConfig,
       });
+
+      if (channelInsertError) {
+        throw new Error(channelInsertError.message);
+      }
     }
 
     const topicName = process.env.GOOGLE_PUBSUB_TOPIC;
@@ -172,7 +193,7 @@ export async function GET(req: NextRequest) {
       try {
         const watch = await watchGmailInbox({ accessToken: token.access_token, topicName });
         const expiration = new Date(Number(watch.expiration)).toISOString();
-        await supabase
+        const { error: watchUpdateError } = await supabase
           .from("email_connections")
           .update({
             sync_status: "watching",
@@ -190,9 +211,13 @@ export async function GET(req: NextRequest) {
             },
           })
           .eq("id", connection.id);
+
+        if (watchUpdateError) {
+          throw new Error(watchUpdateError.message);
+        }
       } catch (watchError) {
         const watchMessage = watchError instanceof Error ? watchError.message : "Gmail live watch setup failed.";
-        await supabase
+        const { error: watchErrorUpdateError } = await supabase
           .from("email_connections")
           .update({
             sync_status: "idle",
@@ -207,6 +232,10 @@ export async function GET(req: NextRequest) {
             },
           })
           .eq("id", connection.id);
+
+        if (watchErrorUpdateError) {
+          console.warn("[gmail/callback] failed to persist watch error:", watchErrorUpdateError.message);
+        }
       }
     }
 

@@ -19,11 +19,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Get org for this user
-    const { data: appUser } = await supabase
+    const { data: appUser, error: appUserError } = await supabase
       .from("users")
       .select("org_id, organizations(id, slug, name)")
       .eq("auth_user_id", user.id)
-      .single();
+      .maybeSingle();
+
+    if (appUserError) {
+      return NextResponse.json({ error: appUserError.message }, { status: 500 });
+    }
 
     if (!appUser) {
       return NextResponse.json({ error: "No org found — complete onboarding first" }, { status: 400 });
@@ -39,19 +43,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Org not found" }, { status: 400 });
     }
 
-    const body = await req.json() as { plan?: string; billing?: string };
-    const plan = body.plan as StripePlan;
-    const billing = (body.billing ?? "monthly") as "monthly" | "annual";
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await req.json();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+      }
+      body = parsed as Record<string, unknown>;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
 
-    if (!plan || !["pro", "scale"].includes(plan)) {
+    const plan = body.plan;
+    const billing = body.billing ?? "monthly";
+
+    if (typeof plan !== "string" || !["pro", "scale"].includes(plan)) {
       return NextResponse.json({ error: "Invalid plan. Must be 'pro' or 'scale'." }, { status: 400 });
+    }
+    if (typeof billing !== "string" || !["monthly", "annual"].includes(billing)) {
+      return NextResponse.json({ error: "Invalid billing period. Must be 'monthly' or 'annual'." }, { status: 400 });
     }
 
     const origin = req.nextUrl.origin;
 
     const session = await createCheckoutSession({
-      plan,
-      billing,
+      plan: plan as StripePlan,
+      billing: billing as "monthly" | "annual",
       orgId: org.id,
       orgSlug: org.slug,
       customerEmail: user.email ?? "",

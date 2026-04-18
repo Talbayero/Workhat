@@ -129,7 +129,7 @@ export async function getFreshGmailAccessToken(db: SupabaseDb, connection: Email
 
   const refreshed = await refreshGmailAccessToken(decryptSecret(connection.refresh_token_ciphertext));
   const encryptedAccessToken = encryptSecret(refreshed.access_token);
-  await db
+  const { error: updateError } = await db
     .from("email_connections")
     .update({
       access_token_ciphertext: encryptedAccessToken,
@@ -139,6 +139,10 @@ export async function getFreshGmailAccessToken(db: SupabaseDb, connection: Email
       error_message: null,
     })
     .eq("id", connection.id);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
 
   return refreshed.access_token;
 }
@@ -155,21 +159,25 @@ async function ensureContactAndCompany({
   fromEmail: string;
 }) {
   const [firstName, ...restName] = fromName.split(" ");
-  const { data: existingContact } = await db
+  const { data: existingContact, error: existingContactError } = await db
     .from("contacts")
     .select("id, company_id")
     .eq("org_id", orgId)
     .eq("email", fromEmail)
-    .single();
+    .maybeSingle();
+
+  if (existingContactError) throw new Error(existingContactError.message);
 
   let contactId = (existingContact as { id: string; company_id: string | null } | null)?.id ?? null;
   let companyId = (existingContact as { id: string; company_id: string | null } | null)?.company_id ?? null;
 
   if (contactId) {
-    await db
+    const { error: contactUpdateError } = await db
       .from("contacts")
       .update({ last_activity_at: new Date().toISOString() })
       .eq("id", contactId);
+
+    if (contactUpdateError) throw new Error(contactUpdateError.message);
   } else {
     const { data: contact, error } = await db
       .from("contacts")
@@ -191,12 +199,14 @@ async function ensureContactAndCompany({
 
   const domain = fromEmail.split("@")[1] ?? "";
   if (domain && !GENERIC_DOMAINS.has(domain) && !companyId) {
-    const { data: existingCompany } = await db
+    const { data: existingCompany, error: existingCompanyError } = await db
       .from("companies")
       .select("id")
       .eq("org_id", orgId)
       .eq("domain", domain)
-      .single();
+      .maybeSingle();
+
+    if (existingCompanyError) throw new Error(existingCompanyError.message);
 
     if (existingCompany) {
       companyId = existingCompany.id;
@@ -205,7 +215,7 @@ async function ensureContactAndCompany({
         .split(".")[0]
         .replace(/-/g, " ")
         .replace(/\b\w/g, (letter) => letter.toUpperCase());
-      const { data: company } = await db
+      const { data: company, error: companyError } = await db
         .from("companies")
         .insert({
           org_id: orgId,
@@ -217,15 +227,18 @@ async function ensureContactAndCompany({
         })
         .select("id")
         .single();
+      if (companyError) throw new Error(companyError.message);
       companyId = company?.id ?? null;
     }
 
     if (companyId && contactId) {
-      await db
+      const { error: contactCompanyError } = await db
         .from("contacts")
         .update({ company_id: companyId })
         .eq("id", contactId)
         .is("company_id", null);
+
+      if (contactCompanyError) throw new Error(contactCompanyError.message);
     }
   }
 
@@ -248,12 +261,14 @@ async function importMessage({
   const message = await fetchGmailMessage(accessToken, messageId);
   const channelMessageId = `gmail:${message.id}`;
 
-  const { data: existingMessage } = await db
+  const { data: existingMessage, error: existingMessageError } = await db
     .from("messages")
     .select("id")
     .eq("org_id", orgId)
     .eq("channel_message_id", channelMessageId)
-    .single();
+    .maybeSingle();
+
+  if (existingMessageError) throw new Error(existingMessageError.message);
 
   if (existingMessage) {
     return { imported: false, historyId: message.historyId ?? null };
@@ -280,16 +295,18 @@ async function importMessage({
     : new Date().toISOString();
 
   let conversationId: string | null = null;
-  const { data: existingConversation } = await db
+  const { data: existingConversation, error: existingConversationError } = await db
     .from("conversations")
     .select("id")
     .eq("org_id", orgId)
     .eq("external_thread_id", externalThreadId)
-    .single();
+    .maybeSingle();
+
+  if (existingConversationError) throw new Error(existingConversationError.message);
 
   if (existingConversation) {
     conversationId = existingConversation.id;
-    await db
+    const { error: conversationUpdateError } = await db
       .from("conversations")
       .update({
         preview,
@@ -297,6 +314,8 @@ async function importMessage({
         ...(riskLevel === "red" ? { risk_level: "red" } : {}),
       })
       .eq("id", conversationId);
+
+    if (conversationUpdateError) throw new Error(conversationUpdateError.message);
   } else {
     const { data: conversation, error: conversationError } = await db
       .from("conversations")
@@ -352,13 +371,14 @@ async function importMessage({
 }
 
 async function getChannelId(db: SupabaseDb, orgId: string) {
-  const { data: channel } = await db
+  const { data: channel, error } = await db
     .from("channels")
     .select("id")
     .eq("org_id", orgId)
     .eq("type", "email")
-    .single();
+    .maybeSingle();
 
+  if (error) throw new Error(error.message);
   if (!channel) throw new Error("No email channel found for this workspace.");
   return channel.id as string;
 }
@@ -472,10 +492,12 @@ export async function markGmailSyncSuccess({
     updates.last_history_id = result.latestHistoryId;
   }
 
-  await db
+  const { error } = await db
     .from("email_connections")
     .update(updates)
     .eq("id", connectionId);
+
+  if (error) throw new Error(error.message);
 }
 
 export async function markGmailSyncError({
@@ -487,8 +509,10 @@ export async function markGmailSyncError({
   connectionId: string;
   message: string;
 }) {
-  await db
+  const { error } = await db
     .from("email_connections")
     .update({ sync_status: "error", status: "error", error_message: message })
     .eq("id", connectionId);
+
+  if (error) throw new Error(error.message);
 }

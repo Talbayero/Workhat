@@ -36,7 +36,18 @@ async function renewConnection({
   connection: WatchConnection;
   topicName: string;
 }): Promise<RenewalResult> {
-  const db = createAdminClient();
+  let db: ReturnType<typeof createAdminClient>;
+  try {
+    db = createAdminClient();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Admin client unavailable";
+    return {
+      connectionId: connection.id,
+      email: connection.provider_account_email,
+      ok: false,
+      error: message,
+    };
+  }
 
   try {
     const accessToken = await getFreshGmailAccessToken(db, connection);
@@ -44,7 +55,7 @@ async function renewConnection({
     const expiration = new Date(Number(watch.expiration)).toISOString();
     const metadata = connection.provider_metadata ?? {};
 
-    await db
+    const { error: updateError } = await db
       .from("email_connections")
       .update({
         sync_status: "watching",
@@ -64,6 +75,10 @@ async function renewConnection({
       })
       .eq("id", connection.id);
 
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
     return {
       connectionId: connection.id,
       email: connection.provider_account_email,
@@ -72,7 +87,7 @@ async function renewConnection({
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to renew Gmail watch.";
-    await db
+    const { error: errorUpdateError } = await db
       .from("email_connections")
       .update({
         sync_status: "error",
@@ -80,6 +95,10 @@ async function renewConnection({
         error_message: message,
       })
       .eq("id", connection.id);
+
+    if (errorUpdateError) {
+      console.warn("[gmail/renew-watches] failed to persist renewal error:", errorUpdateError.message);
+    }
 
     return {
       connectionId: connection.id,
@@ -103,7 +122,15 @@ export async function GET(req: NextRequest) {
     }, { status: 500 });
   }
 
-  const db = createAdminClient();
+  let db: ReturnType<typeof createAdminClient>;
+  try {
+    db = createAdminClient();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Admin client unavailable";
+    console.error("[gmail/renew-watches] admin client init failed:", message);
+    return NextResponse.json({ error: "Gmail watch renewal is unavailable." }, { status: 503 });
+  }
+
   const { data, error } = await db
     .from("email_connections")
     .select("id, org_id, provider_account_email, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, last_history_id, watch_expires_at, provider_metadata")

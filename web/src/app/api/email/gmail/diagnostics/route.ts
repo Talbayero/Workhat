@@ -16,11 +16,16 @@ async function getAppUser() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[gmail/diagnostics] app user lookup failed:", error.message);
+    return null;
+  }
 
   return data as { id: string; org_id: string; role: string } | null;
 }
