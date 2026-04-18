@@ -6,10 +6,17 @@ import { createClient } from "@/lib/supabase/client";
 
 type AuthMode = "signin" | "signup";
 
+/** Only allow same-origin redirect targets — prevents open-redirect attacks. */
+function safeNext(raw: string | null, fallback = "/inbox"): string {
+  if (!raw) return fallback;
+  if (/^\/[^/]/.test(raw) || raw === "/") return raw;
+  return fallback;
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/inbox";
+  const next = safeNext(searchParams.get("next"));
 
   const [mode, setMode] = useState<AuthMode>(
     searchParams.get("mode") === "signup" ? "signup" : "signin"

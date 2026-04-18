@@ -15,6 +15,14 @@ import { createClient } from "@/lib/supabase/client";
  * Invite flow: when ?invite=1 is present, the invited user's pending `users`
  * row needs to be activated by linking it to their new auth_user_id.
  */
+/** Only allow same-origin redirect targets — block open-redirect attacks. */
+function safeNext(raw: string | null, fallback = "/inbox"): string {
+  if (!raw) return fallback;
+  // Must start with / and not be a protocol-relative URL (//evil.com)
+  if (/^\/[^/]/.test(raw) || raw === "/") return raw;
+  return fallback;
+}
+
 function CallbackHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -23,7 +31,7 @@ function CallbackHandler() {
   useEffect(() => {
     const supabase = createClient();
     const isInvite = searchParams.get("invite") === "1";
-    const next = searchParams.get("next") ?? "/inbox";
+    const next = safeNext(searchParams.get("next"));
 
     async function handleSession() {
       const { data: { session } } = await supabase.auth.getSession();
