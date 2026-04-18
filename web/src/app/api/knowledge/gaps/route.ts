@@ -35,11 +35,17 @@ async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[knowledge/gaps] app user lookup failed:", error.message);
+    return null;
+  }
+
   return data as { id: string; org_id: string; role: string } | null;
 }
 
@@ -47,7 +53,17 @@ export async function GET() {
   const appUser = await getAppUser();
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const admin = createAdminClient();
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Admin client unavailable";
+    console.error("[knowledge/gaps] admin client init failed:", message);
+    return NextResponse.json(
+      { error: "Knowledge gap suggestions are unavailable — admin database key is not configured." },
+      { status: 503 }
+    );
+  }
 
   // ── Fetch last 30 days of edit analyses ──────────────────────────────────
   const since = new Date();
@@ -75,9 +91,13 @@ export async function GET() {
   const categoryMap = new Map<string, { count: number; reasons: string[] }>();
 
   for (const analysis of analyses) {
-    const cats = Array.isArray(analysis.categories) ? (analysis.categories as string[]) : [];
+    const cats = Array.isArray(analysis.categories)
+      ? analysis.categories.filter((category): category is string => typeof category === "string")
+      : [];
     const primaryCategory = cats[0] ?? "other";
-    const reason = (analysis.likely_reason_summary as string | null) ?? "";
+    const reason = typeof analysis.likely_reason_summary === "string"
+      ? analysis.likely_reason_summary
+      : "";
 
     const existing = categoryMap.get(primaryCategory);
     if (existing) {

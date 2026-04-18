@@ -36,7 +36,7 @@ type OutboundResult = {
 };
 
 function validateBody(raw: unknown): ReplyPayload | null {
-  if (!raw || typeof raw !== "object") return null;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.body !== "string" || !obj.body.trim()) return null;
   return {
@@ -61,7 +61,7 @@ async function buildManualTestOutbound(
     .eq("direction", "inbound")
     .order("created_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   const metadata = (inbound as { metadata_json?: Record<string, unknown> } | null)?.metadata_json ?? {};
   if (metadata.created_manually !== true) return null;
@@ -71,7 +71,7 @@ async function buildManualTestOutbound(
     .select("inbound_address, config_json")
     .eq("org_id", orgId)
     .eq("type", "email")
-    .single();
+    .maybeSingle();
 
   const channelData = channel as { inbound_address?: string | null; config_json?: Record<string, string> } | null;
   const fromAddress =
@@ -107,7 +107,7 @@ async function triggerEditAnalysis(
       .eq("id", aiDraftId)
       .eq("org_id", orgId)
       .eq("conversation_id", conversationId)
-      .single();
+      .maybeSingle();
 
     if (error || !draft) {
       console.warn("[reply] ai_draft not found for analysis:", aiDraftId);
@@ -119,7 +119,7 @@ async function triggerEditAnalysis(
       finalText
     );
 
-    await supabase.from("edit_analyses").insert({
+    const { error: analysisInsertError } = await supabase.from("edit_analyses").insert({
       org_id: orgId,
       conversation_id: conversationId,
       ai_draft_id: aiDraftId,
@@ -138,14 +138,22 @@ async function triggerEditAnalysis(
       },
     });
 
+    if (analysisInsertError) {
+      console.warn("[reply] edit analysis insert failed:", analysisInsertError.message);
+      return;
+    }
+
     // Act on escalation flag — bump conversation risk to red
     if (analysis.shouldEscalate) {
-      await supabase
+      const { error: escalationError } = await supabase
         .from("conversations")
         .update({ risk_level: "red", ai_confidence: "red" })
         .eq("id", conversationId)
         .eq("org_id", orgId);
-      console.log(`[reply] Escalation flag set — conversation ${conversationId} risk → red`);
+
+      if (escalationError) {
+        console.warn("[reply] escalation update failed:", escalationError.message);
+      }
     }
   } catch (err) {
     console.error(
@@ -175,7 +183,7 @@ export async function POST(
     .from("users")
     .select("id, org_id, full_name, email")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (userErr || !appUser) {
     return NextResponse.json({ error: "App user not found" }, { status: 403 });
@@ -233,7 +241,18 @@ export async function POST(
     }
   }
 
-  const admin = createAdminClient();
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Admin client unavailable";
+    console.error("[reply] admin client init failed:", message);
+    return NextResponse.json(
+      { error: "Reply sending is unavailable — admin database key is not configured." },
+      { status: 503 }
+    );
+  }
+
   let outbound: OutboundResult | null;
   try {
     outbound = await sendConversationReplyWithGmail({
@@ -316,29 +335,34 @@ export async function POST(
   const sentReplyId = sentReply ? (sentReply as { id: string }).id : null;
 
   // 3. Update conversation last_message_at
-  await supabase
+  const { error: conversationUpdateError } = await supabase
     .from("conversations")
     .update({ last_message_at: new Date().toISOString() })
     .eq("id", conversationId)
     .eq("org_id", orgId);
 
+  if (conversationUpdateError) {
+    console.warn("[reply] conversation timestamp update failed:", conversationUpdateError.message);
+  }
+
   // 4. Emit usage event
-  supabase
-    .from("usage_events")
-    .insert({
-      org_id: orgId,
-      user_id: userId,
-      event_type: "email_sent",
-      units: 1,
-      metadata_json: {
-        conversation_id: conversationId,
-        has_ai_draft: Boolean(aiDraftId),
-        simulated_send: Boolean(outbound.simulated),
-      },
-    })
-    .then(({ error: e }) => {
-      if (e) console.warn("[reply] usage event failed:", e.message);
-    });
+  after(async () => {
+    const { error: usageError } = await supabase
+      .from("usage_events")
+      .insert({
+        org_id: orgId,
+        user_id: userId,
+        event_type: "email_sent",
+        units: 1,
+        metadata_json: {
+          conversation_id: conversationId,
+          has_ai_draft: Boolean(aiDraftId),
+          simulated_send: Boolean(outbound.simulated),
+        },
+      });
+
+    if (usageError) console.warn("[reply] usage event failed:", usageError.message);
+  });
 
   // 5. Trigger edit analysis if a draft was linked.
   // after() tells Next.js / Vercel to keep the function alive until this

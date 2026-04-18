@@ -8,16 +8,53 @@ import { generateEmbedding, chunkText } from "@/lib/embeddings";
    POST /api/knowledge  — create new entry
 ───────────────────────────────────────────── */
 
+function normalizeOptionalString(value: unknown) {
+  if (value == null) return null;
+  if (typeof value !== "string") return undefined;
+  return value.trim() || null;
+}
+
+function normalizeTags(value: unknown) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.some((tag) => typeof tag !== "string")) {
+    return null;
+  }
+
+  return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
+}
+
+function getAdminOrResponse() {
+  try {
+    return { admin: createAdminClient(), response: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Admin client unavailable";
+    console.error("[knowledge] admin client init failed:", message);
+    return {
+      admin: null,
+      response: NextResponse.json(
+        { error: "Knowledge management is unavailable — admin database key is not configured." },
+        { status: 503 }
+      ),
+    };
+  }
+}
+
 // ── Auth helper ────────────────────────────────────────────────────────────
 async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[knowledge] app user lookup failed:", error.message);
+    return null;
+  }
+
   return data as { id: string; org_id: string; role: string } | null;
 }
 
@@ -40,25 +77,35 @@ export async function POST(req: NextRequest) {
   const appUser = await getAppUser();
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json() as {
-    title?: string;
-    summary?: string;
-    body?: string;
-    category?: string;
-    tags?: string[];
-  };
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
 
-  const title = body.title?.trim();
-  const summary = body.summary?.trim();
-  const content = body.body?.trim();
-  const category = body.category?.trim();
-  const tags = Array.isArray(body.tags) ? body.tags.map((t) => String(t).trim()).filter(Boolean) : [];
+  const title = normalizeOptionalString(body.title);
+  const summary = normalizeOptionalString(body.summary);
+  const content = normalizeOptionalString(body.body);
+  const category = normalizeOptionalString(body.category);
+  const tags = normalizeTags(body.tags);
+
+  if (title === undefined) return NextResponse.json({ error: "Title must be text." }, { status: 400 });
+  if (summary === undefined) return NextResponse.json({ error: "Summary must be text." }, { status: 400 });
+  if (content === undefined) return NextResponse.json({ error: "Body must be text." }, { status: 400 });
+  if (category === undefined) return NextResponse.json({ error: "Category must be text." }, { status: 400 });
+  if (tags === null) return NextResponse.json({ error: "Tags must be a list of text values." }, { status: 400 });
 
   if (!title) return NextResponse.json({ error: "Title is required." }, { status: 400 });
   if (!content) return NextResponse.json({ error: "Body content is required." }, { status: 400 });
   if (!category) return NextResponse.json({ error: "Category is required." }, { status: 400 });
 
-  const admin = createAdminClient();
+  const { admin, response } = getAdminOrResponse();
+  if (!admin) return response;
 
   // Get the agent's display name for updated_by
   const supabase = await createClient();
@@ -71,7 +118,7 @@ export async function POST(req: NextRequest) {
     .insert({
       org_id: appUser.org_id,
       title,
-      summary: summary ?? title,
+      summary: summary || title,
       body: content,
       category,
       tags,
@@ -98,7 +145,7 @@ export async function POST(req: NextRequest) {
         console.warn(`[knowledge] Embedding failed for chunk ${i}:`, e);
       }
 
-      await admin.from("knowledge_chunks").insert({
+      const { error: chunkError } = await admin.from("knowledge_chunks").insert({
         entry_id: entry.id,
         org_id: appUser.org_id,
         chunk_index: i,
@@ -106,6 +153,7 @@ export async function POST(req: NextRequest) {
         // content_tsv is a generated column — DB handles it automatically
         ...(embedding ? { embedding: JSON.stringify(embedding) } : {}),
       });
+      if (chunkError) console.warn(`[knowledge] Chunk insert failed for chunk ${i}:`, chunkError.message);
     })
   );
 

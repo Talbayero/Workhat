@@ -23,11 +23,17 @@ async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[from-edit] app user lookup failed:", error.message);
+    return null;
+  }
+
   return data as { id: string; org_id: string; role: string } | null;
 }
 
@@ -35,9 +41,19 @@ export async function POST(req: NextRequest) {
   const appUser = await getAppUser();
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json() as { aiDraftId?: string; sentReplyId?: string };
-  const aiDraftId = body.aiDraftId?.trim();
-  const sentReplyId = body.sentReplyId?.trim();
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const aiDraftId = typeof body.aiDraftId === "string" ? body.aiDraftId.trim() : "";
+  const sentReplyId = typeof body.sentReplyId === "string" ? body.sentReplyId.trim() : "";
 
   if (!aiDraftId || !sentReplyId) {
     return NextResponse.json(
@@ -46,7 +62,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const admin = createAdminClient();
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Admin client unavailable";
+    console.error("[from-edit] admin client init failed:", message);
+    return NextResponse.json(
+      { error: "Knowledge generation is unavailable — admin database key is not configured." },
+      { status: 503 }
+    );
+  }
 
   // ── Fetch all three records in parallel ──────────────────────────────────
   const [draftResult, replyResult, analysisResult] = await Promise.all([
@@ -55,14 +81,14 @@ export async function POST(req: NextRequest) {
       .select("id, org_id, conversation_id, draft_text")
       .eq("id", aiDraftId)
       .eq("org_id", appUser.org_id)
-      .single(),
+      .maybeSingle(),
 
     admin
       .from("sent_replies")
       .select("id, org_id, conversation_id, source_ai_draft_id, body_text")
       .eq("id", sentReplyId)
       .eq("org_id", appUser.org_id)
-      .single(),
+      .maybeSingle(),
 
     // edit_analyses may not exist yet if the after() task hasn't run
     admin
@@ -114,9 +140,11 @@ export async function POST(req: NextRequest) {
   // Use edit analysis data if available, otherwise fall back to empty defaults
   const analysis = analysisResult.data;
   const categories: string[] = Array.isArray(analysis?.categories)
-    ? (analysis.categories as string[])
+    ? analysis.categories.filter((category): category is string => typeof category === "string")
     : [];
-  const likelyReason: string = analysis?.likely_reason_summary ?? "";
+  const likelyReason = typeof analysis?.likely_reason_summary === "string"
+    ? analysis.likely_reason_summary
+    : "";
 
   // ── Generate knowledge entry via LLM ────────────────────────────────────
   let generated;
@@ -170,13 +198,14 @@ export async function POST(req: NextRequest) {
       } catch {
         console.warn(`[from-edit] Embedding failed for chunk ${i}`);
       }
-      await admin.from("knowledge_chunks").insert({
+      const { error: chunkError } = await admin.from("knowledge_chunks").insert({
         entry_id: entry.id,
         org_id: appUser.org_id,
         chunk_index: i,
         text,
         ...(embedding ? { embedding: JSON.stringify(embedding) } : {}),
       });
+      if (chunkError) console.warn(`[from-edit] Chunk insert failed for chunk ${i}:`, chunkError.message);
     })
   );
 

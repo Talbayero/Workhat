@@ -13,7 +13,7 @@ type NotePayload = {
 };
 
 function validateBody(raw: unknown): NotePayload | null {
-  if (!raw || typeof raw !== "object") return null;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.body !== "string" || !obj.body.trim()) return null;
   return { body: obj.body.trim() };
@@ -37,7 +37,7 @@ export async function POST(
     .from("users")
     .select("id, org_id, full_name")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (userErr || !appUser) {
     return NextResponse.json({ error: "App user not found" }, { status: 403 });

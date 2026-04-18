@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 
 /* PATCH/DELETE /api/companies/:id */
 
+const COMPANY_TIERS = new Set(["standard", "pro", "enterprise", "vip"]);
+const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
+
 function normalizeOptionalString(value: unknown) {
   if (value == null) return null;
   if (typeof value !== "string") return undefined;
@@ -22,7 +25,17 @@ async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase.from("users").select("id, org_id, role").eq("auth_user_id", user.id).single();
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, org_id, role")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[companies/:id] app user lookup failed:", error.message);
+    return null;
+  }
+
   return data as { id: string; org_id: string; role: string } | null;
 }
 
@@ -35,7 +48,11 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   let body: Record<string, unknown>;
   try {
-    body = await req.json() as Record<string, unknown>;
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
   }
@@ -53,6 +70,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   if ("domain" in body) {
     const domain = normalizeOptionalString(body.domain);
     if (domain === undefined) return NextResponse.json({ error: "Domain must be text." }, { status: 400 });
+    if (domain && !DOMAIN_RE.test(domain)) return NextResponse.json({ error: "Enter a valid company domain." }, { status: 400 });
     updates.domain = domain?.toLowerCase() || null;
   }
 
@@ -67,6 +85,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   if ("tier" in body) {
     const tier = normalizeOptionalString(body.tier);
     if (tier === undefined) return NextResponse.json({ error: "Tier must be text." }, { status: 400 });
+    if (tier && !COMPANY_TIERS.has(tier)) return NextResponse.json({ error: "Invalid company tier." }, { status: 400 });
     updates.tier = tier ?? "standard";
   }
 

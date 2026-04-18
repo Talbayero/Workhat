@@ -40,6 +40,7 @@ export type MessageContext = {
 
 export type KnowledgeSnippet = {
   id: string;
+  entryId?: string;
   title: string;
   excerpt: string;
   entryType: string;

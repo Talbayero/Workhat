@@ -39,11 +39,17 @@ async function getAppUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[knowledge/rewrite] app user lookup failed:", error.message);
+    return null;
+  }
+
   return data as { id: string; org_id: string } | null;
 }
 
@@ -51,7 +57,27 @@ export async function POST(req: NextRequest) {
   const appUser = await getAppUser();
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json() as { body?: string; category?: string; title?: string };
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  if (body.body != null && typeof body.body !== "string") {
+    return NextResponse.json({ error: "body must be text." }, { status: 400 });
+  }
+  if (body.category != null && typeof body.category !== "string") {
+    return NextResponse.json({ error: "category must be text." }, { status: 400 });
+  }
+  if (body.title != null && typeof body.title !== "string") {
+    return NextResponse.json({ error: "title must be text." }, { status: 400 });
+  }
+
   const content = body.body?.trim();
   const category = body.category?.trim() ?? "sop";
   const title = body.title?.trim() ?? "";
@@ -108,7 +134,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "AI rewrite failed. Please try again." }, { status: 502 });
   }
 
-  const data = await res.json() as { choices: { message: { content: string } }[] };
+  let data: { choices?: { message?: { content?: string } }[] };
+  try {
+    data = await res.json() as { choices?: { message?: { content?: string } }[] };
+  } catch {
+    return NextResponse.json({ error: "AI rewrite returned invalid JSON." }, { status: 502 });
+  }
   const rewritten = data.choices?.[0]?.message?.content?.trim();
 
   if (!rewritten) {

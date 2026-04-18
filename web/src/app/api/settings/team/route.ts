@@ -16,12 +16,34 @@ const VALID_ROLES = new Set(["agent", "manager", "qa_reviewer", "admin"]);
 async function getCallerAndOrg(supabase: Awaited<ReturnType<typeof createClient>>) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[settings/team] caller lookup failed:", error.message);
+    return null;
+  }
+
   return data as { id: string; org_id: string; role: string } | null;
+}
+
+async function countAdmins(supabase: Awaited<ReturnType<typeof createClient>>, orgId: string) {
+  const { count, error } = await supabase
+    .from("users")
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .eq("role", "admin")
+    .neq("status", "disabled");
+
+  if (error) {
+    console.error("[settings/team] admin count failed:", error.message);
+    return null;
+  }
+
+  return count ?? 0;
 }
 
 // ── GET — list team ───────────────────────────────────────────────────────────
@@ -51,17 +73,17 @@ export async function PATCH(req: NextRequest) {
   const caller = await getCallerAndOrg(supabase);
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (caller.role !== "admin") {
-    return NextResponse.json({ error: "Only admins can change roles" }, { status: 403 });
-  }
-
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get("userId");
   if (!userId) return NextResponse.json({ error: "userId is required" }, { status: 422 });
 
   let body: Record<string, unknown>;
   try {
-    body = await req.json();
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -90,26 +112,54 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: "Skill priority must be an integer between 1 and 5" }, { status: 422 });
       }
     }
-    const { data: skillTarget } = await supabase
-      .from("users").select("id").eq("id", userId).eq("org_id", caller.org_id).single();
+
+    const normalizedSkills = skills.map((skill) => {
+      const value = skill as Record<string, unknown>;
+      return {
+        name: (value.name as string).trim(),
+        priority: value.priority as number,
+      };
+    });
+
+    const { data: skillTarget, error: targetError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", userId)
+      .eq("org_id", caller.org_id)
+      .maybeSingle();
+
+    if (targetError) return NextResponse.json({ error: "Failed to verify user" }, { status: 500 });
     if (!skillTarget) return NextResponse.json({ error: "User not found in org" }, { status: 404 });
-    await supabase.from("users").update({ skills }).eq("id", userId).eq("org_id", caller.org_id);
+
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ skills: normalizedSkills })
+      .eq("id", userId)
+      .eq("org_id", caller.org_id);
+
+    if (updateError) return NextResponse.json({ error: "Failed to update skills" }, { status: 500 });
+
     return NextResponse.json({ ok: true });
   }
 
+  if (caller.role !== "admin") {
+    return NextResponse.json({ error: "Only admins can change roles" }, { status: 403 });
+  }
+
   // ── Role update ───────────────────────────────────────────────────────────
-  if (!VALID_ROLES.has(body.role as string)) {
+  if (typeof body.role !== "string" || !VALID_ROLES.has(body.role)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 422 });
   }
 
   // Verify the target user belongs to the same org
-  const { data: target } = await supabase
+  const { data: target, error: targetError } = await supabase
     .from("users")
-    .select("id")
+    .select("id, role")
     .eq("id", userId)
     .eq("org_id", caller.org_id)
-    .single();
+    .maybeSingle();
 
+  if (targetError) return NextResponse.json({ error: "Failed to verify user" }, { status: 500 });
   if (!target) {
     return NextResponse.json({ error: "User not found in org" }, { status: 404 });
   }
@@ -122,11 +172,21 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  await supabase
+  if (target.role === "admin" && body.role !== "admin") {
+    const adminCount = await countAdmins(supabase, caller.org_id);
+    if (adminCount === null) return NextResponse.json({ error: "Failed to verify admin coverage" }, { status: 500 });
+    if (adminCount <= 1) {
+      return NextResponse.json({ error: "At least one admin must remain in the workspace." }, { status: 400 });
+    }
+  }
+
+  const { error: updateError } = await supabase
     .from("users")
     .update({ role: body.role })
     .eq("id", userId)
     .eq("org_id", caller.org_id);
+
+  if (updateError) return NextResponse.json({ error: "Failed to update role" }, { status: 500 });
 
   return NextResponse.json({ ok: true });
 }
@@ -148,6 +208,24 @@ export async function DELETE(req: NextRequest) {
 
   if (userId === caller.id) {
     return NextResponse.json({ error: "You cannot remove yourself from the org" }, { status: 400 });
+  }
+
+  const { data: target, error: targetError } = await supabase
+    .from("users")
+    .select("id, role")
+    .eq("id", userId)
+    .eq("org_id", caller.org_id)
+    .maybeSingle();
+
+  if (targetError) return NextResponse.json({ error: "Failed to verify user" }, { status: 500 });
+  if (!target) return NextResponse.json({ error: "User not found in org" }, { status: 404 });
+
+  if (target.role === "admin") {
+    const adminCount = await countAdmins(supabase, caller.org_id);
+    if (adminCount === null) return NextResponse.json({ error: "Failed to verify admin coverage" }, { status: 500 });
+    if (adminCount <= 1) {
+      return NextResponse.json({ error: "At least one admin must remain in the workspace." }, { status: 400 });
+    }
   }
 
   const { error } = await supabase

@@ -18,6 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateDraft, PROMPT_VERSION } from "@/lib/ai";
 import { generateEmbedding } from "@/lib/embeddings";
@@ -31,7 +32,7 @@ type DraftRequestBody = {
 };
 
 function validateBody(raw: unknown): DraftRequestBody | null {
-  if (!raw || typeof raw !== "object") return null;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.conversationId !== "string" || !obj.conversationId.trim()) return null;
   return {
@@ -116,6 +117,7 @@ async function fetchKnowledgeSnippets(
 
       return (semanticData as { id: string; entry_id: string; text: string; similarity: number }[]).map((row) => ({
         id: row.id,
+        entryId: row.entry_id,
         title: entryMap[row.entry_id]?.title ?? "Knowledge entry",
         excerpt: row.text.slice(0, 400),
         entryType: entryMap[row.entry_id]?.category ?? "sop",
@@ -155,12 +157,14 @@ async function fetchKnowledgeSnippets(
           : row.knowledge_entries;
         // Exclude inactive knowledge entries from AI context
         if (!entry || entry.is_active === false) return null;
-        return {
+        const snippet: KnowledgeSnippet = {
           id: row.id,
+          entryId: row.entry_id,
           title: entry.title ?? "Knowledge entry",
           excerpt: row.text.slice(0, 400),
           entryType: entry.category ?? "sop",
         };
+        return snippet;
       })
       .filter((s): s is KnowledgeSnippet => s !== null);
   } catch {
@@ -220,7 +224,7 @@ async function assembleContext(
     `)
     .eq("id", conversationId)
     .eq("org_id", orgId)
-    .single();
+    .maybeSingle();
 
   if (convErr || !convData) {
     throw new Error(`Conversation not found: ${conversationId}`);
@@ -345,7 +349,7 @@ async function checkAIQuota(
     .from("organizations")
     .select("ai_plan")
     .eq("id", orgId)
-    .single();
+    .maybeSingle();
 
   const plan = (org as { ai_plan?: string } | null)?.ai_plan ?? "free";
   const limit = AI_ACTION_LIMITS[plan] ?? AI_ACTION_LIMITS.free;
@@ -381,13 +385,15 @@ async function emitUsageEvent(
   conversationId: string,
   latencyMs: number
 ) {
-  await supabase.from("usage_events").insert({
+  const { error } = await supabase.from("usage_events").insert({
     org_id: orgId,
     user_id: userId,
     event_type: "ai_draft_generated",
     units: 1,
     metadata_json: { conversation_id: conversationId, latency_ms: latencyMs },
   });
+
+  if (error) throw error;
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
@@ -409,7 +415,7 @@ export async function POST(req: NextRequest) {
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (userErr || !appUser) {
     return NextResponse.json(
@@ -510,25 +516,28 @@ export async function POST(req: NextRequest) {
   // Collect unique entry IDs from both snippet retrieval and policy/tone entries.
   // The policy entries don't carry IDs so we look them up by title (best-effort, fire-and-forget).
   const snippetEntryIds = [
-    ...new Set(context.knowledgeSnippets.map((s) => s.id)),
+    ...new Set(context.knowledgeSnippets.map((s) => s.entryId).filter((id): id is string => Boolean(id))),
   ];
   if (snippetEntryIds.length > 0) {
-    supabase.rpc("increment_knowledge_used_in_drafts", { entry_ids: snippetEntryIds })
-      .then(({ error: rpcErr }) => {
+    after(async () => {
+      const { error: rpcErr } = await supabase.rpc("increment_knowledge_used_in_drafts", { entry_ids: snippetEntryIds });
         if (rpcErr) console.warn("[ai/draft] used_in_drafts increment failed:", rpcErr.message);
-      });
+    });
   }
 
-  // Emit usage event (fire and forget)
-  emitUsageEvent(
-    supabase,
-    appUser.org_id as string,
-    appUser.id as string,
-    conversationId,
-    result.latencyMs
-  ).catch((e: unknown) =>
-    console.warn("[ai/draft] usage event failed:", e instanceof Error ? e.message : e)
-  );
+  after(async () => {
+    try {
+      await emitUsageEvent(
+        supabase,
+        appUser.org_id as string,
+        appUser.id as string,
+        conversationId,
+        result.latencyMs
+      );
+    } catch (e: unknown) {
+      console.warn("[ai/draft] usage event failed:", e instanceof Error ? e.message : e);
+    }
+  });
 
   return NextResponse.json({
     draft: {

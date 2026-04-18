@@ -24,13 +24,28 @@ export async function GET(
     .from("users")
     .select("id, org_id")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (userErr || !appUser) {
     return NextResponse.json({ error: "App user not found" }, { status: 403 });
   }
 
   const { org_id: orgId } = appUser as { id: string; org_id: string };
+
+  const { data: conversation, error: conversationError } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("org_id", orgId)
+    .maybeSingle();
+
+  if (conversationError) {
+    return NextResponse.json({ error: conversationError.message }, { status: 500 });
+  }
+
+  if (!conversation) {
+    return NextResponse.json({ error: "Conversation not found for this workspace." }, { status: 404 });
+  }
 
   const { data, error } = await supabase
     .from("edit_analyses")

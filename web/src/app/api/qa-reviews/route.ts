@@ -24,11 +24,16 @@ async function getAppUser() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id, org_id, role")
     .eq("auth_user_id", user.id)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("[qa-reviews] app user lookup failed:", error.message);
+    return null;
+  }
 
   return data as AppUser | null;
 }
@@ -62,27 +67,37 @@ export async function POST(req: NextRequest) {
   }
 
   let body: {
-    conversationId?: string;
-    result?: string;
+    conversationId?: unknown;
+    result?: unknown;
     score?: unknown;
-    notes?: string;
+    notes?: unknown;
     categories?: unknown;
-    editAnalysisId?: string;
+    editAnalysisId?: unknown;
   };
 
   try {
-    body = await req.json() as typeof body;
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
+    body = parsed as typeof body;
   } catch {
      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
   const { conversationId, result, score, notes, categories, editAnalysisId } = body;
 
-  if (!conversationId) {
+  if (typeof conversationId !== "string" || !conversationId.trim()) {
     return NextResponse.json({ error: "conversationId is required." }, { status: 400 });
   }
-  if (!result || !VALID_RESULTS.has(result)) {
+  if (typeof result !== "string" || !VALID_RESULTS.has(result)) {
     return NextResponse.json({ error: "result must be one of: approved, flagged, needs_revision." }, { status: 400 });
+  }
+  if (notes != null && typeof notes !== "string") {
+    return NextResponse.json({ error: "notes must be text." }, { status: 400 });
+  }
+  if (editAnalysisId != null && (typeof editAnalysisId !== "string" || !editAnalysisId.trim())) {
+    return NextResponse.json({ error: "editAnalysisId must be text." }, { status: 400 });
   }
 
   const normalizedScore = normalizeScore(score);
@@ -140,7 +155,7 @@ export async function POST(req: NextRequest) {
       score: normalizedScore,
       notes: notes?.trim() ?? null,
       categories: normalizedCategories,
-      edit_analysis_id: editAnalysisId ?? null,
+      edit_analysis_id: editAnalysisId?.trim() ?? null,
     })
     .select("id")
     .single();
