@@ -5,13 +5,14 @@ function NavBar() {
     <header className="sticky top-0 z-50 border-b border-[var(--line)] bg-[rgba(10,9,8,0.85)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[var(--line)] border border-[var(--line-strong)]">
+          <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[var(--sage)] border border-[var(--line-strong)]">
             <img src="/logo.png" alt="Work Hat" className="h-5 w-5 object-contain drop-shadow-md" />
           </div>
           <span className="text-sm font-semibold tracking-tight">Work Hat</span>
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">
+          <Link href="/#how-it-works" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">How it works</Link>
           <Link href="/demo/inbox" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Demo</Link>
           <Link href="/compare" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Compare</Link>
           <Link href="/pricing" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Pricing</Link>
@@ -171,7 +172,7 @@ function Footer() {
     <footer className="border-t border-[var(--line)] px-6 py-10">
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-6 text-xs text-[var(--muted)] sm:flex-row">
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-5 w-5 items-center justify-center rounded-[5px] bg-[var(--line)] border border-[var(--line-strong)]">
+          <div className="flex h-5 w-5 items-center justify-center rounded-[5px] bg-[var(--sage)] border border-[var(--line-strong)]">
             <img src="/logo.png" alt="Work Hat" className="h-3.5 w-3.5 object-contain opacity-80" />
           </div>
           <span className="font-medium text-[var(--foreground)]">Work Hat</span>
