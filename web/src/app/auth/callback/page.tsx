@@ -53,16 +53,21 @@ function CallbackHandler() {
       }
 
       if (isInvite && user.email) {
-        // Invited user: find their pending row by email and link auth_user_id
-        const { data: pending } = await supabase
+        // Invited user: find their pending row by email and link auth_user_id.
+        // The users_self_select_pending_invite and users_self_activate_invite RLS
+        // policies (migration 0025) allow this without admin client access.
+        const { data: pending, error: pendingError } = await supabase
           .from("users")
           .select("id")
           .eq("email", user.email)
           .eq("status", "pending")
-          .single();
+          .maybeSingle();
 
-        if (pending) {
-          await supabase
+        if (pendingError) {
+          console.error("[auth/callback] pending invite lookup failed:", pendingError.message);
+          // Fall through to onboarding as best-effort recovery
+        } else if (pending) {
+          const { error: activateError } = await supabase
             .from("users")
             .update({
               auth_user_id: user.id,
@@ -74,8 +79,13 @@ function CallbackHandler() {
             })
             .eq("id", (pending as { id: string }).id);
 
-          router.replace("/inbox");
-          return;
+          if (activateError) {
+            console.error("[auth/callback] invite activation failed:", activateError.message);
+            // Fall through to onboarding — the admin can re-invite
+          } else {
+            router.replace("/inbox");
+            return;
+          }
         }
       }
 
