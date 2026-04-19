@@ -1,5 +1,7 @@
 "use client";
 
+// Note: metadata exports must be in Server Components. This page is "use client",
+// so title is set via the root layout fallback ("Work Hat CRM") which is fine for login.
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -254,7 +256,7 @@ function LoginForm() {
           )}
 
           {error && (
-            <p className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">
+            <p role="alert" className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">
               {error}
             </p>
           )}

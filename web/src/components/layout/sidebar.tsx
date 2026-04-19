@@ -164,7 +164,7 @@ export function Sidebar() {
   const initials = displayName.slice(0, 1).toUpperCase();
 
   return (
-    <aside className="grain-panel flex h-full w-[228px] shrink-0 flex-col border-r border-[var(--line)]">
+    <aside aria-label="Main navigation" className="grain-panel flex h-full w-[228px] shrink-0 flex-col border-r border-[var(--line)]">
       <div className="shrink-0 border-b border-[var(--line)] px-5 py-5">
         <p className="eyebrow text-[10px] text-[var(--muted)]">Work Hat OS</p>
         <p className="mt-1 text-sm font-semibold tracking-tight">Support operations</p>
@@ -173,7 +173,7 @@ export function Sidebar() {
         </p>
       </div>
 
-      <nav className="flex flex-1 flex-col overflow-y-auto scroll-soft px-3 py-4">
+      <nav aria-label="App sections" className="flex flex-1 flex-col overflow-y-auto scroll-soft px-3 py-4">
         <div>
           <p className="eyebrow px-3 pb-2 text-[9px] text-[var(--muted)]">Workspace</p>
           <div className="flex flex-col gap-0.5">

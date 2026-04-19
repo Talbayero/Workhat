@@ -95,8 +95,9 @@ function CreateContactModal({ onClose, onSaved, isDemo = false }: { onClose: () 
             <div className="grid grid-cols-2 gap-3">
               {[["firstName", "First name *"], ["lastName", "Last name"]].map(([field, label]) => (
                 <div key={field}>
-                  <label className="eyebrow text-[10px] text-[var(--muted)]">{label}</label>
+                  <label htmlFor={`new-contact-${field}`} className="eyebrow text-[10px] text-[var(--muted)]">{label}</label>
                   <input
+                    id={`new-contact-${field}`}
                     value={form[field as keyof typeof form]}
                     onChange={(e) => set(field, e.target.value)}
                     className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
@@ -106,8 +107,9 @@ function CreateContactModal({ onClose, onSaved, isDemo = false }: { onClose: () 
             </div>
             {[["email", "Email", "name@company.com"], ["phone", "Phone", "+1 555 000 0000"]].map(([field, label, placeholder]) => (
               <div key={field}>
-                <label className="eyebrow text-[10px] text-[var(--muted)]">{label}</label>
+                <label htmlFor={`new-contact-${field}`} className="eyebrow text-[10px] text-[var(--muted)]">{label}</label>
                 <input
+                  id={`new-contact-${field}`}
                   type={field === "email" ? "email" : "text"}
                   value={form[field as keyof typeof form]}
                   onChange={(e) => set(field, e.target.value)}
@@ -117,8 +119,9 @@ function CreateContactModal({ onClose, onSaved, isDemo = false }: { onClose: () 
               </div>
             ))}
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Notes</label>
+              <label htmlFor="new-contact-notes" className="eyebrow text-[10px] text-[var(--muted)]">Notes</label>
               <textarea
+                id="new-contact-notes"
                 value={form.notes}
                 onChange={(e) => set("notes", e.target.value)}
                 rows={3}
@@ -127,8 +130,9 @@ function CreateContactModal({ onClose, onSaved, isDemo = false }: { onClose: () 
               />
             </div>
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Tags <span className="normal-case font-normal">(comma-separated)</span></label>
+              <label htmlFor="new-contact-tags" className="eyebrow text-[10px] text-[var(--muted)]">Tags <span className="normal-case font-normal">(comma-separated)</span></label>
               <input
+                id="new-contact-tags"
                 value={form.tags}
                 onChange={(e) => set("tags", e.target.value)}
                 placeholder="vip, billing, enterprise"
@@ -136,7 +140,7 @@ function CreateContactModal({ onClose, onSaved, isDemo = false }: { onClose: () 
               />
             </div>
             {error && (
-              <p className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">{error}</p>
+              <p role="alert" className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">{error}</p>
             )}
           </div>
           <div className="flex justify-end gap-2 border-t border-[var(--line)] px-6 py-4">
@@ -215,8 +219,9 @@ function EditContactModal({ contact, onClose, onSaved, isDemo = false }: { conta
             <div className="grid grid-cols-2 gap-3">
               {[["firstName", "First name"], ["lastName", "Last name"]].map(([field, label]) => (
                 <div key={field}>
-                  <label className="eyebrow text-[10px] text-[var(--muted)]">{label}</label>
+                  <label htmlFor={`edit-contact-${field}`} className="eyebrow text-[10px] text-[var(--muted)]">{label}</label>
                   <input
+                    id={`edit-contact-${field}`}
                     value={form[field as keyof typeof form]}
                     onChange={(e) => set(field, e.target.value)}
                     className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] transition-colors"
@@ -226,8 +231,9 @@ function EditContactModal({ contact, onClose, onSaved, isDemo = false }: { conta
             </div>
             {[["email", "Email"], ["phone", "Phone"]].map(([field, label]) => (
               <div key={field}>
-                <label className="eyebrow text-[10px] text-[var(--muted)]">{label}</label>
+                <label htmlFor={`edit-contact-${field}`} className="eyebrow text-[10px] text-[var(--muted)]">{label}</label>
                 <input
+                  id={`edit-contact-${field}`}
                   value={form[field as keyof typeof form]}
                   onChange={(e) => set(field, e.target.value)}
                   className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] transition-colors"
@@ -235,8 +241,9 @@ function EditContactModal({ contact, onClose, onSaved, isDemo = false }: { conta
               </div>
             ))}
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Notes</label>
+              <label htmlFor="edit-contact-notes" className="eyebrow text-[10px] text-[var(--muted)]">Notes</label>
               <textarea
+                id="edit-contact-notes"
                 value={form.notes}
                 onChange={(e) => set("notes", e.target.value)}
                 rows={3}
@@ -245,8 +252,9 @@ function EditContactModal({ contact, onClose, onSaved, isDemo = false }: { conta
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="eyebrow text-[10px] text-[var(--muted)]">Lifecycle stage</label>
+                <label htmlFor="edit-contact-lifecycle" className="eyebrow text-[10px] text-[var(--muted)]">Lifecycle stage</label>
                 <select
+                  id="edit-contact-lifecycle"
                   value={form.lifecycleStage}
                   onChange={(e) => set("lifecycleStage", e.target.value)}
                   className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] transition-colors"
@@ -259,8 +267,9 @@ function EditContactModal({ contact, onClose, onSaved, isDemo = false }: { conta
                 </select>
               </div>
               <div>
-                <label className="eyebrow text-[10px] text-[var(--muted)]">Tier</label>
+                <label htmlFor="edit-contact-tier" className="eyebrow text-[10px] text-[var(--muted)]">Tier</label>
                 <select
+                  id="edit-contact-tier"
                   value={form.tier}
                   onChange={(e) => set("tier", e.target.value)}
                   className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] transition-colors"
@@ -274,15 +283,16 @@ function EditContactModal({ contact, onClose, onSaved, isDemo = false }: { conta
               </div>
             </div>
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Tags</label>
+              <label htmlFor="edit-contact-tags" className="eyebrow text-[10px] text-[var(--muted)]">Tags</label>
               <input
+                id="edit-contact-tags"
                 value={form.tags}
                 onChange={(e) => set("tags", e.target.value)}
                 className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] transition-colors"
               />
             </div>
             {error && (
-              <p className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">{error}</p>
+              <p role="alert" className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">{error}</p>
             )}
           </div>
           <div className="flex justify-end gap-2 border-t border-[var(--line)] px-6 py-4">

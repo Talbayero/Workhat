@@ -106,8 +106,9 @@ function CompanyFormModal({
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-5 space-y-4">
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Company name *</label>
+              <label htmlFor="company-name" className="eyebrow text-[10px] text-[var(--muted)]">Company name *</label>
               <input
+                id="company-name"
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
                 placeholder="Acme Corp"
@@ -116,8 +117,9 @@ function CompanyFormModal({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="eyebrow text-[10px] text-[var(--muted)]">Domain</label>
+                <label htmlFor="company-domain" className="eyebrow text-[10px] text-[var(--muted)]">Domain</label>
                 <input
+                  id="company-domain"
                   value={form.domain}
                   onChange={(e) => set("domain", e.target.value)}
                   placeholder="acme.com"
@@ -125,8 +127,9 @@ function CompanyFormModal({
                 />
               </div>
               <div>
-                <label className="eyebrow text-[10px] text-[var(--muted)]">Industry</label>
+                <label htmlFor="company-industry" className="eyebrow text-[10px] text-[var(--muted)]">Industry</label>
                 <input
+                  id="company-industry"
                   value={form.industry}
                   onChange={(e) => set("industry", e.target.value)}
                   placeholder="SaaS, Fintech…"
@@ -154,8 +157,9 @@ function CompanyFormModal({
               </div>
             </div>
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Notes</label>
+              <label htmlFor="company-notes" className="eyebrow text-[10px] text-[var(--muted)]">Notes</label>
               <textarea
+                id="company-notes"
                 value={form.notes}
                 onChange={(e) => set("notes", e.target.value)}
                 rows={3}
@@ -164,7 +168,7 @@ function CompanyFormModal({
               />
             </div>
             {error && (
-              <p className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">{error}</p>
+              <p role="alert" className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">{error}</p>
             )}
           </div>
           <div className="flex justify-end gap-2 border-t border-[var(--line)] px-6 py-4">

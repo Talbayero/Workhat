@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { SettingsShell } from "@/components/settings/settings-shell";
+
+export const metadata: Metadata = { title: "Settings — Work Hat" };
 
 type SettingsPageProps = {
   searchParams: Promise<{ tab?: string }>;

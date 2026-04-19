@@ -63,7 +63,7 @@ export async function InboxWorkspace({
 
   return (
     <div className="flex h-full overflow-hidden">
-      <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--line)] bg-[rgba(255,255,255,0.015)]">
+      <aside aria-label="Conversation list" className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--line)] bg-[rgba(255,255,255,0.015)]">
         <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -103,10 +103,11 @@ export async function InboxWorkspace({
 
         <div className="shrink-0 border-b border-[var(--line)] px-3 py-3">
           {/* Submitting navigates to the full search page — keeps search logic in one place */}
-          <form action={`${baseDir}/search`} method="get">
+          <form role="search" aria-label="Search conversations" action={`${baseDir}/search`} method="get">
             <input
               type="search"
               name="q"
+              aria-label="Search conversations"
               placeholder="Search conversations…"
               className="w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
             />
@@ -189,8 +190,8 @@ export async function InboxWorkspace({
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-[10px] text-[var(--muted)]">
-                    <span className={`status-dot shrink-0 ${riskDot[conversation.riskLevel]}`} />
-                    <span className="capitalize">{conversation.riskLevel}</span>
+                    <span aria-hidden="true" className={`status-dot shrink-0 ${riskDot[conversation.riskLevel]}`} />
+                    <span className="capitalize">{conversation.riskLevel} risk</span>
                   </div>
                 </div>
               </Link>

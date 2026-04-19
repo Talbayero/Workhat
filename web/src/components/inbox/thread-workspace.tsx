@@ -521,10 +521,11 @@ export function ThreadWorkspace({
                   <button
                     onClick={() => { if (!isDemo && !intentUpdating) { setIntentInput(intentValue); setEditingIntent(true); } }}
                     disabled={intentUpdating}
-                    title={isDemo ? undefined : "Click to edit intent"}
+                    aria-label={`Intent: ${intentValue && intentValue !== "unclassified" ? intentValue.replace(/_/g, " ") : "unclassified"}${!isDemo ? " — click to edit" : ""}`}
                     className="flex items-center gap-1.5 rounded-full border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.06)] px-2.5 py-1 text-[10px] text-[var(--muted)] transition-colors hover:border-[var(--moss)] hover:text-[var(--foreground)] disabled:opacity-50"
                   >
                     <span
+                      aria-hidden="true"
                       className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
                       style={{
                         backgroundColor: intentColors[intentValue?.trim().toLowerCase() ?? ""] ?? "var(--moss)",
@@ -533,7 +534,7 @@ export function ThreadWorkspace({
                     {intentValue && intentValue !== "unclassified"
                       ? intentValue.replace(/_/g, " ")
                       : "unclassified"}
-                    {!isDemo && <span className="opacity-50 ml-0.5">✎</span>}
+                    {!isDemo && <span aria-hidden="true" className="opacity-50 ml-0.5">✎</span>}
                   </button>
                 )}
 
@@ -551,9 +552,10 @@ export function ThreadWorkspace({
                 ) : assignee ? (
                   <button
                     onClick={() => { setAssigneeInput(assignee); setEditingAssignee(true); }}
+                    aria-label={`Assigned to ${assignee} — click to edit`}
                     className="text-[10px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
                   >
-                    Assigned to {assignee} ✎
+                    Assigned to {assignee} <span aria-hidden="true">✎</span>
                   </button>
                 ) : (
                   <div className="flex items-center gap-1.5">
@@ -580,7 +582,7 @@ export function ThreadWorkspace({
             {/* Right side: AI confidence + quick Resolve/Reopen */}
             <div className="shrink-0 flex flex-col items-end gap-2">
               <div className="flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2">
-                <span className={`status-dot ${confidenceDot[conversation.aiConfidence]}`} />
+                <span aria-hidden="true" className={`status-dot ${confidenceDot[conversation.aiConfidence]}`} />
                 <span className="text-xs text-[var(--muted)]">
                   {confidenceLabel[conversation.aiConfidence]}
                 </span>
@@ -607,7 +609,7 @@ export function ThreadWorkspace({
         </div>
 
         {threadError && (
-          <div className="shrink-0 border-b border-[var(--line)] px-5 py-3">
+          <div role="alert" className="shrink-0 border-b border-[var(--line)] px-5 py-3">
             <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3">
               <span className="text-xs leading-5 text-[var(--muted)]">{threadError}</span>
               <button
@@ -650,7 +652,7 @@ export function ThreadWorkspace({
 
         {/* Local-only send notice — shown when Gmail is skipped for a manual test conversation */}
         {sendNotice && (
-          <div className="shrink-0 border-t border-[var(--line)] px-5 py-3">
+          <div aria-live="polite" className="shrink-0 border-t border-[var(--line)] px-5 py-3">
             <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.08)] px-4 py-3">
               <span className="text-xs leading-5 text-[var(--muted)]">{sendNotice}</span>
               <button
@@ -666,7 +668,7 @@ export function ThreadWorkspace({
 
         {/* Edit capture feedback — shows after a reply is confirmed */}
         {lastEditRecord && (
-          <div className="shrink-0 border-t border-[var(--line)] px-5 py-3">
+          <div aria-live="polite" className="shrink-0 border-t border-[var(--line)] px-5 py-3">
             <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
               <div className="flex items-center gap-2.5">
                 <span className="status-dot status-dot-green" />
@@ -762,7 +764,7 @@ export function ThreadWorkspace({
 
         {/* Self-learning banner — prompts agent to save their correction as a knowledge entry */}
         {correctionBanner && !isDemo && (
-          <div className="shrink-0 border-t border-[var(--line)] px-5 py-3">
+          <div aria-live="polite" className="shrink-0 border-t border-[var(--line)] px-5 py-3">
             {correctionSaved ? (
               <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
                 <div className="flex items-center gap-2.5">
@@ -978,8 +980,8 @@ export function ThreadWorkspace({
 
               {/* Loading state */}
               {draftLoading && (
-                <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--moss)] border-t-transparent" />
+                <div role="status" className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--moss)] border-t-transparent" aria-hidden="true" />
                   <p className="text-xs text-[var(--muted)]">Generating draft…</p>
                 </div>
               )}
@@ -987,7 +989,7 @@ export function ThreadWorkspace({
               {/* Error state */}
               {draftError && !draftLoading && (
                 <div className="rounded-[16px] border border-[rgba(144,50,61,0.3)] bg-[rgba(73,17,28,0.1)] p-4">
-                  <p className="eyebrow text-[9px] text-[var(--rose)]">Generation failed</p>
+                  <p className="eyebrow text-[9px] text-[var(--error-text)]">Generation failed</p>
                   <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">{draftError}</p>
                   <button
                     onClick={generateDraft}
@@ -1031,7 +1033,7 @@ export function ThreadWorkspace({
                   {/* Risk flags */}
                   {liveDraft.riskFlags.length > 0 && (
                     <div className="rounded-[16px] border border-[rgba(144,50,61,0.25)] bg-[rgba(73,17,28,0.08)] p-4">
-                      <p className="eyebrow text-[9px] text-[var(--rose)]">Risk flags</p>
+                      <p className="eyebrow text-[9px] text-[var(--error-text)]">Risk flags</p>
                       <ul className="mt-2 space-y-1.5">
                         {liveDraft.riskFlags.map((flag) => (
                           <li key={flag} className="flex gap-2 text-xs leading-5 font-mono text-[var(--muted)]">

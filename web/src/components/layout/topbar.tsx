@@ -97,6 +97,8 @@ export function Topbar() {
 
         <div className="flex shrink-0 items-center gap-3">
           <form
+            role="search"
+            aria-label="Global search"
             onSubmit={(e) => {
               e.preventDefault();
               const q = searchQuery.trim();
@@ -110,6 +112,7 @@ export function Topbar() {
             </svg>
             <input
               type="search"
+              aria-label="Search records, threads, and knowledge"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search records, threads, and knowledge"

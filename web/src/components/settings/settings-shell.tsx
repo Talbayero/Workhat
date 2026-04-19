@@ -1547,8 +1547,9 @@ function IntentFormModal({
           {/* Name + color */}
           <div className="flex gap-3">
             <div className="flex-1 space-y-1.5">
-              <label className="eyebrow text-[9px] text-[var(--muted)]">Name *</label>
+              <label htmlFor="intent-name" className="eyebrow text-[9px] text-[var(--muted)]">Name *</label>
               <input
+                id="intent-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -1573,9 +1574,10 @@ function IntentFormModal({
 
           {/* Keywords */}
           <div className="space-y-1.5">
-            <label className="eyebrow text-[9px] text-[var(--muted)]">Keywords — first match wins</label>
+            <label htmlFor="intent-keyword" className="eyebrow text-[9px] text-[var(--muted)]">Keywords — first match wins</label>
             <div className="flex gap-2">
               <input
+                id="intent-keyword"
                 type="text"
                 value={keywordInput}
                 onChange={(e) => setKeywordInput(e.target.value)}
@@ -1609,8 +1611,9 @@ function IntentFormModal({
           {/* Skill + priority row */}
           <div className="flex gap-3">
             <div className="flex-1 space-y-1.5">
-              <label className="eyebrow text-[9px] text-[var(--muted)]">Required skill for routing</label>
+              <label htmlFor="intent-skill" className="eyebrow text-[9px] text-[var(--muted)]">Required skill for routing</label>
               <input
+                id="intent-skill"
                 type="text"
                 value={skillRequired}
                 onChange={(e) => setSkillRequired(e.target.value)}
@@ -1619,8 +1622,9 @@ function IntentFormModal({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="eyebrow text-[9px] text-[var(--muted)]">Priority order</label>
+              <label htmlFor="intent-priority-order" className="eyebrow text-[9px] text-[var(--muted)]">Priority order</label>
               <input
+                id="intent-priority-order"
                 type="number"
                 value={priorityOrder}
                 onChange={(e) => setPriorityOrder(Number(e.target.value))}
@@ -2238,15 +2242,20 @@ export function SettingsShell({
 
   return (
     <div className="flex h-full overflow-hidden">
-      <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-[var(--line)] p-3">
+      <aside aria-label="Settings navigation" className="flex h-full w-[220px] shrink-0 flex-col border-r border-[var(--line)] p-3">
         <div className="px-3 py-3">
           <h1 className="text-sm font-semibold">Settings</h1>
           {org && <p className="mt-0.5 text-xs text-[var(--muted)] truncate">{org.name}</p>}
         </div>
-        <nav className="flex flex-col gap-0.5">
+        {/* role="tablist" + role="tab" pattern per ARIA Authoring Practices Guide */}
+        <nav role="tablist" aria-label="Settings sections" className="flex flex-col gap-0.5">
           {tabs.map((tab) => (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls={`settings-panel-${tab.id}`}
+              id={`settings-tab-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={`rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
                 activeTab === tab.id
@@ -2262,14 +2271,21 @@ export function SettingsShell({
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="scroll-soft flex-1 overflow-y-auto px-6 py-6">
-          <div className="mx-auto max-w-2xl">{tabContent[activeTab]}</div>
+          <div
+            id={`settings-panel-${activeTab}`}
+            role="tabpanel"
+            aria-labelledby={`settings-tab-${activeTab}`}
+            className="mx-auto max-w-2xl"
+          >
+            {tabContent[activeTab]}
+          </div>
         </div>
 
         {/* Save bar — only shown for tabs with editable fields */}
         {activeTab !== "team" && activeTab !== "billing" && activeTab !== "intents" && (
           <div className={`shrink-0 border-t border-[var(--line)] px-6 py-4 transition-opacity ${isDirty || saveStatus === "saved" ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
             <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
-              <p className="text-xs text-[var(--muted)]">
+              <p aria-live="polite" className="text-xs text-[var(--muted)]">
                 {saveStatus === "saved" ? "All changes saved." : isDirty ? "You have unsaved changes." : "No unsaved changes."}
               </p>
               <div className="flex gap-2">

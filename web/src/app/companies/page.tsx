@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { CompaniesShell } from "@/components/companies/companies-shell";
 import { getCompanies } from "@/lib/supabase/queries";
+
+export const metadata: Metadata = { title: "Companies — Work Hat" };
 
 type CompaniesPageProps = {
   searchParams: Promise<{ view?: string }>;

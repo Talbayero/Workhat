@@ -13,6 +13,8 @@
   --moss-strong: #5e0b15;
   --amber: #a9927d;
   --rose: #49111c;
+  /* --error-text: accessible red for use as foreground text on dark backgrounds (4.5:1+) */
+  --error-text: #e07070;
   --sky: #f2f4f3;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
 }
@@ -26,6 +28,27 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* Global focus indicator — ensures keyboard users always see which element is active.
+   Uses focus-visible so mouse users are not affected. Components may override this
+   with a more specific focus-visible:outline-* class if the default ring clashes. */
+:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 2px;
+}
+
+/* Utility: visually hidden but accessible to screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 html {
@@ -99,7 +122,8 @@ select {
 }
 
 .status-dot-red {
-  background: #90323d;
+  /* Lightened from #90323d to meet 3:1 non-text contrast on panel-strong (#141416) */
+  background: #c9606a;
 }
 
 .scroll-soft {

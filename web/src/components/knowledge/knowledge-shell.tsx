@@ -158,8 +158,9 @@ function EntryFormModal({
           <div className="max-h-[60vh] overflow-y-auto scroll-soft px-6 py-5 space-y-4">
             {/* Title */}
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Title *</label>
+              <label htmlFor="kb-title" className="eyebrow text-[10px] text-[var(--muted)]">Title *</label>
               <input
+                id="kb-title"
                 value={form.title}
                 onChange={(e) => set("title", e.target.value)}
                 placeholder="e.g. Refund policy — standard tier"
@@ -190,8 +191,9 @@ function EntryFormModal({
 
             {/* Summary */}
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Summary <span className="text-[var(--muted)] normal-case font-normal">(shown in list view)</span></label>
+              <label htmlFor="kb-summary" className="eyebrow text-[10px] text-[var(--muted)]">Summary <span className="text-[var(--muted)] normal-case font-normal">(shown in list view)</span></label>
               <input
+                id="kb-summary"
                 value={form.summary}
                 onChange={(e) => set("summary", e.target.value)}
                 placeholder="One-sentence description of this entry"
@@ -203,7 +205,7 @@ function EntryFormModal({
             <div>
               <div className="flex items-end justify-between gap-3">
                 <div>
-                  <label className="eyebrow text-[10px] text-[var(--muted)]">Content *</label>
+                  <label htmlFor="kb-body" className="eyebrow text-[10px] text-[var(--muted)]">Content *</label>
                   <p className="mt-0.5 text-[10px] text-[var(--muted)]">
                     Write clearly — this text is chunked and retrieved by the AI. Use double line breaks to separate sections.
                   </p>
@@ -234,6 +236,7 @@ function EntryFormModal({
                 </button>
               </div>
               <textarea
+                id="kb-body"
                 value={form.body}
                 onChange={(e) => set("body", e.target.value)}
                 placeholder={`Standard refund policy:\n\nCustomers on the Pro plan can request a full refund within 30 days of purchase...\n\nExceptions:\n- Accounts that have exceeded 80% of their plan limits are not eligible for full refunds.`}
@@ -247,8 +250,9 @@ function EntryFormModal({
 
             {/* Tags */}
             <div>
-              <label className="eyebrow text-[10px] text-[var(--muted)]">Tags <span className="normal-case font-normal">(comma-separated)</span></label>
+              <label htmlFor="kb-tags" className="eyebrow text-[10px] text-[var(--muted)]">Tags <span className="normal-case font-normal">(comma-separated)</span></label>
               <input
+                id="kb-tags"
                 value={form.tags}
                 onChange={(e) => set("tags", e.target.value)}
                 placeholder="refund, billing, pro-plan"
@@ -257,7 +261,7 @@ function EntryFormModal({
             </div>
 
             {error && (
-              <p className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">
+              <p role="alert" className="rounded-[12px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-sm">
                 {error}
               </p>
             )}
