@@ -6,8 +6,8 @@ import path from "node:path";
 // dynamic eval that make a strict CSP hard to express without nonces.
 // Add a nonce-based CSP if/when you adopt a custom auth UI.
 const securityHeaders = [
-  // Prevent this app from being embedded in iframes on other origins.
-  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  // Prevent this app from being embedded in iframes — no same-origin embeds needed.
+  { key: "X-Frame-Options", value: "DENY" },
   // Stop browsers from MIME-sniffing the content-type away from what we send.
   { key: "X-Content-Type-Options", value: "nosniff" },
   // Only send the origin (no path/query) as the referrer to external sites.

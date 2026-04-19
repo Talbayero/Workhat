@@ -25,10 +25,21 @@ function base64Url(value: string) {
   return Buffer.from(value, "utf8").toString("base64url");
 }
 
+/**
+ * Strip CR, LF, and NUL bytes from a header field value.
+ * These characters can be used for email header injection (RFC 5322 §2.2).
+ * We strip rather than reject so a weird subject line doesn't silently block
+ * an outbound reply — the message still goes out, just with a cleaned subject.
+ */
+function stripHeaderInjectables(value: string) {
+  return value.replace(/[\r\n\0]/g, "");
+}
+
 function encodeHeader(value: string) {
-  return /[^\x00-\x7F]/.test(value)
-    ? `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`
-    : value;
+  const safe = stripHeaderInjectables(value);
+  return /[^\x00-\x7F]/.test(safe)
+    ? `=?UTF-8?B?${Buffer.from(safe, "utf8").toString("base64")}?=`
+    : safe;
 }
 
 function normalizeSubject(subject: string) {
@@ -51,14 +62,17 @@ function buildRawReply({
 }) {
   const rfcMessageId = `<workhat-${randomUUID()}@work-hat.com>`;
   const headers = [
-    `From: ${from}`,
-    `To: ${to}`,
+    `From: ${stripHeaderInjectables(from)}`,
+    `To: ${stripHeaderInjectables(to)}`,
     `Subject: ${encodeHeader(normalizeSubject(subject))}`,
     `Message-ID: ${rfcMessageId}`,
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",
-    ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []),
+    ...(inReplyTo ? [
+      `In-Reply-To: ${stripHeaderInjectables(inReplyTo)}`,
+      `References: ${stripHeaderInjectables(inReplyTo)}`,
+    ] : []),
   ];
 
   return {
