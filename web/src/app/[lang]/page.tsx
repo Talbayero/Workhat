@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AnimatedPreview } from "@/components/marketing/animated-preview";
 import { WaitlistForm } from "@/components/marketing/waitlist-form";
+import { NavBar } from "@/components/marketing/nav-bar";
 import { type Dictionary, type Locale, getDictionary } from "@/lib/dictionaries";
 
 type PageParams = Promise<{ lang: string }>;
@@ -8,60 +9,6 @@ type PageParams = Promise<{ lang: string }>;
 function normalizeLocale(lang: string): Locale {
   return lang === "es" ? "es" : "en";
 }
-
-export const NavBar = ({
-  dict,
-  lang,
-  routePath = "",
-}: {
-  dict: Dictionary["nav"];
-  lang: Locale;
-  routePath?: string;
-}) => {
-  const switchPath = routePath === "/" ? "" : routePath;
-
-  return (
-    <header className="sticky top-0 z-50 border-b border-[var(--line)] bg-[rgba(10,9,8,0.85)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
-        <Link href={`/${lang}`} className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-[var(--sky)] border border-transparent">
-            <img src="/logo.png" alt="Work Hat" className="h-5 w-5 object-contain" />
-          </div>
-          <span className="text-sm font-semibold tracking-tight">Work Hat</span>
-        </Link>
-
-        <nav className="hidden items-center gap-6 md:flex">
-          <Link href={`/${lang}#how-it-works`} className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.howItWorks}</Link>
-          <Link href="/demo/inbox" className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.demo}</Link>
-          <Link href={`/${lang}/compare`} className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.compare}</Link>
-          <Link href={`/${lang}/pricing`} className="text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.pricing}</Link>
-        </nav>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 border-r border-[var(--line)] pr-3 mr-1 sm:flex">
-             <Link href={`/en${switchPath}`} className={`text-xs font-medium transition-colors ${lang === 'en' ? 'text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-white'}`}>EN</Link>
-             <Link href={`/es${switchPath}`} className={`text-xs font-medium transition-colors ${lang === 'es' ? 'text-[var(--foreground)]' : 'text-[var(--muted)] hover:text-white'}`}>ES</Link>
-          </div>
-          <Link href="/login" className="hidden text-sm text-[var(--muted)] transition-colors hover:text-[var(--foreground)] sm:block">
-            {dict.signIn}
-          </Link>
-          <Link
-            href="/demo/inbox"
-            className="hidden rounded-full border border-[var(--moss)] px-4 py-2 text-sm font-medium text-[var(--moss)] transition-colors hover:bg-[var(--moss)] hover:text-white sm:block"
-          >
-            {dict.tryDemo}
-          </Link>
-          <Link
-            href="#waitlist"
-            className="rounded-full bg-[var(--moss)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
-            {dict.getEarlyAccess}
-          </Link>
-        </div>
-      </div>
-    </header>
-  );
-};
 
 export const Footer = ({ dict, lang }: { dict: Dictionary; lang: Locale }) => {
   return (

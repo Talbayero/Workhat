@@ -1,4 +1,5 @@
-import { NavBar, Footer } from "../page";
+import { NavBar } from "@/components/marketing/nav-bar";
+import { Footer } from "../page";
 import { type Locale, getDictionary } from "@/lib/dictionaries";
 
 type PageParams = Promise<{ lang: string }>;
