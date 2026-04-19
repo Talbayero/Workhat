@@ -60,7 +60,8 @@ export async function GET() {
     .limit(500);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[knowledge/gaps] edit analysis fetch failed:", error.message);
+    return NextResponse.json({ error: "Unable to fetch knowledge gap data." }, { status: 500 });
   }
 
   if (!analyses || analyses.length === 0) {

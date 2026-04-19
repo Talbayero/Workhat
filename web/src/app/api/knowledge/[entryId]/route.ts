@@ -57,7 +57,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     .eq("org_id", appUser.org_id)
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[knowledge/:id] entry fetch failed:", error.message);
+    return NextResponse.json({ error: "Unable to fetch this knowledge entry." }, { status: 500 });
+  }
   if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ entry: data });
 }
@@ -205,7 +208,10 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
     .delete()
     .eq("id", entryId);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[knowledge/:id] entry delete failed:", error.message);
+    return NextResponse.json({ error: "Unable to delete this knowledge entry." }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -51,7 +51,10 @@ export async function GET() {
     .eq("org_id", appUser.org_id)
     .order("used_in_drafts", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[knowledge] entries fetch failed:", error.message);
+    return NextResponse.json({ error: "Unable to fetch knowledge entries." }, { status: 500 });
+  }
   return NextResponse.json({ entries: data ?? [] });
 }
 

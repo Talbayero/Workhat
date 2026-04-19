@@ -117,7 +117,8 @@ export async function PATCH(
     if (error.code === "23505") {
       return NextResponse.json({ error: "An intent with that name already exists." }, { status: 409 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[intents/:id] update failed:", error.message);
+    return NextResponse.json({ error: "Unable to update intent." }, { status: 500 });
   }
   if (!data) return NextResponse.json({ error: "Intent not found" }, { status: 404 });
 
@@ -155,7 +156,10 @@ export async function DELETE(
     .eq("id", intentId)
     .eq("org_id", appUser.org_id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[intents/:id] delete failed:", error.message);
+    return NextResponse.json({ error: "Unable to delete intent." }, { status: 500 });
+  }
   if (count === 0) return NextResponse.json({ error: "Intent not found" }, { status: 404 });
 
   invalidateIntentCache(appUser.org_id);

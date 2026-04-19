@@ -107,7 +107,8 @@ export async function GET(req: NextRequest) {
   ].find((result) => result.error);
 
   if (failedResult?.error) {
-    return NextResponse.json({ error: failedResult.error.message }, { status: 500 });
+    console.error("[search] query failed:", failedResult.error.message);
+    return NextResponse.json({ error: "Search failed. Please try again." }, { status: 500 });
   }
 
   return NextResponse.json({

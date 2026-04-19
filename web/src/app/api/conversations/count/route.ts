@@ -18,7 +18,10 @@ export async function GET() {
     .eq("org_id", appUser.org_id)
     .not("status", "in", "(resolved,archived)");
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[conversations/count] query failed:", error.message);
+    return NextResponse.json({ error: "Unable to fetch conversation count." }, { status: 500 });
+  }
 
   return NextResponse.json({ open: count ?? 0 });
 }

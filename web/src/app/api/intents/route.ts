@@ -47,7 +47,10 @@ export async function GET() {
     .eq("org_id", appUser.org_id)
     .order("priority_order", { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[intents] fetch failed:", error.message);
+    return NextResponse.json({ error: "Unable to fetch intents." }, { status: 500 });
+  }
 
   return NextResponse.json({ intents: data ?? [] });
 }
@@ -125,7 +128,8 @@ export async function POST(req: NextRequest) {
     if (error.code === "23505") {
       return NextResponse.json({ error: "An intent with that name already exists." }, { status: 409 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[intents] insert failed:", error.message);
+    return NextResponse.json({ error: "Unable to create intent." }, { status: 500 });
   }
 
   invalidateIntentCache(appUser.org_id);
