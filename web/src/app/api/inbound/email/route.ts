@@ -101,6 +101,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  // Truncate user-controlled fields before any processing — guards against
+  // token-abuse via very long subjects or bodies, and protects AI classifiers.
+  if (typeof payload.Subject === "string") {
+    payload.Subject = payload.Subject.slice(0, 500);
+  }
+  if (typeof payload.TextBody === "string") {
+    payload.TextBody = payload.TextBody.slice(0, 100_000);
+  }
+
   const supabase = createAdminClient();
 
   // ── 1. Find org from destination email ──────────────────────────────────
