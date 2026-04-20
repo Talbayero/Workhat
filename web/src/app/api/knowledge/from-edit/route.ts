@@ -116,8 +116,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const draftText = draftResult.data.draft_text;
-  const finalText = replyResult.data.body_text;
+  // Cap email-derived strings before they enter the LLM prompt.
+  // These originate from external sources (customer emails, agent replies) and
+  // must be bounded to prevent prompt stuffing or injection via crafted content.
+  const draftText = (draftResult.data.draft_text ?? "").slice(0, 8_000);
+  const finalText = (replyResult.data.body_text ?? "").slice(0, 8_000);
 
   // Use edit analysis data if available, otherwise fall back to empty defaults
   const analysis = analysisResult.data;
@@ -125,7 +128,7 @@ export async function POST(req: NextRequest) {
     ? analysis.categories.filter((category): category is string => typeof category === "string")
     : [];
   const likelyReason = typeof analysis?.likely_reason_summary === "string"
-    ? analysis.likely_reason_summary
+    ? analysis.likely_reason_summary.slice(0, 500)
     : "";
 
   // ── Generate knowledge entry via LLM ────────────────────────────────────

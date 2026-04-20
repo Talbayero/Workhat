@@ -24,7 +24,10 @@ function normalizeTags(value: unknown) {
     return null;
   }
 
-  return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
+  const deduped = [...new Set((value as string[]).map((tag) => tag.trim()).filter(Boolean))];
+  if (deduped.length > 20) return null;
+  if (deduped.some((tag) => tag.length > 50)) return null;
+  return deduped;
 }
 
 function getAdminOrResponse() {
@@ -114,16 +117,19 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   if ("title" in body) {
     const title = normalizeOptionalString(body.title);
     if (!title) return NextResponse.json({ error: "Title cannot be empty." }, { status: 400 });
+    if (title.length > 500) return NextResponse.json({ error: "Title must be 500 characters or fewer." }, { status: 422 });
     updates.title = title;
   }
   if ("summary" in body) {
     const summary = normalizeOptionalString(body.summary);
     if (summary === undefined) return NextResponse.json({ error: "Summary must be text." }, { status: 400 });
+    if (summary && summary.length > 1000) return NextResponse.json({ error: "Summary must be 1000 characters or fewer." }, { status: 422 });
     updates.summary = summary ?? "";
   }
   if ("body" in body) {
     const content = normalizeOptionalString(body.body);
     if (!content) return NextResponse.json({ error: "Body content cannot be empty." }, { status: 400 });
+    if (content.length > 50_000) return NextResponse.json({ error: "Body content is too long (max 50,000 characters)." }, { status: 422 });
     updates.body = content;
   }
   if ("category" in body) {
@@ -139,7 +145,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   }
   if ("tags" in body) {
     const tags = normalizeTags(body.tags);
-    if (tags === null) return NextResponse.json({ error: "Tags must be a list of text values." }, { status: 400 });
+    if (tags === null) return NextResponse.json({ error: "Tags must be a list of up to 20 text values, each 50 characters or fewer." }, { status: 422 });
     updates.tags = tags;
   }
   if ("is_active" in body) {
