@@ -25,6 +25,13 @@ const securityHeaders = [
       "interest-cohort=()",
     ].join(", "),
   },
+  // Tell browsers to always use HTTPS for this origin for one year.
+  // includeSubDomains covers any sub-domains (e.g. api.work-hat.com).
+  // Do NOT add preload until the domain is submitted to the HSTS preload list.
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=31536000; includeSubDomains",
+  },
 ];
 
 const nextConfig: NextConfig = {

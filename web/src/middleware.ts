@@ -34,7 +34,13 @@ function isPublic(pathname: string): boolean {
   if (pathname.startsWith("/api/inbound/")) return true;
   if (pathname.startsWith("/api/stripe/webhook")) return true;
   if (pathname.startsWith("/api/waitlist")) return true;
-  if (pathname.startsWith("/api/email/gmail/")) return true; // OAuth connect/callback flow
+  // Gmail OAuth initiation and callback are unauthenticated (the user is mid-flow).
+  // Push notifications come from Google Pub/Sub (no user session).
+  // All other Gmail routes (sync, watch, diagnostics, renew-watches, connections)
+  // require an authenticated session and must NOT be whitelisted here.
+  if (pathname === "/api/email/gmail/connect") return true;
+  if (pathname === "/api/email/gmail/callback") return true;
+  if (pathname.startsWith("/api/email/gmail/push")) return true;
   // Login page itself
   if (pathname === "/login") return true;
   return false;
