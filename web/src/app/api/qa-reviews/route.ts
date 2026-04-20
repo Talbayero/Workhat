@@ -11,6 +11,7 @@ type AppUser = {
 };
 
 const REVIEW_ROLES = new Set(["admin", "manager", "qa_reviewer"]);
+const MAX_NOTES_LENGTH = 2000;
 const VALID_RESULTS = new Set(["approved", "flagged", "needs_revision"]);
 const VALID_CATEGORIES = new Set([
   "missing_context",
@@ -77,6 +78,9 @@ export async function POST(req: NextRequest) {
   }
   if (notes != null && typeof notes !== "string") {
     return NextResponse.json({ error: "notes must be text." }, { status: 400 });
+  }
+  if (typeof notes === "string" && notes.trim().length > MAX_NOTES_LENGTH) {
+    return NextResponse.json({ error: `Notes must be ${MAX_NOTES_LENGTH} characters or fewer.` }, { status: 422 });
   }
   if (editAnalysisId != null && (typeof editAnalysisId !== "string" || !editAnalysisId.trim())) {
     return NextResponse.json({ error: "editAnalysisId must be text." }, { status: 400 });

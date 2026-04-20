@@ -30,6 +30,9 @@ type IntentCorrectionPayload = {
   closureNote: string | null;
 };
 
+const MAX_INTENT_LENGTH = 100;
+const MAX_CLOSURE_NOTE_LENGTH = 1000;
+
 function normalizeText(value: unknown) {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
@@ -50,15 +53,27 @@ function validatePayload(value: unknown): IntentCorrectionPayload | { error: str
     return { error: "conversationId, originalIntent, and correctedIntent are required." };
   }
 
+  if (originalIntent.length > MAX_INTENT_LENGTH) {
+    return { error: `originalIntent must be ${MAX_INTENT_LENGTH} characters or fewer.` };
+  }
+  if (correctedIntent.length > MAX_INTENT_LENGTH) {
+    return { error: `correctedIntent must be ${MAX_INTENT_LENGTH} characters or fewer.` };
+  }
+
   if (body.closureNote != null && typeof body.closureNote !== "string") {
     return { error: "closureNote must be text." };
+  }
+
+  const closureNote = normalizeText(body.closureNote);
+  if (closureNote && closureNote.length > MAX_CLOSURE_NOTE_LENGTH) {
+    return { error: `closureNote must be ${MAX_CLOSURE_NOTE_LENGTH} characters or fewer.` };
   }
 
   return {
     conversationId,
     originalIntent,
     correctedIntent,
-    closureNote: normalizeText(body.closureNote),
+    closureNote,
   };
 }
 

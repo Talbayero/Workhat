@@ -250,7 +250,9 @@ async function assembleContext(
   const messages: MessageContext[] = ((msgData ?? []) as DbMessage[]).map((m) => ({
     role: senderTypeToRole(m.sender_type),
     author: m.author_name ?? m.sender_type,
-    body: m.body_text,
+    // Cap individual message bodies to prevent context-window abuse by
+    // a customer sending an extremely long message to inflate token usage.
+    body: m.body_text.slice(0, 2000),
     sentAt: new Date(m.created_at).toLocaleString("en-US", {
       month: "short",
       day: "numeric",

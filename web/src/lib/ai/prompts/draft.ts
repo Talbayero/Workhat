@@ -79,15 +79,23 @@ export function buildKnowledgeLayer(snippets: KnowledgeSnippet[]): string {
 // ── Layer 4: Conversation context ─────────────────────────────────────────────
 
 export function buildConversationLayer(ctx: ConversationContext): string {
+  // Contact notes are user-controlled — wrap in XML delimiters so the model
+  // treats them as data, not instructions (second layer after the system-prompt warning).
+  const notesSection = ctx.contact.notes
+    ? `Notes:\n<contact_notes>\n${ctx.contact.notes}\n</contact_notes>`
+    : "";
+
   const contact = `Customer: ${ctx.contact.fullName}
 Email: ${ctx.contact.email}
 Account tier: ${ctx.contact.tier || "unknown"}
-${ctx.contact.notes ? `Notes: ${ctx.contact.notes}` : ""}`.trim();
+${notesSection}`.trim();
 
   const company = ctx.company
     ? `Company: ${ctx.company.name} (${ctx.company.industry})`
     : "Company: not on file";
 
+  // Each message body is user-controlled content. Wrap in <message> XML delimiters
+  // so the model treats the content as data, not as additional instructions.
   const thread = ctx.messages
     .map((m) => {
       const label =
@@ -98,7 +106,7 @@ ${ctx.contact.notes ? `Notes: ${ctx.contact.notes}` : ""}`.trim();
           : m.role === "ai"
           ? "AI (previous draft)"
           : "Internal";
-      return `[${label} — ${m.sentAt}]\n${m.body.trim()}`;
+      return `[${label} — ${m.sentAt}]\n<message>\n${m.body.trim()}\n</message>`;
     })
     .join("\n\n---\n\n");
 
