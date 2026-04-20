@@ -13,10 +13,13 @@ type NotePayload = {
   body: string;
 };
 
+const MAX_NOTE_LENGTH = 50_000;
+
 function validateBody(raw: unknown): NotePayload | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.body !== "string" || !obj.body.trim()) return null;
+  if (obj.body.trim().length > MAX_NOTE_LENGTH) return null;
   return { body: obj.body.trim() };
 }
 

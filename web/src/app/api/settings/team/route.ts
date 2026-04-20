@@ -41,6 +41,8 @@ export async function GET() {
   const caller = await getCurrentAppUser({ label: "settings/team", select: "id, org_id, role" });
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const canViewEmails = ["admin", "manager"].includes(caller.role);
+
   const supabase = await createClient();
   const { data: members, error } = await supabase
     .from("users")
@@ -52,7 +54,12 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to fetch team" }, { status: 500 });
   }
 
-  return NextResponse.json({ members: members ?? [] });
+  // Agents and QA reviewers do not need to see teammates' email addresses
+  const sanitized = (members ?? []).map((m) =>
+    canViewEmails ? m : { ...m, email: undefined }
+  );
+
+  return NextResponse.json({ members: sanitized });
 }
 
 // ── PATCH — update role or skills ─────────────────────────────────────────────

@@ -25,6 +25,8 @@ type InviteBody = {
 const VALID_ROLES = new Set(["agent", "manager", "qa_reviewer"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_INVITES_PER_REQUEST = 20;
+/** Max invitations an org can send in a rolling 24-hour window. */
+const MAX_INVITES_PER_DAY = 50;
 
 function validateBody(raw: unknown): InviteBody | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -81,6 +83,27 @@ export async function POST(req: NextRequest) {
     );
   }
   const adminClient = adminState.client;
+
+  // ── Per-org daily invite cap — prevents email relay abuse ──────────────────
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count: recentInvites, error: countErr } = await adminClient
+    .from("users")
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .eq("status", "pending")
+    .gte("created_at", oneDayAgo);
+
+  if (countErr) {
+    console.error("[invite] daily cap check failed:", countErr.message);
+    return NextResponse.json({ error: "Unable to verify invite quota. Please try again." }, { status: 500 });
+  }
+
+  if ((recentInvites ?? 0) >= MAX_INVITES_PER_DAY) {
+    return NextResponse.json(
+      { error: `Daily invitation limit reached (${MAX_INVITES_PER_DAY} per 24 hours). Please try again later.` },
+      { status: 429 }
+    );
+  }
 
   const { emails, role } = body;
   const results: { email: string; status: "invited" | "already_exists" | "error" }[] = [];

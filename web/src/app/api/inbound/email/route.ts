@@ -11,8 +11,10 @@ import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/i
      Inbound domain: inbound.work-hat.com (MX record)
      Webhook URL: https://work-hat.com/api/inbound/email
 
-   Optional auth: set POSTMARK_INBOUND_TOKEN env var,
+   Required auth: set POSTMARK_INBOUND_TOKEN env var,
    then add to Postmark webhook headers as X-Inbound-Token.
+   Requests without a valid token are rejected with 401.
+   Missing env var is treated as a misconfiguration (503).
 ───────────────────────────────────────────── */
 
 // Postmark inbound payload shape (fields we use)
@@ -79,13 +81,17 @@ function stripQuotedReply(text: string): string {
 // ── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  // Optional token auth
+  // Required token auth — POSTMARK_INBOUND_TOKEN must be set in env.
+  // Set it in Postmark → Inbound → Webhook → Custom headers as X-Inbound-Token.
+  // If the env var is missing, the endpoint is misconfigured; reject all requests.
   const inboundToken = process.env.POSTMARK_INBOUND_TOKEN;
-  if (inboundToken) {
-    const reqToken = req.headers.get("x-inbound-token");
-    if (reqToken !== inboundToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!inboundToken) {
+    console.error("[inbound] POSTMARK_INBOUND_TOKEN is not set — refusing all inbound requests to prevent unauthenticated access");
+    return NextResponse.json({ error: "Webhook endpoint is not configured" }, { status: 503 });
+  }
+  const reqToken = req.headers.get("x-inbound-token");
+  if (reqToken !== inboundToken) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let payload: PostmarkPayload;

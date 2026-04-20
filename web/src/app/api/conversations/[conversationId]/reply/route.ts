@@ -38,10 +38,13 @@ type OutboundResult = {
 
 type AdminDb = NonNullable<ReturnType<typeof createOptionalAdminClient>["client"]>;
 
+const MAX_REPLY_LENGTH = 50_000;
+
 function validateBody(raw: unknown): ReplyPayload | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.body !== "string" || !obj.body.trim()) return null;
+  if (obj.body.trim().length > MAX_REPLY_LENGTH) return null;
   return {
     body: obj.body.trim(),
     aiDraftId:
@@ -383,13 +386,16 @@ export async function POST(
     );
   }
 
+  // Do not expose whether the send was simulated — callers get ok:true either way
+  if (outbound.simulated) {
+    console.info("[reply] simulated send (no Gmail mailbox connected) for conversation:", conversationId);
+  }
+
   return NextResponse.json({
     ok: true,
     conversationId,
     messageId,
     sentReplyId,
     analysisQueued: Boolean(aiDraftId && sentReplyId),
-    simulatedSend: Boolean(outbound.simulated),
-    warning: outbound.simulated ? "No Gmail mailbox is connected, so this test reply was logged locally and not emailed to the customer." : undefined,
   });
 }

@@ -181,17 +181,18 @@ export async function POST(req: NextRequest) {
         org,
         user: { id: existingUser.id, role: existingUser.role },
         created: false,
-        method: usingAdmin ? "admin" : "client",
-        adminStatus: adminState.reason,
       });
     }
 
     if (!usingAdmin) {
+      // Log full details server-side; return a generic message to the client
+      console.error(
+        "[org/create] bootstrap RPC unavailable and no admin client configured:",
+        adminState.reason, rpcAttempt.error?.message
+      );
       return NextResponse.json({
-        error: "Failed to create organization: bootstrap RPC is unavailable and no verified admin client is available.",
+        error: "Organization setup is temporarily unavailable. Please try again or contact support.",
         hint: onboardingRepairHint(adminState.reason, rpcAttempt.error?.message),
-        code: "missing_verified_admin",
-        rpcError: rpcAttempt.error?.message,
       }, { status: 500 });
     }
 
@@ -219,10 +220,8 @@ export async function POST(req: NextRequest) {
     if (orgErr || !org) {
       console.error("[org/create] org insert failed:", orgErr?.message, orgErr?.code, orgErr?.details);
       return NextResponse.json({
-        error: `Failed to create organization: ${orgErr?.message ?? "unknown error"}`,
+        error: "Failed to create organization. Please try again.",
         hint: onboardingRepairHint(adminState.reason, rpcAttempt.error?.message),
-        code: orgErr?.code,
-        rpcError: rpcAttempt.error?.message,
       }, { status: 500 });
     }
 
@@ -247,9 +246,7 @@ export async function POST(req: NextRequest) {
       // Roll back
       await db.from("organizations").delete().eq("id", orgId);
       return NextResponse.json({
-        error: `Failed to create user record: ${userErr?.message ?? "unknown error"}`,
-        hint: adminHint(adminState.reason),
-        code: userErr?.code,
+        error: "Failed to create user record. Please try again.",
       }, { status: 500 });
     }
 
@@ -278,14 +275,12 @@ export async function POST(req: NextRequest) {
       org: org as { id: string; name: string; slug: string },
       user: appUser as { id: string; role: string },
       created: true,
-      method: usingAdmin ? "admin" : "client",
-      adminStatus: adminState.reason,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[org/create] unhandled error:", message);
     return NextResponse.json({
-      error: `Server error: ${message}`,
+      error: "An unexpected error occurred. Please try again.",
     }, { status: 500 });
   }
 }

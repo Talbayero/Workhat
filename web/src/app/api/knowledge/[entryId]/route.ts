@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 
+const VALID_CATEGORIES = new Set(["policy", "sop", "tone", "product", "escalation"]);
+
 /* ─────────────────────────────────────────────
    GET    /api/knowledge/:id  — fetch single entry
    PATCH  /api/knowledge/:id  — update entry
@@ -70,6 +72,11 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const appUser = await getCurrentAppUser({ label: "knowledge/:id", select: "id, org_id, role, email" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Only admins and managers can update knowledge entries (same restriction as DELETE)
+  if (!["admin", "manager"].includes(appUser.role)) {
+    return NextResponse.json({ error: "Insufficient permissions." }, { status: 403 });
+  }
+
   let body: Record<string, unknown>;
   try {
     const parsed = await req.json();
@@ -92,7 +99,10 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     .eq("org_id", appUser.org_id)
     .maybeSingle();
 
-  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+  if (existingError) {
+    console.error("[knowledge/:id] ownership check failed:", existingError.message);
+    return NextResponse.json({ error: "Unable to verify this knowledge entry." }, { status: 500 });
+  }
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const updatedBy = (appUser as { email?: string }).email?.split("@")[0] ?? "agent";
@@ -119,6 +129,12 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   if ("category" in body) {
     const category = normalizeOptionalString(body.category);
     if (!category) return NextResponse.json({ error: "Category cannot be empty." }, { status: 400 });
+    if (!VALID_CATEGORIES.has(category)) {
+      return NextResponse.json(
+        { error: `Invalid category. Must be one of: ${[...VALID_CATEGORIES].join(", ")}.` },
+        { status: 400 }
+      );
+    }
     updates.category = category;
   }
   if ("tags" in body) {
@@ -136,10 +152,12 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const { error: updateErr } = await admin
     .from("knowledge_entries")
     .update(updates)
-    .eq("id", entryId);
+    .eq("id", entryId)
+    .eq("org_id", appUser.org_id);   // org_id guard prevents TOCTOU IDOR
 
   if (updateErr) {
-    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    console.error("[knowledge/:id] entry update failed:", updateErr.message);
+    return NextResponse.json({ error: "Unable to update this knowledge entry." }, { status: 500 });
   }
 
   // If body changed, re-chunk and re-embed
@@ -149,7 +167,8 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     // Delete old chunks
     const { error: deleteChunksError } = await admin.from("knowledge_chunks").delete().eq("entry_id", entryId);
     if (deleteChunksError) {
-      return NextResponse.json({ error: deleteChunksError.message }, { status: 500 });
+      console.error("[knowledge/:id] chunk delete failed:", deleteChunksError.message);
+      return NextResponse.json({ error: "Update failed while rebuilding search index." }, { status: 500 });
     }
 
     // Re-create with new chunks
@@ -199,14 +218,18 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
     .eq("org_id", appUser.org_id)
     .maybeSingle();
 
-  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+  if (existingError) {
+    console.error("[knowledge/:id] ownership check failed:", existingError.message);
+    return NextResponse.json({ error: "Unable to verify this knowledge entry." }, { status: 500 });
+  }
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Chunks will cascade-delete via FK
   const { error } = await admin
     .from("knowledge_entries")
     .delete()
-    .eq("id", entryId);
+    .eq("id", entryId)
+    .eq("org_id", appUser.org_id);  // org_id guard prevents TOCTOU IDOR
 
   if (error) {
     console.error("[knowledge/:id] entry delete failed:", error.message);

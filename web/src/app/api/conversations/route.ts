@@ -71,6 +71,17 @@ export async function POST(req: NextRequest) {
   if (!subject) return NextResponse.json({ error: "Subject is required." }, { status: 400 });
   if (!firstMessage) return NextResponse.json({ error: "Message body is required." }, { status: 400 });
 
+  // Length caps to prevent DoS and limit prompt injection surface
+  if ((contactName?.length ?? 0) > 200) {
+    return NextResponse.json({ error: "Contact name is too long (max 200 characters)." }, { status: 400 });
+  }
+  if (subject.length > 500) {
+    return NextResponse.json({ error: "Subject is too long (max 500 characters)." }, { status: 400 });
+  }
+  if (firstMessage.length > 50_000) {
+    return NextResponse.json({ error: "Message body is too long (max 50,000 characters)." }, { status: 400 });
+  }
+
   const supabase = await createClient();
   const adminState = createOptionalAdminClient();
   if (!adminState.client) {
@@ -83,8 +94,23 @@ export async function POST(req: NextRequest) {
   const admin = adminState.client;
   const { org_id: orgId } = appUser;
 
-  // Classify intent: use DB-driven classifier unless caller provided an explicit override
-  let intent = explicitIntent?.toLowerCase() || "";
+  // Classify intent: use DB-driven classifier unless caller provided an explicit override.
+  // When explicit, validate against the org's configured intents to prevent arbitrary strings.
+  let intent = "";
+  if (explicitIntent) {
+    const candidate = explicitIntent.toLowerCase();
+    const { data: intentRow } = await supabase
+      .from("intents")
+      .select("name")
+      .eq("org_id", orgId)
+      .ilike("name", candidate)
+      .limit(1)
+      .maybeSingle();
+    if (!intentRow) {
+      return NextResponse.json({ error: "Unknown intent. Use one of your configured intent names." }, { status: 400 });
+    }
+    intent = intentRow.name;
+  }
   if (!intent) {
     try {
       intent = await classifyIntentFromDb(orgId, subject, firstMessage);

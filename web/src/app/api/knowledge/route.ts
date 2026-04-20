@@ -58,9 +58,17 @@ export async function GET() {
   return NextResponse.json({ entries: data ?? [] });
 }
 
+const VALID_CATEGORIES = new Set(["policy", "sop", "tone", "product", "escalation"]);
+
 export async function POST(req: NextRequest) {
   const appUser = await getCurrentAppUser({ label: "knowledge", select: "id, org_id, role, email" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Only admins and managers can create knowledge entries — agents should not be
+  // able to inject untrusted content into the AI knowledge base.
+  if (!["admin", "manager"].includes(appUser.role)) {
+    return NextResponse.json({ error: "Insufficient permissions." }, { status: 403 });
+  }
 
   let body: Record<string, unknown>;
   try {
@@ -88,6 +96,12 @@ export async function POST(req: NextRequest) {
   if (!title) return NextResponse.json({ error: "Title is required." }, { status: 400 });
   if (!content) return NextResponse.json({ error: "Body content is required." }, { status: 400 });
   if (!category) return NextResponse.json({ error: "Category is required." }, { status: 400 });
+  if (!VALID_CATEGORIES.has(category)) {
+    return NextResponse.json(
+      { error: `Invalid category. Must be one of: ${[...VALID_CATEGORIES].join(", ")}.` },
+      { status: 400 }
+    );
+  }
 
   const { admin, response } = getAdminOrResponse();
   if (!admin) return response;
@@ -113,7 +127,8 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (entryErr || !entry) {
-    return NextResponse.json({ error: entryErr?.message ?? "Failed to create entry" }, { status: 500 });
+    console.error("[knowledge] entry insert failed:", entryErr?.message);
+    return NextResponse.json({ error: "Unable to create knowledge entry." }, { status: 500 });
   }
 
   // Auto-chunk the body and create knowledge_chunks with embeddings
