@@ -123,6 +123,7 @@ export async function POST() {
       .update({ sync_status: "error", error_message: message })
       .eq("id", (connection as EmailConnection).id);
     if (errorUpdateError) console.warn("[gmail/watch] failed to persist watch error:", errorUpdateError.message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[gmail/watch] watch setup failed:", message);
+    return NextResponse.json({ error: "Failed to enable Gmail live watch. Please try again." }, { status: 500 });
   }
 }

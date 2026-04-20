@@ -43,7 +43,8 @@ export async function POST() {
     .eq("id", connection.id);
 
   if (statusError) {
-    return NextResponse.json({ error: statusError.message }, { status: 500 });
+    console.error("[gmail/sync] status update failed:", statusError.message);
+    return NextResponse.json({ error: "Unable to start Gmail sync." }, { status: 500 });
   }
 
   try {
@@ -53,10 +54,11 @@ export async function POST() {
       maxResults: 10,
     });
     await markGmailSyncSuccess({ db, connectionId: connection.id, result });
-    return NextResponse.json(result);
+    return NextResponse.json({ ok: true, imported: result.imported ?? 0 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gmail sync failed.";
     await markGmailSyncError({ db, connectionId: connection.id, message });
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[gmail/sync] sync error:", message);
+    return NextResponse.json({ error: "Gmail sync failed. Please try again." }, { status: 500 });
   }
 }

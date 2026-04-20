@@ -140,7 +140,7 @@ export async function GET(req: NextRequest) {
 
   if (error) {
     console.error("[gmail/renew-watches] connection lookup failed:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Gmail watch renewal unavailable." }, { status: 500 });
   }
 
   const due = ((data ?? []) as WatchConnection[]).filter((connection) =>
