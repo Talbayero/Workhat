@@ -171,7 +171,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sender email is required" }, { status: 400 });
   }
 
-  const senderName = payload.FromFull?.Name?.trim() || senderEmail.split("@")[0];
+  // Cap sender name — From header is fully attacker-controlled.
+  const senderName = (payload.FromFull?.Name?.trim() || senderEmail.split("@")[0]).slice(0, 100);
   const [firstName, ...restName] = senderName.split(" ");
   const lastName = restName.join(" ");
 
