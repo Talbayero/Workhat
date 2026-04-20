@@ -15,13 +15,19 @@ function normalizeOptionalString(value: unknown) {
   return value.trim() || null;
 }
 
+const MAX_TAG_COUNT = 20;
+const MAX_TAG_LENGTH = 50;
+
 function normalizeTags(value: unknown) {
   if (value == null) return [];
   if (!Array.isArray(value) || value.some((tag) => typeof tag !== "string")) {
     return null;
   }
 
-  return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
+  const deduped = [...new Set((value as string[]).map((tag) => tag.trim()).filter(Boolean))];
+  if (deduped.length > MAX_TAG_COUNT) return null;
+  if (deduped.some((tag) => tag.length > MAX_TAG_LENGTH)) return null;
+  return deduped;
 }
 
 function getAdminOrResponse() {
@@ -91,10 +97,13 @@ export async function POST(req: NextRequest) {
   if (summary === undefined) return NextResponse.json({ error: "Summary must be text." }, { status: 400 });
   if (content === undefined) return NextResponse.json({ error: "Body must be text." }, { status: 400 });
   if (category === undefined) return NextResponse.json({ error: "Category must be text." }, { status: 400 });
-  if (tags === null) return NextResponse.json({ error: "Tags must be a list of text values." }, { status: 400 });
+  if (tags === null) return NextResponse.json({ error: `Tags must be a list of up to ${MAX_TAG_COUNT} text values, each ${MAX_TAG_LENGTH} characters or fewer.` }, { status: 422 });
 
   if (!title) return NextResponse.json({ error: "Title is required." }, { status: 400 });
+  if (title.length > 500) return NextResponse.json({ error: "Title must be 500 characters or fewer." }, { status: 422 });
+  if (summary && summary.length > 1000) return NextResponse.json({ error: "Summary must be 1000 characters or fewer." }, { status: 422 });
   if (!content) return NextResponse.json({ error: "Body content is required." }, { status: 400 });
+  if (content.length > 50_000) return NextResponse.json({ error: "Body content is too long (max 50,000 characters)." }, { status: 422 });
   if (!category) return NextResponse.json({ error: "Category is required." }, { status: 400 });
   if (!VALID_CATEGORIES.has(category)) {
     return NextResponse.json(
