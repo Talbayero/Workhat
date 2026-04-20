@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { constructStripeEvent } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VALID_PLANS = new Set(["starter", "pro", "scale", "enterprise"]);
+
+/** Validate that a Stripe metadata org_id is a real UUID before using it in queries. */
+function isValidOrgId(id: string | undefined): id is string {
+  return typeof id === "string" && UUID_RE.test(id);
+}
+
+/** Validate and sanitize a plan name from Stripe metadata. */
+function sanitizePlan(plan: string | undefined, fallback = "pro"): string {
+  const p = typeof plan === "string" ? plan.trim().toLowerCase() : fallback;
+  return VALID_PLANS.has(p) ? p : fallback;
+}
+
 /* ─────────────────────────────────────────────
    POST /api/stripe/webhook
    Handles Stripe lifecycle events:
@@ -45,12 +59,15 @@ export async function POST(req: NextRequest) {
       case "checkout.session.completed": {
         const session = event.data.object;
         const meta = session.metadata as Record<string, string> | undefined;
-        if (!meta?.org_id) break;
+        if (!isValidOrgId(meta?.org_id)) {
+          console.warn("[stripe/webhook] checkout.session.completed: missing or invalid org_id in metadata");
+          break;
+        }
 
         const { error } = await supabase
           .from("organizations")
           .update({
-            crm_plan: (meta.plan ?? "pro") as string,
+            crm_plan: sanitizePlan(meta.plan),
             stripe_customer_id: (session.customer as string) ?? null,
             stripe_subscription_id: (session.subscription as string) ?? null,
             plan_status: "trialing",
@@ -64,14 +81,16 @@ export async function POST(req: NextRequest) {
       case "customer.subscription.updated": {
         const sub = event.data.object;
         const meta = sub.metadata as Record<string, string> | undefined;
-        if (!meta?.org_id) break;
+        if (!isValidOrgId(meta?.org_id)) {
+          console.warn("[stripe/webhook] subscription.updated: missing or invalid org_id in metadata");
+          break;
+        }
 
         const status = sub.status as string;
-        const crm_plan = meta.plan ?? "pro";
 
         const { error } = await supabase
           .from("organizations")
-          .update({ crm_plan, plan_status: status })
+          .update({ crm_plan: sanitizePlan(meta.plan), plan_status: status })
           .eq("id", meta.org_id);
 
         if (error) throw error;
@@ -81,7 +100,10 @@ export async function POST(req: NextRequest) {
       case "customer.subscription.deleted": {
         const sub = event.data.object;
         const meta = sub.metadata as Record<string, string> | undefined;
-        if (!meta?.org_id) break;
+        if (!isValidOrgId(meta?.org_id)) {
+          console.warn("[stripe/webhook] subscription.deleted: missing or invalid org_id in metadata");
+          break;
+        }
 
         const { error } = await supabase
           .from("organizations")
@@ -94,9 +116,12 @@ export async function POST(req: NextRequest) {
 
       case "invoice.payment_failed": {
         const invoice = event.data.object;
-        const orgId = (invoice.subscription_details as Record<string, unknown> | undefined)
-          ?.metadata as Record<string, string> | undefined;
-        if (!orgId?.org_id) break;
+        const orgId = ((invoice.subscription_details as Record<string, unknown> | undefined)
+          ?.metadata) as Record<string, string> | undefined;
+        if (!isValidOrgId(orgId?.org_id)) {
+          console.warn("[stripe/webhook] invoice.payment_failed: missing or invalid org_id in metadata");
+          break;
+        }
 
         const { error } = await supabase
           .from("organizations")

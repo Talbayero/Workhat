@@ -43,8 +43,15 @@ function isExpiredHistoryCursor(error: unknown) {
 }
 
 export async function POST(req: NextRequest) {
+  // Required token auth — GMAIL_PUSH_TOKEN must be set in env.
+  // Pass as ?token=<value> when registering the Pub/Sub push subscription.
+  // Fail closed: if the env var is absent the endpoint is misconfigured; reject all requests.
   const expectedToken = process.env.GMAIL_PUSH_TOKEN;
-  if (expectedToken && req.nextUrl.searchParams.get("token") !== expectedToken) {
+  if (!expectedToken) {
+    console.error("[gmail/push] GMAIL_PUSH_TOKEN is not set — refusing all push requests to prevent unauthenticated access");
+    return NextResponse.json({ error: "Push endpoint is not configured" }, { status: 503 });
+  }
+  if (req.nextUrl.searchParams.get("token") !== expectedToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -91,7 +98,8 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (connectionError) {
-    return NextResponse.json({ error: connectionError.message }, { status: 500 });
+    console.error("[gmail/push] connection lookup failed:", connectionError.message);
+    return NextResponse.json({ error: "Gmail push handler unavailable." }, { status: 500 });
   }
 
   if (!connection) {
@@ -118,7 +126,8 @@ export async function POST(req: NextRequest) {
     .eq("id", (connection as { id: string }).id);
 
   if (markSyncingError) {
-    return NextResponse.json({ error: markSyncingError.message }, { status: 500 });
+    console.error("[gmail/push] mark-syncing update failed:", markSyncingError.message);
+    return NextResponse.json({ error: "Gmail push handler unavailable." }, { status: 500 });
   }
 
   try {
@@ -161,7 +170,9 @@ export async function POST(req: NextRequest) {
       result,
     });
 
-    return NextResponse.json({ ok: true, historyId, recoveredFromExpiredCursor, result });
+    // Log internal sync details server-side only; Pub/Sub ignores the response body
+    console.info("[gmail/push] sync complete:", { historyId, recoveredFromExpiredCursor, result });
+    return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gmail history sync failed.";
     await markGmailSyncError({
@@ -170,6 +181,7 @@ export async function POST(req: NextRequest) {
       message,
     });
 
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    console.error("[gmail/push] sync error:", message);
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
