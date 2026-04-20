@@ -25,7 +25,8 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[email/connections] list query failed:", error.message);
+    return NextResponse.json({ error: "Unable to load email connections." }, { status: 500 });
   }
 
   return NextResponse.json({ connections: data ?? [] });
@@ -75,7 +76,8 @@ export async function DELETE(req: NextRequest) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[email/connections] disconnect update failed:", error.message);
+    return NextResponse.json({ error: "Unable to disconnect this email account." }, { status: 500 });
   }
 
   if (!data) {

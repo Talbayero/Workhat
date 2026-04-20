@@ -8,6 +8,11 @@ import { createClient } from "@/lib/supabase/server";
 
 const CONTACT_TIERS = new Set(["standard", "pro", "enterprise", "vip"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_NAME_LENGTH = 100;
+const MAX_PHONE_LENGTH = 30;
+const MAX_NOTES_LENGTH = 2000;
+const MAX_TAG_COUNT = 20;
+const MAX_TAG_LENGTH = 50;
 
 function normalizeOptionalString(value: unknown) {
   if (value == null) return null;
@@ -21,7 +26,10 @@ function normalizeTags(value: unknown) {
     return null;
   }
 
-  return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
+  const tags = [...new Set(value.map((tag) => (tag as string).trim()).filter(Boolean))];
+  if (tags.length > MAX_TAG_COUNT) return null;
+  if (tags.some((tag) => tag.length > MAX_TAG_LENGTH)) return null;
+  return tags;
 }
 
 async function refreshCompanyContactCount(
@@ -82,7 +90,12 @@ export async function POST(req: NextRequest) {
   if (phone === undefined) return NextResponse.json({ error: "Phone must be text." }, { status: 400 });
   if (notes === undefined) return NextResponse.json({ error: "Notes must be text." }, { status: 400 });
   if (tier === undefined) return NextResponse.json({ error: "Tier must be text." }, { status: 400 });
-  if (tags === null) return NextResponse.json({ error: "Tags must be a list of text values." }, { status: 400 });
+  if (tags === null) return NextResponse.json({ error: `Tags must be a list of text values (max ${MAX_TAG_COUNT} tags, each max ${MAX_TAG_LENGTH} characters).` }, { status: 400 });
+
+  if (rawFirstName && rawFirstName.length > MAX_NAME_LENGTH) return NextResponse.json({ error: "First name is too long." }, { status: 422 });
+  if (rawLastName && rawLastName.length > MAX_NAME_LENGTH) return NextResponse.json({ error: "Last name is too long." }, { status: 422 });
+  if (phone && phone.length > MAX_PHONE_LENGTH) return NextResponse.json({ error: "Phone number is too long." }, { status: 422 });
+  if (notes && notes.length > MAX_NOTES_LENGTH) return NextResponse.json({ error: `Notes must be ${MAX_NOTES_LENGTH} characters or fewer.` }, { status: 422 });
 
   const firstName = rawFirstName ?? "";
   const lastName = rawLastName ?? "";

@@ -12,6 +12,12 @@ const CONTACT_TIERS = new Set(["standard", "pro", "enterprise", "vip"]);
 const LIFECYCLE_STAGES = new Set(["lead", "prospect", "customer", "churned"]);
 const PREFERRED_CHANNELS = new Set(["email", "sms", "phone", "chat"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_NAME_LENGTH = 100;
+const MAX_PHONE_LENGTH = 30;
+const MAX_NOTES_LENGTH = 2000;
+const MAX_LOCATION_LENGTH = 200;
+const MAX_TAG_COUNT = 20;
+const MAX_TAG_LENGTH = 50;
 
 function normalizeOptionalString(value: unknown) {
   if (value == null) return null;
@@ -25,7 +31,10 @@ function normalizeTags(value: unknown) {
     return null;
   }
 
-  return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
+  const tags = [...new Set(value.map((tag) => (tag as string).trim()).filter(Boolean))];
+  if (tags.length > MAX_TAG_COUNT) return null;
+  if (tags.some((tag) => tag.length > MAX_TAG_LENGTH)) return null;
+  return tags;
 }
 
 async function refreshCompanyContactCount(
@@ -95,6 +104,21 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     if (key in body) {
       const value = normalizeOptionalString(body[key]);
       if (value === undefined) return NextResponse.json({ error: `${key} must be text.` }, { status: 400 });
+      // Per-field length caps
+      if (value !== null) {
+        if ((key === "first_name" || key === "last_name") && value.length > MAX_NAME_LENGTH) {
+          return NextResponse.json({ error: `${key.replace("_", " ")} is too long.` }, { status: 422 });
+        }
+        if (key === "phone" && value.length > MAX_PHONE_LENGTH) {
+          return NextResponse.json({ error: "Phone number is too long." }, { status: 422 });
+        }
+        if (key === "notes" && value.length > MAX_NOTES_LENGTH) {
+          return NextResponse.json({ error: `Notes must be ${MAX_NOTES_LENGTH} characters or fewer.` }, { status: 422 });
+        }
+        if (key === "location" && value.length > MAX_LOCATION_LENGTH) {
+          return NextResponse.json({ error: "Location is too long." }, { status: 422 });
+        }
+      }
       updates[key] = value;
     }
   }
@@ -145,7 +169,12 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   if ("tags" in body) {
     const tags = normalizeTags(body.tags);
-    if (tags === null) return NextResponse.json({ error: "Tags must be a list of text values." }, { status: 400 });
+    if (tags === null) {
+      return NextResponse.json(
+        { error: `Tags must be a list of text values (max ${MAX_TAG_COUNT} tags, each max ${MAX_TAG_LENGTH} characters).` },
+        { status: 400 }
+      );
+    }
     updates.tags = tags;
   }
 

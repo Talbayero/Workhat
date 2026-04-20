@@ -6,6 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 
 const COMPANY_TIERS = new Set(["standard", "pro", "enterprise", "vip"]);
 const DOMAIN_RE = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
+const MAX_NAME_LENGTH = 200;
+const MAX_INDUSTRY_LENGTH = 100;
+const MAX_NOTES_LENGTH = 2000;
+const MAX_ACCOUNT_OWNER_LENGTH = 100;
+const MAX_TAG_COUNT = 20;
+const MAX_TAG_LENGTH = 50;
 
 function normalizeOptionalString(value: unknown) {
   if (value == null) return null;
@@ -19,7 +25,10 @@ function normalizeTags(value: unknown) {
     return null;
   }
 
-  return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))];
+  const tags = [...new Set(value.map((tag) => (tag as string).trim()).filter(Boolean))];
+  if (tags.length > MAX_TAG_COUNT) return null;
+  if (tags.some((tag) => tag.length > MAX_TAG_LENGTH)) return null;
+  return tags;
 }
 
 type RouteContext = { params: Promise<{ companyId: string }> };
@@ -51,6 +60,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   if ("name" in body) {
     const name = normalizeOptionalString(body.name);
     if (!name) return NextResponse.json({ error: "Company name cannot be empty." }, { status: 400 });
+    if (name.length > MAX_NAME_LENGTH) return NextResponse.json({ error: "Company name is too long." }, { status: 422 });
     updates.name = name;
   }
 
@@ -65,6 +75,17 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     if (key in body) {
       const value = normalizeOptionalString(body[key]);
       if (value === undefined) return NextResponse.json({ error: `${key} must be text.` }, { status: 400 });
+      if (value !== null) {
+        if (key === "industry" && value.length > MAX_INDUSTRY_LENGTH) {
+          return NextResponse.json({ error: "Industry is too long." }, { status: 422 });
+        }
+        if (key === "notes" && value.length > MAX_NOTES_LENGTH) {
+          return NextResponse.json({ error: `Notes must be ${MAX_NOTES_LENGTH} characters or fewer.` }, { status: 422 });
+        }
+        if (key === "account_owner" && value.length > MAX_ACCOUNT_OWNER_LENGTH) {
+          return NextResponse.json({ error: "Account owner name is too long." }, { status: 422 });
+        }
+      }
       updates[key] = value;
     }
   }
@@ -78,7 +99,12 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   if ("tags" in body) {
     const tags = normalizeTags(body.tags);
-    if (tags === null) return NextResponse.json({ error: "Tags must be a list of text values." }, { status: 400 });
+    if (tags === null) {
+      return NextResponse.json(
+        { error: `Tags must be a list of text values (max ${MAX_TAG_COUNT} tags, each max ${MAX_TAG_LENGTH} characters).` },
+        { status: 400 }
+      );
+    }
     updates.tags = tags;
   }
 

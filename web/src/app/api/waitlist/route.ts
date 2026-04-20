@@ -81,7 +81,8 @@ export async function POST(req: NextRequest) {
     .insert({
       email,
       role: role || null,
-      source: req.headers.get("referer") ?? "direct",
+      // Cap referer at 500 chars before persisting — header is user-controlled
+      source: (req.headers.get("referer") ?? "direct").slice(0, 500),
       ip_address: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     });
 

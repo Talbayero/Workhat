@@ -161,9 +161,9 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (insertErr || !entry) {
-    console.error("[from-edit] insert failed:", insertErr);
+    console.error("[from-edit] insert failed:", insertErr?.message ?? "No entry returned");
     return NextResponse.json(
-      { error: insertErr?.message ?? "Failed to save knowledge entry." },
+      { error: "Failed to save knowledge entry." },
       { status: 500 }
     );
   }

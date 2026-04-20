@@ -10,6 +10,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_ORG_NAME_LENGTH = 200;
+const MAX_FROM_NAME_LENGTH = 100;
 
 function normalizeOptionalString(value: unknown) {
   if (value == null) return null;
@@ -92,6 +94,9 @@ export async function PATCH(req: NextRequest) {
   if ("name" in body) {
     const name = normalizeOptionalString(body.name);
     if (!name) return NextResponse.json({ error: "Organization name cannot be empty." }, { status: 400 });
+    if (name.length > MAX_ORG_NAME_LENGTH) {
+      return NextResponse.json({ error: "Organization name is too long." }, { status: 422 });
+    }
 
     const { error } = await supabase
       .from("organizations")
@@ -116,7 +121,13 @@ export async function PATCH(req: NextRequest) {
   if ("fromName" in body) {
     const fromName = normalizeOptionalString(body.fromName);
     if (fromName === undefined) return NextResponse.json({ error: "From name must be text." }, { status: 400 });
-    channelUpdates.from_name = fromName ?? "";
+    if (fromName && fromName.length > MAX_FROM_NAME_LENGTH) {
+      return NextResponse.json({ error: "From name is too long." }, { status: 422 });
+    }
+    // Strip CRLF to prevent email From header injection
+    // e.g. "Name\r\nBcc: attacker@evil.com" could split the header
+    const sanitizedFromName = (fromName ?? "").replace(/[\r\n]/g, " ").trim();
+    channelUpdates.from_name = sanitizedFromName;
   }
 
   if ("timezone" in body) {

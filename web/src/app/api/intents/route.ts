@@ -9,6 +9,11 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
 ───────────────────────────────────────────── */
 
 const VALID_PRIORITY_LEVELS = new Set(["high", "normal", "low"]);
+const MAX_INTENT_NAME_LENGTH = 80;
+const MAX_COLOR_LENGTH = 20;
+const MAX_SKILL_REQUIRED_LENGTH = 80;
+const MAX_KEYWORD_COUNT = 50;
+const MAX_KEYWORD_LENGTH = 50;
 
 function normalizeKeywords(value: unknown) {
   if (value == null) return [];
@@ -16,7 +21,10 @@ function normalizeKeywords(value: unknown) {
     return null;
   }
 
-  return [...new Set(value.map((keyword) => keyword.trim()).filter(Boolean))];
+  const keywords = [...new Set(value.map((keyword) => (keyword as string).trim()).filter(Boolean))];
+  if (keywords.length > MAX_KEYWORD_COUNT) return null;
+  if (keywords.some((keyword) => keyword.length > MAX_KEYWORD_LENGTH)) return null;
+  return keywords;
 }
 
 function normalizeOptionalString(value: unknown) {
@@ -75,15 +83,18 @@ export async function POST(req: NextRequest) {
 
   const name = normalizeOptionalString(body.name);
   if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
+  if (name.length > MAX_INTENT_NAME_LENGTH) return NextResponse.json({ error: "Intent name is too long." }, { status: 422 });
 
   const color = normalizeOptionalString(body.color);
   if (color === undefined) return NextResponse.json({ error: "color must be text" }, { status: 400 });
+  if (color && color.length > MAX_COLOR_LENGTH) return NextResponse.json({ error: "Color value is too long." }, { status: 422 });
 
   const skillRequired = normalizeOptionalString(body.skill_required);
   if (skillRequired === undefined) return NextResponse.json({ error: "skill_required must be text" }, { status: 400 });
+  if (skillRequired && skillRequired.length > MAX_SKILL_REQUIRED_LENGTH) return NextResponse.json({ error: "Skill name is too long." }, { status: 422 });
 
   const keywords = normalizeKeywords(body.keywords);
-  if (keywords === null) return NextResponse.json({ error: "keywords must be a list of text values" }, { status: 400 });
+  if (keywords === null) return NextResponse.json({ error: `keywords must be a list of text values (max ${MAX_KEYWORD_COUNT}, each max ${MAX_KEYWORD_LENGTH} characters)` }, { status: 400 });
 
   const priorityOrder = body.priority_order;
   if (priorityOrder !== undefined && (typeof priorityOrder !== "number" || !Number.isFinite(priorityOrder))) {
