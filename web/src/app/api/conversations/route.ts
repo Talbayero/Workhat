@@ -174,13 +174,15 @@ export async function POST(req: NextRequest) {
     }
   } else {
     const rawName = contactName || contactEmail.split("@")[0];
-    const [firstName, ...rest] = rawName.split(" ");
+    const [firstPart, ...rest] = rawName.split(" ");
+    const firstName = firstPart.slice(0, 100);
+    const lastName = rest.join(" ").slice(0, 100);
     const { data: newContact, error: contactErr } = await supabase
       .from("contacts")
       .insert({
         org_id: orgId,
         first_name: firstName,
-        last_name: rest.join(" ") || "",
+        last_name: lastName,
         full_name: rawName,
         email: contactEmail,
         status: "active",
@@ -292,7 +294,7 @@ export async function POST(req: NextRequest) {
   const conversationId = conversation.id;
 
   // 5. Create the opening inbound message
-  const messageAuthorName = contactName || contactEmail.split("@")[0];
+  const messageAuthorName = (contactName || contactEmail.split("@")[0]).slice(0, 100);
   const { error: messageErr } = await supabase.from("messages").insert({
     org_id: orgId,
     conversation_id: conversationId,

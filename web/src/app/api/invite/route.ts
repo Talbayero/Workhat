@@ -37,7 +37,7 @@ function validateBody(raw: unknown): InviteBody | null {
         obj.emails
           .filter((e): e is string => typeof e === "string")
           .map((email) => email.trim().toLowerCase())
-          .filter((email) => EMAIL_RE.test(email))
+          .filter((email) => EMAIL_RE.test(email) && email.length <= 254)
       )].slice(0, MAX_INVITES_PER_REQUEST)
     : [];
 
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
     const { error: insertErr } = await adminClient.from("users").insert({
       org_id: orgId,
       auth_user_id: null, // filled in when they accept the invite
-      full_name: email.split("@")[0],
+      full_name: email.split("@")[0].slice(0, 100),
       email,
       role,
       status: "pending",
