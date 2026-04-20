@@ -72,10 +72,11 @@ function CallbackHandler() {
             .update({
               auth_user_id: user.id,
               status: "active",
-              full_name:
-                user.user_metadata?.full_name ??
+              full_name: (
+                (user.user_metadata?.full_name as string | undefined) ??
                 user.email?.split("@")[0] ??
-                "Team member",
+                "Team member"
+              ).slice(0, 100),
             })
             .eq("id", (pending as { id: string }).id);
 

@@ -85,6 +85,9 @@ export function applyApiGatewayHeaders(response: NextResponse) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // Ensure HSTS is present even on gateway-rejected responses (rate-limited,
+  // blacklisted, etc.) that bypass the next.config.ts header layer.
+  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   response.headers.set("X-Work-Hat-Gateway", "active");
   return response;
 }
