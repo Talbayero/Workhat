@@ -158,7 +158,9 @@ async function ensureContactAndCompany({
   fromName: string;
   fromEmail: string;
 }) {
-  const [firstName, ...restName] = fromName.split(" ");
+  // Cap at the same limits as the contacts API route.
+  const safeName = fromName.slice(0, 100);
+  const [firstName, ...restName] = safeName.split(" ");
   const { data: existingContact, error: existingContactError } = await db
     .from("contacts")
     .select("id, company_id")
@@ -185,7 +187,7 @@ async function ensureContactAndCompany({
         org_id: orgId,
         first_name: firstName || fromName,
         last_name: restName.join(" "),
-        full_name: fromName,
+        full_name: safeName,
         email: fromEmail,
         status: "active",
         last_activity_at: new Date().toISOString(),
@@ -214,7 +216,8 @@ async function ensureContactAndCompany({
       const companyName = domain
         .split(".")[0]
         .replace(/-/g, " ")
-        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+        .replace(/\b\w/g, (letter) => letter.toUpperCase())
+        .slice(0, 200);
       const { data: company, error: companyError } = await db
         .from("companies")
         .insert({
@@ -275,10 +278,13 @@ async function importMessage({
   }
 
   const from = parseEmailAddress(getHeader(message, "From"));
-  const subject = getHeader(message, "Subject") || "(no subject)";
-  const rfcMessageId = getHeader(message, "Message-ID") || null;
+  // Cap email-derived header strings before any DB write.
+  from.name  = from.name.slice(0, 100);
+  from.email = from.email.slice(0, 254);
+  const subject = (getHeader(message, "Subject") || "(no subject)").slice(0, 500);
+  const rfcMessageId = (getHeader(message, "Message-ID") || null)?.slice(0, 500) ?? null;
   const { text, html } = extractBodies(message.payload);
-  const bodyText = stripQuotedReply(text || (html ? stripHtml(html) : message.snippet ?? ""));
+  const bodyText = stripQuotedReply(text || (html ? stripHtml(html) : message.snippet ?? "")).slice(0, 100_000);
   const preview = bodyText.replace(/\s+/g, " ").trim().slice(0, 160);
   const intent = classifyIntent(subject, bodyText);
   const riskLevel = scoreRisk(subject, bodyText);

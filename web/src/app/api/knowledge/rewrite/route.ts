@@ -36,8 +36,11 @@ You will receive the category and raw draft. Rewrite the content according to th
 Respond with ONLY the rewritten content. No preamble, no explanation.`.trim();
 
 export async function POST(req: NextRequest) {
-  const appUser = await getCurrentAppUser({ label: "knowledge/rewrite", select: "id, org_id" });
+  const appUser = await getCurrentAppUser({ label: "knowledge/rewrite", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!["admin", "manager"].includes(appUser.role)) {
+    return NextResponse.json({ error: "Only admins and managers can rewrite knowledge entries." }, { status: 403 });
+  }
 
   let body: Record<string, unknown>;
   try {

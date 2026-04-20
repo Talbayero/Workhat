@@ -22,10 +22,16 @@ function validateBody(raw: unknown): CreateOrgBody | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.orgName !== "string" || !obj.orgName.trim()) return null;
+  const orgName = obj.orgName.trim().slice(0, 200);
+  if (!orgName) return null;
   return {
-    orgName: obj.orgName.trim(),
-    supportEmail: typeof obj.supportEmail === "string" ? obj.supportEmail.trim() : undefined,
-    timezone: typeof obj.timezone === "string" ? obj.timezone.trim() : undefined,
+    orgName,
+    supportEmail: typeof obj.supportEmail === "string"
+      ? obj.supportEmail.trim().slice(0, 254)
+      : undefined,
+    timezone: typeof obj.timezone === "string"
+      ? obj.timezone.trim().slice(0, 100)
+      : undefined,
   };
 }
 
@@ -185,14 +191,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!usingAdmin) {
-      // Log full details server-side; return a generic message to the client
+      // Log full infra details server-side only — never expose to the client.
       console.error(
         "[org/create] bootstrap RPC unavailable and no admin client configured:",
-        adminState.reason, rpcAttempt.error?.message
+        adminState.reason, rpcAttempt.error?.message,
+        "| hint:", onboardingRepairHint(adminState.reason, rpcAttempt.error?.message)
       );
       return NextResponse.json({
         error: "Organization setup is temporarily unavailable. Please try again or contact support.",
-        hint: onboardingRepairHint(adminState.reason, rpcAttempt.error?.message),
       }, { status: 500 });
     }
 
@@ -218,10 +224,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (orgErr || !org) {
-      console.error("[org/create] org insert failed:", orgErr?.message, orgErr?.code, orgErr?.details);
+      console.error("[org/create] org insert failed:", orgErr?.message, orgErr?.code, orgErr?.details,
+        "| hint:", onboardingRepairHint(adminState.reason, rpcAttempt.error?.message));
       return NextResponse.json({
         error: "Failed to create organization. Please try again.",
-        hint: onboardingRepairHint(adminState.reason, rpcAttempt.error?.message),
       }, { status: 500 });
     }
 

@@ -103,6 +103,9 @@ export async function PATCH(req: NextRequest) {
       if (typeof sk.name !== "string" || !sk.name.trim()) {
         return NextResponse.json({ error: "Each skill must have a non-empty name" }, { status: 422 });
       }
+      if (sk.name.trim().length > 80) {
+        return NextResponse.json({ error: "Skill names must be 80 characters or fewer" }, { status: 422 });
+      }
       if (typeof sk.priority !== "number" || !Number.isInteger(sk.priority) || sk.priority < 1 || sk.priority > 5) {
         return NextResponse.json({ error: "Skill priority must be an integer between 1 and 5" }, { status: 422 });
       }
