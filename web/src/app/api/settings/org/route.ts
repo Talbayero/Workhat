@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { logAudit } from "@/lib/security/audit-logger";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_ORG_NAME_LENGTH = 200;
@@ -179,6 +180,20 @@ export async function PATCH(req: NextRequest) {
       }
     }
   }
+
+  await logAudit({
+    action: "org.settings_updated",
+    orgId: caller.org_id,
+    actorId: caller.id,
+    actorRole: caller.role,
+    resourceType: "organization",
+    resourceId: caller.org_id,
+    newValues: {
+      ...("name" in body ? { name: body.name } : {}),
+      ...(Object.keys(channelUpdates).length > 0 ? channelUpdates : {}),
+    },
+    req,
+  });
 
   return NextResponse.json({ ok: true });
 }

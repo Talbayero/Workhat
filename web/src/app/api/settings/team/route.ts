@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { logAudit } from "@/lib/security/audit-logger";
 
 const VALID_ROLES = new Set(["agent", "manager", "qa_reviewer", "admin"]);
 
@@ -200,6 +201,18 @@ export async function PATCH(req: NextRequest) {
 
   if (updateError) return NextResponse.json({ error: "Failed to update role" }, { status: 500 });
 
+  await logAudit({
+    action: "user.role_changed",
+    orgId: caller.org_id,
+    actorId: caller.id,
+    actorRole: caller.role,
+    resourceType: "user",
+    resourceId: userId,
+    oldValues: { role: target.role },
+    newValues: { role: body.role },
+    req,
+  });
+
   return NextResponse.json({ ok: true });
 }
 
@@ -254,6 +267,17 @@ export async function DELETE(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: "Failed to remove user" }, { status: 500 });
   }
+
+  await logAudit({
+    action: "user.deleted",
+    orgId: caller.org_id,
+    actorId: caller.id,
+    actorRole: caller.role,
+    resourceType: "user",
+    resourceId: userId,
+    oldValues: { role: target.role },
+    req,
+  });
 
   return NextResponse.json({ ok: true });
 }

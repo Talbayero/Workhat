@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { logAudit } from "@/lib/security/audit-logger";
 
 const VALID_CATEGORIES = new Set(["policy", "sop", "tone", "product", "escalation"]);
 
@@ -241,6 +242,15 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
     console.error("[knowledge/:id] entry delete failed:", error.message);
     return NextResponse.json({ error: "Unable to delete this knowledge entry." }, { status: 500 });
   }
+
+  await logAudit({
+    action: "knowledge.deleted",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "knowledge_entry",
+    resourceId: entryId,
+  });
 
   return NextResponse.json({ ok: true });
 }

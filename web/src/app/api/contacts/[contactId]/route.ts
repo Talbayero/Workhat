@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* ─────────────────────────────────────────────
    PATCH  /api/contacts/:id — update contact
@@ -293,6 +294,15 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
   if (!data) return NextResponse.json({ error: "Contact not found for this workspace." }, { status: 404 });
 
   await refreshCompanyContactCount(supabase, appUser.org_id, data.company_id ?? null);
+
+  await logAudit({
+    action: "contact.deleted",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "contact",
+    resourceId: data.id,
+  });
 
   return NextResponse.json({ ok: true });
 }

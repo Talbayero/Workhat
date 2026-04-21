@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { logAudit } from "@/lib/security/audit-logger";
 
 type InviteBody = {
   emails: string[];
@@ -169,6 +170,16 @@ export async function POST(req: NextRequest) {
       results.push({ email, status: "error" });
     } else {
       results.push({ email, status: "invited" });
+      await logAudit({
+        action: "user.invite_sent",
+        orgId,
+        actorId: caller.id,
+        actorRole: caller.role,
+        resourceType: "user",
+        resourceLabel: email,
+        newValues: { email, role },
+        req,
+      });
     }
   }
 
