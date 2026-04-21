@@ -3,6 +3,7 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* ─────────────────────────────────────────────
    POST /api/conversations
@@ -310,6 +311,17 @@ export async function POST(req: NextRequest) {
     console.error("[conversations] opening message create failed:", messageErr.message);
     return NextResponse.json({ error: "Failed to create opening message." }, { status: 500 });
   }
+
+  await logAudit({
+    action: "conversation.created",
+    orgId,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "conversation",
+    resourceId: conversationId,
+    newValues: { subject, intent, contactId, companyId },
+    req,
+  });
 
   return NextResponse.json({ conversationId, contactId, companyId }, { status: 201 });
 }

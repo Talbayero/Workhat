@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* POST /api/companies — create company */
 
@@ -89,6 +90,17 @@ export async function POST(req: NextRequest) {
     console.error("[companies] company insert failed:", error?.message ?? "No company returned");
     return NextResponse.json({ error: "Unable to create this company." }, { status: 500 });
   }
+
+  await logAudit({
+    action: "company.created",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "company",
+    resourceId: data.id,
+    newValues: { name, domain, industry, tier },
+    req,
+  });
 
   return NextResponse.json({ company: { id: data.id } }, { status: 201 });
 }

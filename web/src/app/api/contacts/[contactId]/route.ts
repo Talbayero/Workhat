@@ -259,6 +259,16 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     await refreshCompanyContactCount(supabase, appUser.org_id, nextCompanyId);
   }
 
+  await logAudit({
+    action: "contact.updated",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "contact",
+    resourceId: contactId,
+    newValues: updates,
+  });
+
   return NextResponse.json({ ok: true });
 }
 

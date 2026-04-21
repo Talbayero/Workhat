@@ -8,6 +8,13 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Email connection metadata (token expiry, history IDs, sync errors) is sensitive
+  // infrastructure detail. Restrict to admin and manager — agents and qa_reviewers
+  // have no legitimate need to see OAuth connection state.
+  if (!["admin", "manager"].includes(appUser.role)) {
+    return NextResponse.json({ error: "Only admins and managers can view email connections." }, { status: 403 });
+  }
+
   let db: ReturnType<typeof createAdminClient>;
   try {
     db = createAdminClient();

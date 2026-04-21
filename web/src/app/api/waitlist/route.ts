@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   const email = body.email.trim().toLowerCase();
-  if (!EMAIL_RE.test(email)) {
+  if (email.length > 254 || !EMAIL_RE.test(email)) {
     return NextResponse.json({ error: "Valid email is required." }, { status: 400 });
   }
 

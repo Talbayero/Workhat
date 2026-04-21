@@ -22,7 +22,9 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
      }>
    }
 
-   Access: any authenticated agent (read-only).
+   Access: admin and manager only.
+   Rationale: each call spawns up to MAX_PATTERNS parallel LLM completions;
+   leaving it open to all agents creates an unauthenticated DoS/cost vector.
    Threshold: patterns with >= MIN_OCCURRENCES edits in the window.
    Performance: LLM calls are made in parallel — up to MAX_PATTERNS.
 ───────────────────────────────────────────── */
@@ -34,6 +36,10 @@ const SAMPLE_REASONS = 5;   // reasons to pass into the LLM prompt
 export async function GET() {
   const appUser = await getCurrentAppUser({ label: "knowledge/gaps", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!["admin", "manager"].includes(appUser.role)) {
+    return NextResponse.json({ error: "Only admins and managers can view knowledge gap suggestions." }, { status: 403 });
+  }
 
   let admin: ReturnType<typeof createAdminClient>;
   try {

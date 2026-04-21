@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* PATCH /api/conversations/:id — update status, priority, assignee, tags */
 
@@ -112,6 +113,16 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ error: "Unable to update this conversation." }, { status: 500 });
   }
   if (!data) return NextResponse.json({ error: "Conversation not found for this workspace." }, { status: 404 });
+
+  await logAudit({
+    action: "conversation.updated",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "conversation",
+    resourceId: conversationId,
+    newValues: updates,
+  });
 
   return NextResponse.json({ ok: true });
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* PATCH/DELETE /api/companies/:id */
 
@@ -160,6 +161,15 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
   }
 
   if (!data) return NextResponse.json({ error: "Company not found for this workspace." }, { status: 404 });
+
+  await logAudit({
+    action: "company.deleted",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "company",
+    resourceId: data.id,
+  });
 
   return NextResponse.json({ ok: true });
 }

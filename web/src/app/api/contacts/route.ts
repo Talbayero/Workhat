@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* ─────────────────────────────────────────────
    POST /api/contacts — create contact
@@ -164,6 +165,17 @@ export async function POST(req: NextRequest) {
   }
 
   await refreshCompanyContactCount(supabase, appUser.org_id, companyId);
+
+  await logAudit({
+    action: "contact.created",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "contact",
+    resourceId: data.id,
+    newValues: { email, firstName, lastName },
+    req,
+  });
 
   return NextResponse.json({ contact: { id: data.id } }, { status: 201 });
 }

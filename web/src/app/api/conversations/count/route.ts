@@ -9,7 +9,7 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
 
 export async function GET() {
   const appUser = await getCurrentAppUser({ label: "conversations/count", select: "org_id" });
-  if (!appUser) return NextResponse.json({ open: 0 });
+  if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const supabase = await createClient();
   const { count, error } = await supabase
