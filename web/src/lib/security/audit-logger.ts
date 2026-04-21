@@ -63,6 +63,8 @@ export type AuditAction =
   | "knowledge.updated"
   | "knowledge.deleted"
   // Conversations
+  | "conversation.created"
+  | "conversation.updated"
   | "conversation.resolved"
   | "conversation.archived"
   | "conversation.assigned"
