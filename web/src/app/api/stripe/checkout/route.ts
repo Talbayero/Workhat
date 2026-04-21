@@ -26,6 +26,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
     }
 
+    if (!["admin", "manager"].includes(appUser.role)) {
+      return NextResponse.json({ error: "Only admins and managers can manage billing." }, { status: 403 });
+    }
+
     const raw = appUser.organizations;
     const org = Array.isArray(raw) ? raw[0] : raw;
     if (!org) {

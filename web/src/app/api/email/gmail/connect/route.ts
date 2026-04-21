@@ -41,6 +41,12 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  if (!["admin", "manager"].includes(appUser.role)) {
+    return connectorRedirect(req, {
+      emailError: "Only admins and managers can connect shared inboxes.",
+    });
+  }
+
   try {
     const state = randomBytes(32).toString("base64url");
     const authUrl = buildGmailAuthUrl({
