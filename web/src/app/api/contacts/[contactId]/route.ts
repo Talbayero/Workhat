@@ -126,6 +126,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   if ("email" in body) {
     const email = normalizeOptionalString(body.email);
     if (email === undefined) return NextResponse.json({ error: "Email must be text." }, { status: 400 });
+    if (email && email.length > 254) return NextResponse.json({ error: "Email address is too long." }, { status: 422 });
     if (email && !EMAIL_RE.test(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     updates.email = email?.toLowerCase() || null;
   }

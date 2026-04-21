@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
   const lastName = rawLastName ?? "";
   const email = rawEmail?.toLowerCase() ?? null;
 
+  if (email && email.length > 254) return NextResponse.json({ error: "Email address is too long." }, { status: 422 });
   if (email && !EMAIL_RE.test(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
   if (tier && !CONTACT_TIERS.has(tier)) return NextResponse.json({ error: "Invalid contact tier." }, { status: 400 });
 

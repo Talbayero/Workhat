@@ -114,6 +114,7 @@ export async function PATCH(req: NextRequest) {
   if ("supportEmail" in body) {
     const supportEmail = normalizeOptionalString(body.supportEmail);
     if (supportEmail === undefined) return NextResponse.json({ error: "Support email must be text." }, { status: 400 });
+    if (supportEmail && supportEmail.length > 254) return NextResponse.json({ error: "Support email is too long." }, { status: 422 });
     if (supportEmail && !EMAIL_RE.test(supportEmail)) return NextResponse.json({ error: "Enter a valid support email." }, { status: 400 });
     channelUpdates.support_email = supportEmail ?? "";
   }

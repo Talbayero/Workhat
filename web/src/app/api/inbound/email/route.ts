@@ -109,6 +109,18 @@ export async function POST(req: NextRequest) {
   if (typeof payload.TextBody === "string") {
     payload.TextBody = payload.TextBody.slice(0, 100_000);
   }
+  // Cap RFC message-id fields. RFC 2822 allows long Message-IDs in theory;
+  // cap them so they can't be used to inflate DB rows or poison metadata JSON.
+  if (typeof payload.MessageID === "string") {
+    payload.MessageID = payload.MessageID.slice(0, 500);
+  }
+  if (typeof payload.InReplyTo === "string") {
+    payload.InReplyTo = payload.InReplyTo.slice(0, 500);
+  }
+  // ReplyTo is used as an email header value — RFC 5321 address max 254 chars.
+  if (typeof payload.ReplyTo === "string") {
+    payload.ReplyTo = payload.ReplyTo.slice(0, 254);
+  }
 
   const supabase = createAdminClient();
 
@@ -170,6 +182,12 @@ export async function POST(req: NextRequest) {
   if (!senderEmail || !senderEmail.includes("@")) {
     return NextResponse.json({ error: "Sender email is required" }, { status: 400 });
   }
+  // RFC 5321 caps email addresses at 254 chars. Reject anything longer so it
+  // cannot be persisted as a contacts.email value.
+  if (senderEmail.length > 254) {
+    console.warn("[inbound] Sender email exceeds 254 chars — skipping");
+    return NextResponse.json({ ok: true, skipped: "invalid_sender_email" });
+  }
 
   // Cap sender name — From header is fully attacker-controlled.
   const senderName = (payload.FromFull?.Name?.trim() || senderEmail.split("@")[0]).slice(0, 100);
@@ -227,7 +245,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 4. Find or create company from sender domain ─────────────────────────
-  const senderDomain = senderEmail.split("@")[1] ?? "";
+  // RFC 1035 §2.3.4 caps the full domain name at 255 chars. Trim before any
+  // DB lookup or insert so the value never exceeds the allowed column size.
+  const senderDomain = (senderEmail.split("@")[1] ?? "").slice(0, 255);
   let companyId: string | null = null;
 
   // Skip personal email providers — they're not companies
