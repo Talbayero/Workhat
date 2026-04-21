@@ -17,7 +17,7 @@ create type correction_status as enum ('pending_review', 'applied', 'dismissed')
 
 create table if not exists intent_corrections (
   id                  uuid primary key default gen_random_uuid(),
-  org_id              uuid not null references orgs(id) on delete cascade,
+  org_id              uuid not null references organizations(id) on delete cascade,
   conversation_id     uuid not null references conversations(id) on delete cascade,
 
   -- What the system auto-classified vs what the agent corrected it to

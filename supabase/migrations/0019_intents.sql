@@ -10,7 +10,7 @@ create type intent_priority_level as enum ('high', 'normal', 'low');
 
 create table if not exists intents (
   id               uuid primary key default gen_random_uuid(),
-  org_id           uuid not null references orgs(id) on delete cascade,
+  org_id           uuid not null references organizations(id) on delete cascade,
   name             text not null,
   color            text not null default '#78a17a',   -- hex colour for the pill
   keywords         text[] not null default '{}',       -- trigger words / phrases
