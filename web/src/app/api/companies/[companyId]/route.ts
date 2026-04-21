@@ -128,6 +128,16 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   if (!data) return NextResponse.json({ error: "Company not found for this workspace." }, { status: 404 });
 
+  await logAudit({
+    action: "company.updated",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "company",
+    resourceId: companyId,
+    newValues: updates,
+  });
+
   return NextResponse.json({ ok: true });
 }
 

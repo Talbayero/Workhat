@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* ─────────────────────────────────────────────
    GET  /api/knowledge  — list entries for org
@@ -163,6 +164,17 @@ export async function POST(req: NextRequest) {
       if (chunkError) console.warn(`[knowledge] Chunk insert failed for chunk ${i}:`, chunkError.message);
     })
   );
+
+  await logAudit({
+    action: "knowledge.created",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "knowledge_entry",
+    resourceId: entry.id,
+    newValues: { title, category },
+    req,
+  });
 
   return NextResponse.json({ entry: { id: entry.id } }, { status: 201 });
 }

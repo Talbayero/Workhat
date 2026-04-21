@@ -167,6 +167,16 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ error: "Unable to update this knowledge entry." }, { status: 500 });
   }
 
+  await logAudit({
+    action: "knowledge.updated",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "knowledge_entry",
+    resourceId: entryId,
+    newValues: updates,
+  });
+
   // If body changed, re-chunk and re-embed
   if ("body" in updates) {
     const content = updates.body as string;

@@ -146,6 +146,17 @@ export async function PATCH(req: NextRequest) {
 
     if (updateError) return NextResponse.json({ error: "Failed to update skills" }, { status: 500 });
 
+    await logAudit({
+      action: "user.updated",
+      orgId: caller.org_id,
+      actorId: caller.id,
+      actorRole: caller.role,
+      resourceType: "user",
+      resourceId: userId,
+      newValues: { skills: normalizedSkills },
+      req,
+    });
+
     return NextResponse.json({ ok: true });
   }
 
