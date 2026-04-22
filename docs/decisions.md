@@ -405,4 +405,30 @@ Capabilities let the product evolve without exposing complex permission manageme
 - Routes can migrate gradually from role arrays to capability helpers.
 - The helper falls back to built-in presets if the migration is not deployed yet, making deploy order safe.
 
+---
+
+## ADR-016 — Upstash Redis for API Rate Limiting
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat uses Upstash Redis for API gateway rate-limit counters and dynamic blacklist entries. In-memory counters are not acceptable for production request protection.
+
+### Context
+
+The app runs on Vercel serverless/edge infrastructure. Process memory can reset on cold starts and does not coordinate across concurrent regions or instances, so a `Map`-based limiter could undercount abusive traffic and over-rely on a single warm process.
+
+### Rationale
+
+Upstash Redis is serverless-friendly, available through the Vercel Marketplace, and cost-effective for small counter workloads. It preserves the existing route-group policy model while making the store durable enough for AI endpoints, public forms, auth-sensitive APIs, and webhooks.
+
+### Consequences
+
+- Production deployments require `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
+- Local development fails open by default so developers are not blocked by missing Redis.
+- Trusted system webhooks are rate limited but excluded from dynamic blacklisting to avoid blocking provider retry storms.
+- Per-policy thresholds remain configurable through environment variables.
+
 *Last updated: April 2026*

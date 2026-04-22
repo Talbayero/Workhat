@@ -29,7 +29,7 @@ The application is a single Next.js deployment with three distinct execution con
 
 **Node.js (server components + API routes)** — The bulk of business logic. Server components fetch data directly from Supabase using the server client. API route handlers (`route.ts` files) handle mutations, AI calls, email operations, and webhook ingestion. The Supabase admin client is only used here.
 
-**Next.js Middleware (edge runtime)** — Runs on every request before it reaches any route. Handles the API gateway (rate limiting, IP blacklisting, body-size caps), session cookie refresh, and auth-based routing (unauthenticated redirect, post-login redirect).
+**Next.js Middleware (edge runtime)** — Runs on every request before it reaches any route. Handles the API gateway (Redis-backed rate limiting, IP blacklisting, body-size caps), session cookie refresh, and auth-based routing (unauthenticated redirect, post-login redirect).
 
 ---
 
@@ -291,6 +291,30 @@ Customers see "AI Actions" as their usage metric, not tokens.
 
 Rule: deterministic diff always runs first. LLM classification is only invoked when the diff indicates a meaningful edit.
 
+### API Gateway & Rate Limiting
+
+`lib/security/api-gateway.ts` protects all `/api/*` traffic from middleware. Rate counters and dynamic blacklist entries are stored in Upstash Redis, not process memory, so limits survive Vercel cold starts and scale across function instances.
+
+The gateway runs in two phases:
+
+1. **Pre-auth phase** — static blacklist, suspicious middleware headers, HTTP method checks, body-size limits, and IP-based limits for public/trusted routes such as waitlist, inbound email, Gmail push, and Stripe webhook.
+2. **Post-auth phase** — user-aware limits after Supabase has verified the session. Authenticated route groups use user identity when available and fall back to IP for unauthenticated API callers. The policy model also supports org identity when a caller passes `orgId`.
+
+Route policy groups:
+
+| Policy | Routes | Identity | Default |
+|---|---|---|---|
+| `public-waitlist` | `/api/waitlist` | IP | 8/min |
+| `inbound-email-webhook` | `/api/inbound/email` | IP, trusted system | 120/min |
+| `gmail-push-webhook` | `/api/email/gmail/push` | IP, trusted system | 240/min |
+| `stripe-webhook` | `/api/stripe/webhook` | IP, trusted system | 120/min |
+| `expensive-ai` | `/api/ai/*`, AI-backed knowledge/intent routes | Org/user/IP | 30/min |
+| `knowledge-gaps` | `/api/knowledge/gaps` | Org/user/IP | 6/min |
+| `email-connector` | `/api/email/*` except Gmail push | User/IP | 60/min |
+| `api-default` | Remaining API routes | User/IP | 180/min |
+
+Trusted system webhooks are rate limited but do not trigger dynamic blacklisting. This avoids accidentally blocking Stripe, Gmail Pub/Sub, or inbound email providers during retry storms. When Redis is missing or unavailable, production API traffic fails closed with `rate_limit_store_unavailable`; local development and trusted webhooks fail open by default.
+
 ---
 
 ## Environment Variables
@@ -338,7 +362,19 @@ GMAIL_PUSH_TOKEN=
 # Security
 SECURITY_IP_BLACKLIST=              # Comma-separated IP list
 SECURITY_DYNAMIC_BLACKLIST_TTL_MS=
+UPSTASH_REDIS_REST_URL=             # Required for production API rate limiting
+UPSTASH_REDIS_REST_TOKEN=           # Required for production API rate limiting
+SECURITY_RATE_LIMIT_FAIL_OPEN=      # Optional. Default: false in production, true locally/trusted webhooks
+SECURITY_RATE_LIMIT_KEY_PREFIX=     # Optional Redis key namespace, default workhat:rate:v1
 TURNSTILE_SECRET_KEY=               # Cloudflare Turnstile for forms
+
+# Optional per-policy overrides
+# SECURITY_RATE_LIMIT_<POLICY_ID>_WINDOW_MS=
+# SECURITY_RATE_LIMIT_<POLICY_ID>_MAX_REQUESTS=
+# SECURITY_RATE_LIMIT_<POLICY_ID>_BLACKLIST_AFTER=
+#
+# Example:
+# SECURITY_RATE_LIMIT_EXPENSIVE_AI_MAX_REQUESTS=20
 
 # Legacy — not active in V1
 POSTMARK_SERVER_TOKEN=

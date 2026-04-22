@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { Redis } from "@upstash/redis";
 import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
+
+type RateLimitKeyMode = "ip" | "user-or-ip" | "org-user-or-ip";
 
 type RoutePolicy = {
   id: string;
@@ -9,37 +12,75 @@ type RoutePolicy = {
   blacklistAfter: number;
   captchaAfter?: number;
   maxBodyBytes?: number;
+  keyMode: RateLimitKeyMode;
+  trustedSystem?: boolean;
+  dynamicBlacklist?: boolean;
 };
 
-type RateBucket = {
+type GatewayContext = {
+  phase?: "pre-auth" | "post-auth";
+  userId?: string | null;
+  orgId?: string | null;
+};
+
+type RateLimitResult = {
+  allowed: boolean;
   count: number;
-  violations: number;
   resetAt: number;
+  remaining: number;
+  retryAfterSeconds: number;
+  limitedBy: string;
 };
 
-type BlacklistEntry = {
-  until: number;
-  reason: string;
+type RedisState = {
+  client: Redis | null;
+  reason?: string;
 };
 
 const minute = 60_000;
 const dynamicBlacklistTtlMs = Number(process.env.SECURITY_DYNAMIC_BLACKLIST_TTL_MS ?? 15 * minute);
-
-const buckets = new Map<string, RateBucket>();
-const dynamicBlacklist = new Map<string, BlacklistEntry>();
+const keyPrefix = process.env.SECURITY_RATE_LIMIT_KEY_PREFIX || "workhat:rate:v1";
+const productionRuntime = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
 
 const POLICIES: Record<string, RoutePolicy> = {
-  "public-waitlist":       { id: "public-waitlist",       methods: ["POST"], windowMs: minute, maxRequests: 8,   captchaAfter: 3, blacklistAfter: 3, maxBodyBytes: 8_192 },
-  "inbound-email-webhook": { id: "inbound-email-webhook", methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 4, maxBodyBytes: 2_000_000 },
-  "gmail-push-webhook":    { id: "gmail-push-webhook",    methods: ["POST"], windowMs: minute, maxRequests: 240, blacklistAfter: 4, maxBodyBytes: 64_000 },
-  "stripe-webhook":        { id: "stripe-webhook",        methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 4, maxBodyBytes: 256_000 },
+  "public-waitlist":       { id: "public-waitlist",       methods: ["POST"], windowMs: minute, maxRequests: 8,   captchaAfter: 3, blacklistAfter: 3, keyMode: "ip", maxBodyBytes: 8_192 },
+  "inbound-email-webhook": { id: "inbound-email-webhook", methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 0, keyMode: "ip", trustedSystem: true, dynamicBlacklist: false, maxBodyBytes: 2_000_000 },
+  "gmail-push-webhook":    { id: "gmail-push-webhook",    methods: ["POST"], windowMs: minute, maxRequests: 240, blacklistAfter: 0, keyMode: "ip", trustedSystem: true, dynamicBlacklist: false, maxBodyBytes: 64_000 },
+  "stripe-webhook":        { id: "stripe-webhook",        methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 0, keyMode: "ip", trustedSystem: true, dynamicBlacklist: false, maxBodyBytes: 256_000 },
   // All LLM-backed routes (30 req/min). knowledge/gaps gets its own tighter cap below.
-  "expensive-ai":          { id: "expensive-ai",          windowMs: minute, maxRequests: 30,  blacklistAfter: 3, maxBodyBytes: 64_000 },
-  "email-connector":       { id: "email-connector",       windowMs: minute, maxRequests: 60,  blacklistAfter: 3, maxBodyBytes: 128_000 },
-  "api-default":           { id: "api-default",           windowMs: minute, maxRequests: 180, blacklistAfter: 4, maxBodyBytes: 512_000 },
+  "expensive-ai":          { id: "expensive-ai",          windowMs: minute, maxRequests: 30,  blacklistAfter: 3, keyMode: "org-user-or-ip", maxBodyBytes: 64_000 },
+  "email-connector":       { id: "email-connector",       windowMs: minute, maxRequests: 60,  blacklistAfter: 3, keyMode: "user-or-ip", maxBodyBytes: 128_000 },
+  "api-default":           { id: "api-default",           windowMs: minute, maxRequests: 180, blacklistAfter: 4, keyMode: "user-or-ip", maxBodyBytes: 512_000 },
   // knowledge/gaps fires up to 5 parallel LLM calls per request — intentionally tight.
-  "knowledge-gaps":        { id: "knowledge-gaps",        methods: ["GET"], windowMs: minute, maxRequests: 6, blacklistAfter: 2, maxBodyBytes: 0 },
+  "knowledge-gaps":        { id: "knowledge-gaps",        methods: ["GET"], windowMs: minute, maxRequests: 6, blacklistAfter: 2, keyMode: "org-user-or-ip", maxBodyBytes: 0 },
 };
+
+let redisState: RedisState | null = null;
+
+function getRedisState(): RedisState {
+  if (redisState) return redisState;
+
+  const hasUrl = Boolean(process.env.UPSTASH_REDIS_REST_URL);
+  const hasToken = Boolean(process.env.UPSTASH_REDIS_REST_TOKEN);
+  if (!hasUrl || !hasToken) {
+    redisState = {
+      client: null,
+      reason: "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required",
+    };
+    return redisState;
+  }
+
+  try {
+    redisState = { client: Redis.fromEnv() };
+  } catch (error) {
+    redisState = {
+      client: null,
+      reason: error instanceof Error ? error.message : "Unable to initialize Upstash Redis",
+    };
+  }
+
+  return redisState;
+}
 
 function getStaticBlacklist() {
   return new Set(
@@ -59,24 +100,49 @@ export function getClientIp(request: NextRequest) {
   );
 }
 
-function getRoutePolicy(pathname: string): RoutePolicy {
-  if (pathname === "/api/waitlist")                      return POLICIES["public-waitlist"];
-  if (pathname.startsWith("/api/inbound/email"))         return POLICIES["inbound-email-webhook"];
-  if (pathname.startsWith("/api/email/gmail/push"))      return POLICIES["gmail-push-webhook"];
-  if (pathname.startsWith("/api/stripe/webhook"))        return POLICIES["stripe-webhook"];
-  if (pathname.startsWith("/api/ai/"))                   return POLICIES["expensive-ai"];
-  if (pathname.startsWith("/api/email/"))                return POLICIES["email-connector"];
-  // LLM-backed knowledge and intent routes — must be ordered before api-default.
-  // knowledge/gaps fires up to 5 parallel LLM calls per request — tightest cap.
-  if (pathname.startsWith("/api/knowledge/gaps"))        return POLICIES["knowledge-gaps"];
-  if (pathname.startsWith("/api/knowledge/from-edit"))   return POLICIES["expensive-ai"];
-  if (pathname.startsWith("/api/knowledge/rewrite"))     return POLICIES["expensive-ai"];
-  if (pathname.startsWith("/api/intent-corrections"))    return POLICIES["expensive-ai"];
-  return POLICIES["api-default"];
+function envKeyForPolicy(policyId: string, suffix: string) {
+  return `SECURITY_RATE_LIMIT_${policyId.replace(/-/g, "_").toUpperCase()}_${suffix}`;
 }
 
-function gatewayJson(body: Record<string, unknown>, status: number) {
+function numberFromEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function withEnvOverrides(policy: RoutePolicy): RoutePolicy {
+  return {
+    ...policy,
+    windowMs: numberFromEnv(envKeyForPolicy(policy.id, "WINDOW_MS"), policy.windowMs),
+    maxRequests: numberFromEnv(envKeyForPolicy(policy.id, "MAX_REQUESTS"), policy.maxRequests),
+    blacklistAfter: numberFromEnv(envKeyForPolicy(policy.id, "BLACKLIST_AFTER"), policy.blacklistAfter),
+  };
+}
+
+function getRoutePolicy(pathname: string): RoutePolicy {
+  if (pathname === "/api/waitlist")                      return withEnvOverrides(POLICIES["public-waitlist"]);
+  if (pathname.startsWith("/api/inbound/email"))         return withEnvOverrides(POLICIES["inbound-email-webhook"]);
+  if (pathname.startsWith("/api/email/gmail/push"))      return withEnvOverrides(POLICIES["gmail-push-webhook"]);
+  if (pathname.startsWith("/api/stripe/webhook"))        return withEnvOverrides(POLICIES["stripe-webhook"]);
+  if (pathname.startsWith("/api/ai/"))                   return withEnvOverrides(POLICIES["expensive-ai"]);
+  if (pathname.startsWith("/api/email/"))                return withEnvOverrides(POLICIES["email-connector"]);
+  // LLM-backed knowledge and intent routes — must be ordered before api-default.
+  // knowledge/gaps fires up to 5 parallel LLM calls per request — tightest cap.
+  if (pathname.startsWith("/api/knowledge/gaps"))        return withEnvOverrides(POLICIES["knowledge-gaps"]);
+  if (pathname.startsWith("/api/knowledge/from-edit"))   return withEnvOverrides(POLICIES["expensive-ai"]);
+  if (pathname.startsWith("/api/knowledge/rewrite"))     return withEnvOverrides(POLICIES["expensive-ai"]);
+  if (pathname.startsWith("/api/intent-corrections"))    return withEnvOverrides(POLICIES["expensive-ai"]);
+  return withEnvOverrides(POLICIES["api-default"]);
+}
+
+function gatewayJson(body: Record<string, unknown>, status: number, headers?: HeadersInit) {
   const response = NextResponse.json(body, { status });
+  if (headers) {
+    for (const [key, value] of new Headers(headers).entries()) {
+      response.headers.set(key, value);
+    }
+  }
   return applyApiGatewayHeaders(response);
 }
 
@@ -90,25 +156,6 @@ export function applyApiGatewayHeaders(response: NextResponse) {
   response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   response.headers.set("X-Work-Hat-Gateway", "active");
   return response;
-}
-
-function cleanupBlacklist(now: number) {
-  for (const [ip, entry] of dynamicBlacklist.entries()) {
-    if (entry.until <= now) dynamicBlacklist.delete(ip);
-  }
-}
-
-function getBucket(key: string, now: number, policy: RoutePolicy) {
-  const existing = buckets.get(key);
-  if (existing && existing.resetAt > now) return existing;
-
-  const next = {
-    count: 0,
-    violations: existing?.violations ?? 0,
-    resetAt: now + policy.windowMs,
-  };
-  buckets.set(key, next);
-  return next;
 }
 
 function isCaptchaConfigured() {
@@ -140,33 +187,207 @@ async function verifyTurnstile(token: string, ip: string) {
   };
 }
 
-export async function guardApiRequest(request: NextRequest) {
+async function hashKeyPart(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 32);
+}
+
+async function redisKey(kind: string, id: string, value: string) {
+  return `${keyPrefix}:${kind}:${id}:${await hashKeyPart(value)}`;
+}
+
+function shouldFailOpen(policy: RoutePolicy) {
+  if (process.env.SECURITY_RATE_LIMIT_FAIL_OPEN === "true") return true;
+  if (process.env.SECURITY_RATE_LIMIT_FAIL_OPEN === "false") return false;
+  return !productionRuntime || Boolean(policy.trustedSystem);
+}
+
+function rateLimitStoreUnavailable(policy: RoutePolicy, logDetail: string, clientDetail = "Rate limiting is temporarily unavailable.") {
+  console.warn("[api-gateway] Rate limit store unavailable:", logDetail);
+  if (shouldFailOpen(policy)) return null;
+  return gatewayJson({
+    error: "Request protection temporarily unavailable",
+    code: "rate_limit_store_unavailable",
+    detail: clientDetail,
+  }, 503, { "Retry-After": "30" });
+}
+
+function shouldRateLimitInPhase(policy: RoutePolicy, phase: GatewayContext["phase"]) {
+  if (phase === "pre-auth") return policy.keyMode === "ip" || Boolean(policy.trustedSystem);
+  return policy.keyMode !== "ip" && !policy.trustedSystem;
+}
+
+function getIdentity(policy: RoutePolicy, context: GatewayContext, ip: string) {
+  if (policy.keyMode === "org-user-or-ip" && context.orgId) return { value: `org:${context.orgId}`, label: "org" };
+  if (policy.keyMode !== "ip" && context.userId) return { value: `user:${context.userId}`, label: "user" };
+  return { value: `ip:${ip}`, label: "ip" };
+}
+
+function rateLimitHeaders(policy: RoutePolicy, result: RateLimitResult) {
+  const resetSeconds = Math.max(0, Math.ceil((result.resetAt - Date.now()) / 1000));
+  return {
+    "RateLimit-Limit": String(policy.maxRequests),
+    "RateLimit-Remaining": String(Math.max(0, result.remaining)),
+    "RateLimit-Reset": String(resetSeconds),
+    "X-RateLimit-Policy": policy.id,
+    "X-RateLimit-Identity": result.limitedBy,
+  };
+}
+
+async function checkDynamicBlacklist(redis: Redis, ip: string) {
+  if (ip === "unknown") return null;
+  const key = await redisKey("blacklist", "ip", ip);
+  const [reason, ttl] = await Promise.all([
+    redis.get<string>(key),
+    redis.ttl(key),
+  ]);
+  if (!reason || ttl <= 0) return null;
+  return {
+    reason,
+    retryAfterSeconds: ttl,
+  };
+}
+
+async function addDynamicBlacklist(redis: Redis, ip: string, reason: string) {
+  if (ip === "unknown") return;
+  const ttlSeconds = Math.max(1, Math.ceil(dynamicBlacklistTtlMs / 1000));
+  await redis.set(await redisKey("blacklist", "ip", ip), reason, { ex: ttlSeconds });
+}
+
+async function incrementRateLimit(redis: Redis, policy: RoutePolicy, identityValue: string, identityLabel: string) {
+  const key = await redisKey("bucket", policy.id, identityValue);
+  const windowSeconds = Math.max(1, Math.ceil(policy.windowMs / 1000));
+  const count = await redis.incr(key);
+
+  if (count === 1) {
+    await redis.expire(key, windowSeconds);
+  }
+
+  let ttl = await redis.ttl(key);
+  if (ttl < 0) {
+    await redis.expire(key, windowSeconds);
+    ttl = windowSeconds;
+  }
+
+  const resetAt = Date.now() + Math.max(0, ttl) * 1000;
+  const remaining = Math.max(0, policy.maxRequests - count);
+
+  return {
+    allowed: count <= policy.maxRequests,
+    count,
+    resetAt,
+    remaining,
+    retryAfterSeconds: Math.max(1, ttl),
+    limitedBy: identityLabel,
+  } satisfies RateLimitResult;
+}
+
+async function incrementViolation(redis: Redis, policy: RoutePolicy, identityValue: string) {
+  const key = await redisKey("violations", policy.id, identityValue);
+  const ttlSeconds = Math.max(1, Math.ceil(dynamicBlacklistTtlMs / 1000));
+  const count = await redis.incr(key);
+  if (count === 1) await redis.expire(key, ttlSeconds);
+  return count;
+}
+
+async function enforceRateLimit(
+  request: NextRequest,
+  policy: RoutePolicy,
+  context: GatewayContext,
+  ip: string
+) {
+  const redisState = getRedisState();
+  if (!redisState.client) {
+    return rateLimitStoreUnavailable(
+      policy,
+      redisState.reason ?? "Rate limiting is not configured. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.",
+      "Rate limiting is not configured. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN."
+    );
+  }
+
+  const redis = redisState.client;
+  try {
+    const dynamicEntry = await checkDynamicBlacklist(redis, ip);
+    if (dynamicEntry) {
+      return gatewayJson({
+        error: "Request temporarily blocked",
+        code: "dynamic_blacklist",
+        reason: dynamicEntry.reason,
+        retryAfterSeconds: dynamicEntry.retryAfterSeconds,
+      }, 403, { "Retry-After": String(dynamicEntry.retryAfterSeconds) });
+    }
+
+    const identity = getIdentity(policy, context, ip);
+    const result = await incrementRateLimit(redis, policy, identity.value, identity.label);
+    const headers = rateLimitHeaders(policy, result);
+
+    if (isCaptchaConfigured() && policy.captchaAfter && result.count > policy.captchaAfter) {
+      const token = readCaptchaToken(request);
+      if (!token) {
+        return gatewayJson({
+          error: "Additional verification required",
+          code: "captcha_required",
+          provider: "turnstile",
+        }, 403, headers);
+      }
+
+      const captcha = await verifyTurnstile(token, ip);
+      if (!captcha.ok) {
+        return gatewayJson({ error: "CAPTCHA verification failed", code: "captcha_failed", reason: captcha.reason }, 403, headers);
+      }
+    }
+
+    if (result.allowed) return null;
+
+    const allowDynamicBlacklist = policy.dynamicBlacklist !== false && !policy.trustedSystem && policy.blacklistAfter > 0;
+    if (allowDynamicBlacklist) {
+      const violations = await incrementViolation(redis, policy, identity.value);
+      if (violations >= policy.blacklistAfter) {
+        await addDynamicBlacklist(redis, ip, `rate_limit:${policy.id}`);
+      }
+    }
+
+    return gatewayJson({
+      error: "Too many requests",
+      code: "rate_limited",
+      retryAfterSeconds: result.retryAfterSeconds,
+      policy: policy.id,
+    }, 429, {
+      ...headers,
+      "Retry-After": String(result.retryAfterSeconds),
+    });
+  } catch (error) {
+    return rateLimitStoreUnavailable(
+      policy,
+      error instanceof Error ? error.message : "Redis command failed"
+    );
+  }
+}
+
+export async function guardApiRequest(request: NextRequest, context: GatewayContext = {}) {
   const { pathname } = request.nextUrl;
   if (!pathname.startsWith("/api/")) return null;
-
-  const now = Date.now();
-  cleanupBlacklist(now);
 
   const ip = getClientIp(request);
   const policy = getRoutePolicy(pathname);
   const staticBlacklist = getStaticBlacklist();
+  const phase = context.phase ?? "post-auth";
 
   if (staticBlacklist.has(ip)) {
     return gatewayJson({ error: "Request blocked", code: "static_blacklist" }, 403);
   }
 
-  const dynamicEntry = dynamicBlacklist.get(ip);
-  if (dynamicEntry && dynamicEntry.until > now) {
-    return gatewayJson({
-      error: "Request temporarily blocked",
-      code: "dynamic_blacklist",
-      reason: dynamicEntry.reason,
-      retryAfterSeconds: Math.ceil((dynamicEntry.until - now) / 1000),
-    }, 403);
-  }
-
   if (request.headers.has("x-middleware-subrequest")) {
-    dynamicBlacklist.set(ip, { until: now + dynamicBlacklistTtlMs, reason: "middleware_subrequest_header" });
+    const redisState = getRedisState();
+    if (redisState.client) {
+      await addDynamicBlacklist(redisState.client, ip, "middleware_subrequest_header").catch((error) => {
+        console.warn("[api-gateway] Unable to persist suspicious header blacklist:", error instanceof Error ? error.message : String(error));
+      });
+    }
     return gatewayJson({ error: "Request blocked", code: "suspicious_header" }, 403);
   }
 
@@ -179,41 +400,7 @@ export async function guardApiRequest(request: NextRequest) {
     return gatewayJson({ error: "Request body too large", code: "body_too_large" }, 413);
   }
 
-  const bucket = getBucket(`${policy.id}:${ip}`, now, policy);
-  bucket.count += 1;
+  if (!shouldRateLimitInPhase(policy, phase)) return null;
 
-  if (isCaptchaConfigured() && policy.captchaAfter && bucket.count > policy.captchaAfter) {
-    const token = readCaptchaToken(request);
-    if (!token) {
-      return gatewayJson({
-        error: "Additional verification required",
-        code: "captcha_required",
-        provider: "turnstile",
-      }, 403);
-    }
-
-    const captcha = await verifyTurnstile(token, ip);
-    if (!captcha.ok) {
-      return gatewayJson({ error: "CAPTCHA verification failed", code: "captcha_failed", reason: captcha.reason }, 403);
-    }
-
-    bucket.count = 1;
-    bucket.violations = 0;
-  }
-
-  if (bucket.count > policy.maxRequests) {
-    bucket.violations += 1;
-
-    if (bucket.violations >= policy.blacklistAfter && ip !== "unknown") {
-      dynamicBlacklist.set(ip, { until: now + dynamicBlacklistTtlMs, reason: `rate_limit:${policy.id}` });
-    }
-
-    return gatewayJson({
-      error: "Too many requests",
-      code: "rate_limited",
-      retryAfterSeconds: Math.ceil((bucket.resetAt - now) / 1000),
-    }, 429);
-  }
-
-  return null;
+  return enforceRateLimit(request, policy, context, ip);
 }

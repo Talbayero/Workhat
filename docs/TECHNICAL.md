@@ -595,9 +595,9 @@ The API gateway (`src/lib/security/api-gateway.ts`) enforces per-route rate limi
 | Public waitlist | 8 requests | 1 min |
 | All other API routes | 180 requests | 1 min |
 
-IPs that exceed the violation threshold are dynamically blacklisted for the configured TTL (default: 15 minutes). A static IP blacklist can be configured via `SECURITY_IP_BLACKLIST`.
+Counters and dynamic blacklist entries are stored in Upstash Redis via `@upstash/redis`, so limits survive Vercel cold starts and coordinate across serverless instances. Authenticated routes are keyed by user when possible and fall back to IP. Trusted system webhooks are rate limited but do not trigger dynamic blacklisting, which prevents retry storms from accidentally blocking Stripe, Gmail Pub/Sub, or inbound email providers.
 
-**Known limitation:** The in-process rate limit counters reset on serverless cold starts. For production deployments with high traffic, replace the in-memory `Map` with a Redis/Upstash-backed store.
+IPs that exceed the violation threshold are dynamically blacklisted for the configured TTL (default: 15 minutes). A static IP blacklist can be configured via `SECURITY_IP_BLACKLIST`. Production deployments require `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`; local development fails open by default unless `SECURITY_RATE_LIMIT_FAIL_OPEN=false`.
 
 ### Input validation
 

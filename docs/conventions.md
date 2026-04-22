@@ -80,9 +80,19 @@ No catch-all route handlers. If a resource has different semantics at the collec
 
 ### Middleware
 
-`middleware.ts` is the only place for cross-cutting request concerns. The order is: API gateway → session refresh → auth routing. Do not add route-specific logic here.
+`middleware.ts` is the only place for cross-cutting request concerns. The order is: API gateway preflight → session refresh → API gateway identity limits → auth routing. Do not add route-specific business logic here.
 
 The `matcher` config must explicitly list patterns. Public routes are defined in `middleware.ts` — if you add a new public route (webhook, demo page, marketing page), add it there too.
+
+API rate limits belong in `lib/security/api-gateway.ts`, not individual route handlers. Preserve the route-group policy model unless a route has materially different risk or cost characteristics. Policy keys should be stable, lowercase, and hyphenated because environment overrides are derived from them.
+
+Rate limit identity rules:
+- Public forms and unauthenticated webhooks use IP.
+- Authenticated application routes use user identity when available and fall back to IP.
+- High-cost tenant-scoped routes may use org identity when the caller can provide `orgId`; otherwise user/IP fallback is acceptable.
+- Trusted system webhooks may be rate limited, but must not trigger dynamic blacklist entries.
+
+Use Upstash Redis for counters and dynamic blacklist entries. Do not reintroduce in-memory `Map` counters for production request protection; they reset on serverless cold starts and do not coordinate across Vercel instances.
 
 ---
 
@@ -325,5 +335,7 @@ URL path segments: `kebab-case`. Dynamic segments: `[camelCase]`.
 ### Environment Variables
 
 `SCREAMING_SNAKE_CASE`. Public variables (accessible in the browser) prefixed `NEXT_PUBLIC_`. Secret variables have no prefix and must never be included in client bundles.
+
+Rate-limit policy overrides use the format `SECURITY_RATE_LIMIT_<POLICY_ID>_<SETTING>`, where `<POLICY_ID>` is uppercased and hyphens become underscores. Supported settings are `WINDOW_MS`, `MAX_REQUESTS`, and `BLACKLIST_AFTER`.
 
 *Last updated: April 2026*

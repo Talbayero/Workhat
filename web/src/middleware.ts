@@ -6,10 +6,13 @@ import { applyApiGatewayHeaders, guardApiRequest } from "@/lib/security/api-gate
  * Next.js middleware — runs on every non-static request.
  *
  * Responsibilities (in order):
- *   1. API gateway — rate limiting, IP blacklisting, body-size caps
+ *   1. API gateway preflight — IP blacklisting, method checks, body-size caps,
+ *      and public/trusted webhook rate limiting
  *   2. Session refresh — re-issue expiring Supabase cookies so every server
  *      component in this request reads a valid session
- *   3. Auth routing:
+ *   3. API gateway identity limits — user-aware rate limiting when a session
+ *      exists, with IP fallback for unauthenticated API callers
+ *   4. Auth routing:
  *       - Public routes pass through freely
  *       - Unauthenticated API requests → 401 JSON
  *       - Unauthenticated page requests → /login?next=<path>
@@ -51,8 +54,8 @@ function isPublic(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ── 1. API gateway (rate limits, blacklists, body-size caps) ───────────────
-  const gatewayResponse = await guardApiRequest(request);
+  // ── 1. API gateway preflight (blacklists, method/body caps, public limits) ─
+  const gatewayResponse = await guardApiRequest(request, { phase: "pre-auth" });
   if (gatewayResponse) return gatewayResponse;
 
   // ── 2. Session refresh via Supabase ────────────────────────────────────────
@@ -83,7 +86,14 @@ export async function middleware(request: NextRequest) {
   // can be spoofed by a crafted cookie value.
   const { data: { user } } = await supabase.auth.getUser();
 
-  // ── 3. Auth routing ────────────────────────────────────────────────────────
+  // ── 3. API gateway identity limits ────────────────────────────────────────
+  const identityGatewayResponse = await guardApiRequest(request, {
+    phase: "post-auth",
+    userId: user?.id ?? null,
+  });
+  if (identityGatewayResponse) return identityGatewayResponse;
+
+  // ── 4. Auth routing ────────────────────────────────────────────────────────
 
   // Redirect authenticated users away from the login page.
   if (user && pathname === "/login") {
