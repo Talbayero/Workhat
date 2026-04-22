@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { logAudit } from "@/lib/security/audit-logger";
 
 type InviteBody = {
@@ -52,12 +53,8 @@ export async function POST(req: NextRequest) {
   const caller = await getCurrentAppUser({ label: "invite", select: "id, org_id, role" });
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (!["admin", "manager"].includes(caller.role)) {
-    return NextResponse.json(
-      { error: "Only admins and managers can invite team members" },
-      { status: 403 }
-    );
-  }
+  const denied = await requireCapability(caller, "team.invite", "invite");
+  if (denied) return denied;
 
   const { org_id: orgId } = caller;
 

@@ -6,14 +6,14 @@ import {
   type EmailConnection,
 } from "@/lib/email-connector/gmail-importer";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST() {
   const appUser = await getCurrentAppUser({ label: "gmail/sync" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Only admins and managers can sync Gmail." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "integrations.manage", "gmail/sync");
+  if (denied) return denied;
 
   let db: ReturnType<typeof createAdminClient>;
   try {

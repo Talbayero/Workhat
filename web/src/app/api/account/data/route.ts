@@ -19,6 +19,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/security/audit-logger";
@@ -31,9 +32,8 @@ export async function GET(req: NextRequest) {
   const appUser = await getCurrentAppUser({ label: "account/data", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (appUser.role !== "admin") {
-    return NextResponse.json({ error: "Only admins can export org data." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "settings.manage", "account/data");
+  if (denied) return denied;
 
   const supabase = await createClient();
 
@@ -75,9 +75,8 @@ export async function DELETE(req: NextRequest) {
   const appUser = await getCurrentAppUser({ label: "account/data", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (appUser.role !== "admin") {
-    return NextResponse.json({ error: "Only admins can submit data deletion requests." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "settings.manage", "account/data");
+  if (denied) return denied;
 
   let body: Record<string, unknown> = {};
   try {

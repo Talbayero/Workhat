@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { invalidateIntentCache } from "@/lib/ai/intent-classifier";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 
 /* ─────────────────────────────────────────────
    PATCH  /api/intents/:id  — update intent
@@ -40,9 +41,8 @@ export async function PATCH(
 ) {
   const appUser = await getCurrentAppUser({ label: "intents/:id", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!["manager", "admin"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Forbidden — managers only" }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "ai.configure", "intents/:id");
+  if (denied) return denied;
 
   const { intentId } = await params;
 
@@ -143,9 +143,8 @@ export async function DELETE(
 ) {
   const appUser = await getCurrentAppUser({ label: "intents/:id", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!["manager", "admin"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Forbidden — managers only" }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "ai.configure", "intents/:id");
+  if (denied) return denied;
 
   const { intentId } = await params;
 

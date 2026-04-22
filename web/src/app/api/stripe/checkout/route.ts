@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCheckoutSession, type StripePlan } from "@/lib/stripe";
 import { getCurrentAppUser, type CurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 
 /* ─────────────────────────────────────────────
    POST /api/stripe/checkout
@@ -26,9 +27,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
     }
 
-    if (!["admin", "manager"].includes(appUser.role)) {
-      return NextResponse.json({ error: "Only admins and managers can manage billing." }, { status: 403 });
-    }
+    const denied = await requireCapability(appUser, "billing.manage", "stripe/checkout");
+    if (denied) return denied;
 
     const raw = appUser.organizations;
     const org = Array.isArray(raw) ? raw[0] : raw;

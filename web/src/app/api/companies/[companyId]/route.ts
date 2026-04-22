@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/security/audit-logger";
 
@@ -150,9 +151,8 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
   const appUser = await getCurrentAppUser({ label: "companies/:id" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Insufficient permissions." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "records.manage", "companies/:id");
+  if (denied) return denied;
 
   const supabase = await createClient();
   const { data, error } = await supabase

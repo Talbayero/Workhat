@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { logAudit } from "@/lib/security/audit-logger";
 
 const VALID_CATEGORIES = new Set(["policy", "sop", "tone", "product", "escalation"]);
@@ -76,10 +77,8 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const appUser = await getCurrentAppUser({ label: "knowledge/:id", select: "id, org_id, role, email" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Only admins and managers can update knowledge entries (same restriction as DELETE)
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Insufficient permissions." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "knowledge.edit", "knowledge/:id");
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {
@@ -220,10 +219,8 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
   const appUser = await getCurrentAppUser({ label: "knowledge/:id", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Only admins and managers can delete knowledge entries
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Insufficient permissions." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "knowledge.edit", "knowledge/:id");
+  if (denied) return denied;
 
   const { admin, response } = getAdminOrResponse();
   if (!admin) return response;

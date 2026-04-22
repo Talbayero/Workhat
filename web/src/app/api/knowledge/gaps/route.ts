@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { entryFromGapPattern } from "@/lib/ai/knowledge-gen";
 import type { GeneratedKnowledgeEntry } from "@/lib/ai/knowledge-gen";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 
 /* ─────────────────────────────────────────────
    GET /api/knowledge/gaps
@@ -37,9 +38,8 @@ export async function GET() {
   const appUser = await getCurrentAppUser({ label: "knowledge/gaps", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Only admins and managers can view knowledge gap suggestions." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "knowledge.edit", "knowledge/gaps");
+  if (denied) return denied;
 
   let admin: ReturnType<typeof createAdminClient>;
   try {

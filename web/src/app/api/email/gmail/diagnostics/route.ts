@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 
 type DiagnosticStatus = "pass" | "warn" | "fail";
@@ -96,9 +97,8 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Only admins and managers can view connector diagnostics." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "integrations.manage", "gmail/diagnostics");
+  if (denied) return denied;
 
   const checks: DiagnosticCheck[] = [
     checkEnv("NEXT_PUBLIC_SUPABASE_URL", "Supabase project URL", "Required for all database operations."),

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET() {
@@ -11,9 +12,8 @@ export async function GET() {
   // Email connection metadata (token expiry, history IDs, sync errors) is sensitive
   // infrastructure detail. Restrict to admin and manager — agents and qa_reviewers
   // have no legitimate need to see OAuth connection state.
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Only admins and managers can view email connections." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "integrations.manage", "email/connections");
+  if (denied) return denied;
 
   let db: ReturnType<typeof createAdminClient>;
   try {
@@ -45,9 +45,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Only admins and managers can disconnect email accounts." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "integrations.manage", "email/connections");
+  if (denied) return denied;
 
   const connectionId = req.nextUrl.searchParams.get("connectionId");
   if (!connectionId) {

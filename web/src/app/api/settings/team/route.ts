@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { hasAnyCapability, requireCapability } from "@/lib/auth/capabilities";
 import { logAudit } from "@/lib/security/audit-logger";
 
 const VALID_ROLES = new Set(["agent", "manager", "qa_reviewer", "admin"]);
@@ -42,7 +43,7 @@ export async function GET() {
   const caller = await getCurrentAppUser({ label: "settings/team", select: "id, org_id, role" });
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const canViewEmails = ["admin", "manager"].includes(caller.role);
+  const canViewEmails = await hasAnyCapability(caller, ["team.manage", "team.skills.manage"], "settings/team");
 
   const supabase = await createClient();
   const { data: members, error } = await supabase
@@ -86,9 +87,8 @@ export async function PATCH(req: NextRequest) {
 
   // ── Skills update — managers+ can patch skills ────────────────────────────
   if ("skills" in body) {
-    if (!["admin", "manager"].includes(caller.role)) {
-      return NextResponse.json({ error: "Only managers can update skills" }, { status: 403 });
-    }
+    const denied = await requireCapability(caller, "team.skills.manage", "settings/team");
+    if (denied) return denied;
     const skills = body.skills;
     if (!Array.isArray(skills)) {
       return NextResponse.json({ error: "skills must be an array" }, { status: 422 });
@@ -161,9 +161,8 @@ export async function PATCH(req: NextRequest) {
   }
 
   // ── Role update — admins only ─────────────────────────────────────────────
-  if (caller.role !== "admin") {
-    return NextResponse.json({ error: "Only admins can change roles" }, { status: 403 });
-  }
+  const roleDenied = await requireCapability(caller, "team.manage", "settings/team");
+  if (roleDenied) return roleDenied;
 
   if (typeof body.role !== "string" || !VALID_ROLES.has(body.role)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 422 });
@@ -233,9 +232,8 @@ export async function DELETE(req: NextRequest) {
   const caller = await getCurrentAppUser({ label: "settings/team", select: "id, org_id, role" });
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (caller.role !== "admin") {
-    return NextResponse.json({ error: "Only admins can remove team members" }, { status: 403 });
-  }
+  const denied = await requireCapability(caller, "team.manage", "settings/team");
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get("userId");

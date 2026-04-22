@@ -1,5 +1,6 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { suggestKeywordsFromCorrection } from "@/lib/ai/intent-classifier";
 
@@ -214,9 +215,8 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   const appUser = await getCurrentAppUser({ label: "intent-corrections" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!["manager", "admin", "qa_reviewer"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "qa.review", "intent-corrections");
+  if (denied) return denied;
 
   const adminState = createOptionalAdminClient();
   if (!adminState.client) {

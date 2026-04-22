@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { invalidateIntentCache } from "@/lib/ai/intent-classifier";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 
 /* ─────────────────────────────────────────────
    GET  /api/intents  — list org intents
@@ -66,9 +67,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const appUser = await getCurrentAppUser({ label: "intents", select: "id, org_id, role" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!["manager", "admin"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Forbidden — managers only" }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "ai.configure", "intents");
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { logAudit } from "@/lib/security/audit-logger";
 
 /* ─────────────────────────────────────────────
@@ -71,11 +72,8 @@ export async function POST(req: NextRequest) {
   const appUser = await getCurrentAppUser({ label: "knowledge", select: "id, org_id, role, email" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Only admins and managers can create knowledge entries — agents should not be
-  // able to inject untrusted content into the AI knowledge base.
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Insufficient permissions." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "knowledge.edit", "knowledge");
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {

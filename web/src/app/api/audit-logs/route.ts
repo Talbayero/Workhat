@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 
 const MAX_LIMIT = 500;
@@ -24,9 +25,8 @@ export async function GET(req: NextRequest) {
   const appUser = await getCurrentAppUser({ label: "audit-logs" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (!["admin", "manager"].includes(appUser.role)) {
-    return NextResponse.json({ error: "Insufficient permissions." }, { status: 403 });
-  }
+  const denied = await requireCapability(appUser, "audit.read", "audit-logs");
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const limit = Math.min(parseInt(searchParams.get("limit") ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, MAX_LIMIT);

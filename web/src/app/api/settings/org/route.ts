@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { logAudit } from "@/lib/security/audit-logger";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -74,9 +75,8 @@ export async function PATCH(req: NextRequest) {
   const caller = await getCurrentAppUser({ label: "settings/org", select: "id, org_id, role" });
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (caller.role !== "admin") {
-    return NextResponse.json({ error: "Only admins can update org settings" }, { status: 403 });
-  }
+  const denied = await requireCapability(caller, "settings.manage", "settings/org");
+  if (denied) return denied;
 
   const supabase = await createClient();
 

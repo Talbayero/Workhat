@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { hasCapability } from "@/lib/auth/capabilities";
 import { encryptSecret } from "@/lib/email-connector/encryption";
 import {
   exchangeGmailCode,
@@ -78,7 +79,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  if (!["admin", "manager"].includes(appUser.role)) {
+  if (!(await hasCapability(appUser, "integrations.manage", "gmail/callback"))) {
     return connectorRedirect(req, {
       emailError: "Only admins and managers can connect shared inboxes.",
     });
