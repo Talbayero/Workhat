@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* POST /api/qa-reviews - submit a QA review for a conversation */
 
@@ -152,5 +153,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unable to save the QA review." }, { status: 500 });
   }
 
+  void logAudit({
+    action: "qa.review_submitted",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "qa_review",
+    resourceId: data.id,
+    resourceLabel: conversationId as string,
+    newValues: { result, score: normalizedScore, categories: normalizedCategories },
+    req,
+  });
   return NextResponse.json({ ok: true, reviewId: data.id }, { status: 201 });
 }

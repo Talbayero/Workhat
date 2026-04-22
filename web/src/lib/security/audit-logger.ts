@@ -83,7 +83,14 @@ export type AuditAction =
   | "security.webhook_auth_failed"
   // Data subject rights
   | "data.export_requested"
-  | "data.deletion_requested";
+  | "data.deletion_requested"
+  // Intent configuration
+  | "intent.created"
+  | "intent.updated"
+  | "intent.deleted"
+  | "intent.correction_submitted"
+  // QA
+  | "qa.review_submitted";
 
 export interface AuditEvent {
   action: AuditAction;

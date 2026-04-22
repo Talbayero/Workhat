@@ -3,6 +3,7 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { suggestKeywordsFromCorrection } from "@/lib/ai/intent-classifier";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* ─────────────────────────────────────────────
    POST /api/intent-corrections
@@ -170,6 +171,23 @@ export async function POST(req: NextRequest) {
     console.error("[intent-corrections] insert failed:", insertErr?.message ?? "No correction returned");
     return NextResponse.json({ error: "Unable to save the intent correction." }, { status: 500 });
   }
+
+  void logAudit({
+    action: "intent.correction_submitted",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "intent_correction",
+    resourceId: correction.id,
+    resourceLabel: correctedIntent,
+    newValues: {
+      conversationId,
+      originalIntent,
+      correctedIntent,
+      was_changed: correction.was_changed,
+    },
+    req,
+  });
 
   // If the intent was actually changed, fire async AI keyword suggestion
   if (correction && correction.was_changed === true) {

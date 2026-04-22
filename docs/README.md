@@ -13,6 +13,7 @@ This folder is the **single source of truth** for all platform documentation. Ev
 | [architecture.md](./architecture.md) | Stack, runtime shape, main surfaces, data model, auth, Supabase usage, integrations, and environment variables |
 | [conventions.md](./conventions.md) | How code is organized, named, written, and tested — the rules that keep the codebase consistent |
 | [decisions.md](./decisions.md) | Architecture Decision Records — why we made the choices we made, so we don't re-litigate them |
+| [security-hardening.md](./security-hardening.md) | Capability-based authorization, immutable audit logging, rate limiting, data protection, and incident response |
 | [workflow-engine.md](./workflow-engine.md) | Lean event/rules engine, action allowlist, audit model, and safeguards |
 | [sla-and-queue-health.md](./sla-and-queue-health.md) | SLA policy, deterministic SLA snapshots, queue-health UI, and refresh model |
 | [ai-improvement-engine.md](./ai-improvement-engine.md) | Prompt-version analytics, edit-pattern clustering, knowledge-gap logic, and dashboard insights |

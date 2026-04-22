@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { invalidateIntentCache } from "@/lib/ai/intent-classifier";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* ─────────────────────────────────────────────
    GET  /api/intents  — list org intents
@@ -144,5 +145,15 @@ export async function POST(req: NextRequest) {
   }
 
   invalidateIntentCache(appUser.org_id);
+  void logAudit({
+    action: "intent.created",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "intent",
+    resourceId: data.id,
+    resourceLabel: data.name,
+    req,
+  });
   return NextResponse.json({ intent: data }, { status: 201 });
 }

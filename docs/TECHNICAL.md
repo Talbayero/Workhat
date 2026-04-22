@@ -1,6 +1,22 @@
 # Work Hat CRM — Technical Documentation
 
-> This document covers the architecture, API surface, database schema, security model, and deployment guide for Work Hat CRM.
+> ⚠️ **DEPRECATED — do not update this file.**
+> This document is a historical artifact. It describes the system as of an early build (16 migrations, no capability authorization, no audit logging, no SLA engine) and is no longer accurate.
+>
+> **Authoritative documentation is in [`docs/`](./README.md):**
+> - Architecture → [`architecture.md`](./architecture.md)
+> - Conventions → [`conventions.md`](./conventions.md)
+> - Decisions → [`decisions.md`](./decisions.md)
+> - Workflow engine → [`workflow-engine.md`](./workflow-engine.md)
+> - SLA & queue health → [`sla-and-queue-health.md`](./sla-and-queue-health.md)
+> - AI improvement engine → [`ai-improvement-engine.md`](./ai-improvement-engine.md)
+> - Prompt experimentation → [`prompt-experimentation.md`](./prompt-experimentation.md)
+
+---
+
+> *Original content preserved below for historical reference only.*
+
+---
 
 ---
 

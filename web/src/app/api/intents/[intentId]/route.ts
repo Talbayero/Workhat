@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { invalidateIntentCache } from "@/lib/ai/intent-classifier";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
+import { logAudit } from "@/lib/security/audit-logger";
 
 /* ─────────────────────────────────────────────
    PATCH  /api/intents/:id  — update intent
@@ -134,11 +135,22 @@ export async function PATCH(
   if (!data) return NextResponse.json({ error: "Intent not found" }, { status: 404 });
 
   invalidateIntentCache(appUser.org_id);
+  void logAudit({
+    action: "intent.updated",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "intent",
+    resourceId: data.id,
+    resourceLabel: data.name,
+    newValues: patch,
+    req,
+  });
   return NextResponse.json({ intent: data });
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ intentId: string }> }
 ) {
   const appUser = await getCurrentAppUser({ label: "intents/:id", select: "id, org_id, role" });
@@ -173,5 +185,14 @@ export async function DELETE(
   if (count === 0) return NextResponse.json({ error: "Intent not found" }, { status: 404 });
 
   invalidateIntentCache(appUser.org_id);
+  void logAudit({
+    action: "intent.deleted",
+    orgId: appUser.org_id,
+    actorId: appUser.id,
+    actorRole: appUser.role,
+    resourceType: "intent",
+    resourceId: intentId,
+    req,
+  });
   return NextResponse.json({ ok: true });
 }
