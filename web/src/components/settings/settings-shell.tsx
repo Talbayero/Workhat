@@ -20,6 +20,14 @@ type ChannelRecord = {
   inboundAddress: string;
 };
 
+type SlaPolicyRecord = {
+  enabled: boolean;
+  first_response_minutes: number;
+  next_response_minutes: number;
+  at_risk_threshold_minutes: number;
+  business_hours_json: Record<string, unknown>;
+};
+
 type EmailConnection = {
   id: string;
   provider: string;
@@ -63,13 +71,14 @@ type TeamMember = {
   skills?: AgentSkill[];
 };
 
-type SettingsTab = "setup" | "organization" | "team" | "channels" | "ai" | "intents" | "billing";
+type SettingsTab = "setup" | "organization" | "team" | "channels" | "sla" | "ai" | "intents" | "billing";
 
 const tabs: { id: SettingsTab; label: string }[] = [
   { id: "setup", label: "Setup wizard" },
   { id: "organization", label: "Organization" },
   { id: "team", label: "Team members" },
   { id: "channels", label: "Channels" },
+  { id: "sla", label: "SLA policy" },
   { id: "ai", label: "AI settings" },
   { id: "intents", label: "Intents" },
   { id: "billing", label: "Billing" },
@@ -2120,6 +2129,114 @@ function IntentsTab({ canManage }: { canManage: boolean }) {
   );
 }
 
+// ── SLA tab ───────────────────────────────────────────────────────────────────
+
+function SlaTab({
+  policy,
+  canEdit,
+  onDirty,
+  onSaveFields,
+}: {
+  policy: SlaPolicyRecord | null;
+  canEdit: boolean;
+  onDirty: () => void;
+  onSaveFields: (fields: Record<string, string | number | boolean>) => void;
+}) {
+  const defaults = policy ?? {
+    enabled: true,
+    first_response_minutes: 60,
+    next_response_minutes: 240,
+    at_risk_threshold_minutes: 15,
+    business_hours_json: { mode: "calendar" },
+  };
+  const [values, setValues] = useState(defaults);
+
+  function update(field: string, value: string | number | boolean) {
+    const nextValues = { ...values, [field]: value };
+    setValues(nextValues);
+    onDirty();
+    onSaveFields({
+      enabled: nextValues.enabled,
+      first_response_minutes: nextValues.first_response_minutes,
+      next_response_minutes: nextValues.next_response_minutes,
+      at_risk_threshold_minutes: nextValues.at_risk_threshold_minutes,
+      [field]: value,
+    });
+  }
+
+  return (
+    <div className="space-y-5">
+      <SectionCard>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">SLA policy</p>
+        <h2 className="mt-2 text-base font-semibold">Response targets</h2>
+        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+          Work Hat currently measures calendar minutes from customer messages. Business-hours schedules are stored for a later phase.
+        </p>
+
+        <div className="mt-5 space-y-4">
+          <FieldRow label="Enable SLA tracking" description="Disabled policies mark active conversations as not applicable on the next refresh.">
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={values.enabled}
+                disabled={!canEdit}
+                onChange={(e) => update("enabled", e.currentTarget.checked)}
+                className="h-4 w-4 rounded border-[var(--line)]"
+              />
+              Enabled
+            </label>
+          </FieldRow>
+
+          <FieldRow label="First response" description="Minutes from the first customer message until the first agent reply.">
+            <input
+              type="number"
+              min={1}
+              max={10080}
+              value={values.first_response_minutes}
+              disabled={!canEdit}
+              onChange={(e) => update("first_response_minutes", Number(e.currentTarget.value))}
+              className="w-36 rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:border-[var(--moss)] disabled:opacity-60"
+            />
+          </FieldRow>
+
+          <FieldRow label="Next response" description="Minutes from the latest customer message until the next agent reply.">
+            <input
+              type="number"
+              min={1}
+              max={10080}
+              value={values.next_response_minutes}
+              disabled={!canEdit}
+              onChange={(e) => update("next_response_minutes", Number(e.currentTarget.value))}
+              className="w-36 rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:border-[var(--moss)] disabled:opacity-60"
+            />
+          </FieldRow>
+
+          <FieldRow label="At-risk window" description="Minutes before a deadline when the queue marks a conversation at risk.">
+            <input
+              type="number"
+              min={1}
+              max={1440}
+              value={values.at_risk_threshold_minutes}
+              disabled={!canEdit}
+              onChange={(e) => update("at_risk_threshold_minutes", Number(e.currentTarget.value))}
+              className="w-36 rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:border-[var(--moss)] disabled:opacity-60"
+            />
+          </FieldRow>
+        </div>
+      </SectionCard>
+
+      <SectionCard>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Computation</p>
+        <div className="mt-3 grid gap-3 text-xs text-[var(--muted)]">
+          <p>First response SLA is cleared by the first outbound agent message after the first customer message.</p>
+          <p>Next response SLA is active when the latest customer message has no later agent response.</p>
+          <p>Resolved and archived conversations are excluded from active SLA pressure.</p>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
 // ── Billing tab ───────────────────────────────────────────────────────────────
 
 function BillingTab({ org }: { org: OrgRecord | null }) {
@@ -2145,11 +2262,12 @@ function BillingTab({ org }: { org: OrgRecord | null }) {
 
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
-const VALID_TABS = new Set<SettingsTab>(["setup", "organization", "team", "channels", "ai", "intents", "billing"]);
+const VALID_TABS = new Set<SettingsTab>(["setup", "organization", "team", "channels", "sla", "ai", "intents", "billing"]);
 
 export function SettingsShell({
   org,
   channel,
+  slaPolicy,
   team,
   callerRole,
   callerId,
@@ -2159,6 +2277,7 @@ export function SettingsShell({
 }: {
   org: OrgRecord | null;
   channel: ChannelRecord | null;
+  slaPolicy: SlaPolicyRecord | null;
   team: TeamMember[];
   callerRole: string;
   callerId: string;
@@ -2176,7 +2295,7 @@ export function SettingsShell({
   const [activeTab, setActiveTab] = useState<SettingsTab>(resolvedInitialTab);
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [saveFields, setSaveFields] = useState<Record<string, string>>({});
+  const [saveFields, setSaveFields] = useState<Record<string, string | number | boolean>>({});
 
   const isAdmin = callerRole === "admin";
   const canManageTeam = isAdmin || callerRole === "manager";
@@ -2194,7 +2313,7 @@ export function SettingsShell({
     }
 
     try {
-      const res = await fetch("/api/settings/org", {
+      const res = await fetch(activeTab === "sla" ? "/api/settings/sla" : "/api/settings/org", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(saveFields),
@@ -2202,6 +2321,7 @@ export function SettingsShell({
       if (!res.ok) throw new Error("Save failed");
       setSaveStatus("saved");
       setIsDirty(false);
+      setSaveFields({});
       setTimeout(() => setSaveStatus("idle"), 2500);
     } catch {
       setSaveStatus("idle");
@@ -2235,6 +2355,14 @@ export function SettingsShell({
       />
     ),
     channels: <ChannelsTab channel={channel} canEdit={isAdmin} onDirty={() => setIsDirty(true)} />,
+    sla: (
+      <SlaTab
+        policy={slaPolicy}
+        canEdit={isAdmin}
+        onDirty={() => setIsDirty(true)}
+        onSaveFields={(f) => setSaveFields((prev) => ({ ...prev, ...f }))}
+      />
+    ),
     ai: <AiTab onDirty={() => setIsDirty(true)} />,
     intents: <IntentsTab canManage={canManageTeam} />,
     billing: <BillingTab org={org} />,

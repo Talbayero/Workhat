@@ -24,6 +24,16 @@ const navItems = [
     ),
   },
   {
+    href: "/queue",
+    label: "Queue health",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+        <path d="M2.5 4.5h12M2.5 8.5h12M2.5 12.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M5 3v3M10.5 7v3M7.5 11v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/contacts",
     label: "Contacts",
     icon: (
@@ -93,8 +103,8 @@ const navItems = [
   },
 ];
 
-const primaryItems = navItems.slice(0, 5);
-const configItems = navItems.slice(5);
+const primaryItems = navItems.slice(0, 6);
+const configItems = navItems.slice(6);
 
 const demoUser: AuthUser = {
   id: "demo-user",

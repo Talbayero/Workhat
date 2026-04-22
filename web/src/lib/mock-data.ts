@@ -1,4 +1,5 @@
 export type RiskLevel = "green" | "yellow" | "red";
+export type SlaStatus = "not_applicable" | "ok" | "at_risk" | "breached";
 
 export type ContactRecord = {
   id: string;
@@ -42,14 +43,22 @@ export type InboxConversation = {
   companyName: string;
   subject: string;
   preview: string;
-  status: "open" | "waiting_on_customer" | "waiting_on_internal" | "resolved" | "archived";
+  status: "open" | "in_progress" | "waiting_on_customer" | "waiting_on_internal" | "resolved" | "archived";
   channel: "email";
   riskLevel: RiskLevel;
   aiConfidence: RiskLevel;
   assignee: string;
   lastSeen: string;
+  lastMessageAt?: string;
   tags: string[];
   intent: string;
+  sla?: {
+    status: SlaStatus;
+    target: "first_response" | "next_response" | null;
+    dueAt: string | null;
+    breachedAt: string | null;
+    lastEvaluatedAt: string | null;
+  };
   messages: {
     id: string;
     sender: string;
@@ -72,13 +81,15 @@ export type InboxConversation = {
   };
 };
 
-export type InboxViewId = "all" | "mine" | "unassigned" | "high-risk" | "ai-review" | "unclassified";
+export type InboxViewId = "all" | "mine" | "unassigned" | "high-risk" | "ai-review" | "unclassified" | "sla-at-risk" | "sla-breached";
 
 export const inboxViews: { id: InboxViewId; label: string; count: number }[] = [
   { id: "all", label: "All conversations", count: 42 },
   { id: "mine", label: "Mine", count: 11 },
   { id: "unassigned", label: "Unassigned", count: 6 },
   { id: "high-risk", label: "High risk", count: 4 },
+  { id: "sla-at-risk", label: "SLA at risk", count: 0 },
+  { id: "sla-breached", label: "SLA breached", count: 0 },
   { id: "ai-review", label: "AI needs review", count: 8 },
   { id: "unclassified", label: "Unclassified", count: 0 },
 ];
@@ -97,6 +108,10 @@ export function filterConversations(
       return list.filter((c) => c.riskLevel === "red" || c.riskLevel === "yellow");
     case "ai-review":
       return list.filter((c) => c.aiConfidence === "red" || c.aiConfidence === "yellow");
+    case "sla-at-risk":
+      return list.filter((c) => c.sla?.status === "at_risk");
+    case "sla-breached":
+      return list.filter((c) => c.sla?.status === "breached");
     case "unclassified":
       return list.filter((c) => !c.intent || c.intent.toLowerCase() === "unclassified" || c.intent.trim() === "");
     default:
@@ -1017,6 +1032,7 @@ export function filterKnowledgeEntries(category: KnowledgeCategory | "all") {
 
 export const conversationStatusLabel: Record<InboxConversation["status"], string> = {
   open: "Open",
+  in_progress: "In progress",
   waiting_on_customer: "Waiting on customer",
   waiting_on_internal: "Waiting on team",
   resolved: "Resolved",

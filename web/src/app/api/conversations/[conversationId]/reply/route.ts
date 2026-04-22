@@ -17,10 +17,13 @@ import { randomUUID } from "crypto";
 import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { runEditAnalysis } from "@/lib/ai/analysis";
 import { sendConversationReplyWithGmail } from "@/lib/email-connector/gmail-sender";
+import { refreshConversationSla } from "@/lib/sla/refresh";
+import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 type ReplyPayload = {
   body: string;
@@ -190,6 +193,8 @@ export async function POST(
   if (!appUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = await requireCapability(appUser, "conversations.reply", "reply");
+  if (denied) return denied;
 
   const supabase = await createClient();
   const { id: userId, org_id: orgId, full_name: fullName } = appUser;
@@ -385,6 +390,32 @@ export async function POST(
       )
     );
   }
+
+  after(async () => {
+    await refreshConversationSla({
+      db: admin,
+      orgId,
+      conversationId,
+      source: "api.conversations.reply",
+    });
+
+    await emitWorkflowEvent({
+      orgId,
+      eventType: "reply.sent",
+      aggregateType: "sent_reply",
+      aggregateId: sentReplyId ?? messageId,
+      conversationId,
+      actorId: userId,
+      source: "api.conversations.reply",
+      payload: {
+        messageId,
+        sentReplyId,
+        aiDraftId: aiDraftId ?? null,
+        provider: outbound.provider,
+        simulated: Boolean(outbound.simulated),
+      },
+    });
+  });
 
   // Do not expose whether the send was simulated — callers get ok:true either way
   if (outbound.simulated) {

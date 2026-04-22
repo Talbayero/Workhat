@@ -13,6 +13,7 @@ import type {
   KnowledgeEntry,
   KnowledgeCategory,
   RiskLevel,
+  SlaStatus,
 } from "@/lib/mock-data";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ type DbConversation = {
   priority: string;
   contact_id: string | null;
   company_id: string | null;
+  assigned_user_id?: string | null;
   assigned_to_name: string;
   risk_level: string;
   ai_confidence: string;
@@ -82,8 +84,14 @@ type DbConversation = {
   intent: string;
   tags: string[];
   last_message_at: string;
+  sla_status?: string | null;
+  sla_target?: string | null;
+  sla_due_at?: string | null;
+  sla_breached_at?: string | null;
+  sla_last_evaluated_at?: string | null;
   contacts: { full_name: string; email: string | null; phone: string; tier: string; notes: string; tags: string[] } | null;
   companies: { name: string } | null;
+  channels?: { type: string | null } | null;
 };
 
 function dbConvToFrontend(row: DbConversation): InboxConversation {
@@ -101,8 +109,16 @@ function dbConvToFrontend(row: DbConversation): InboxConversation {
     aiConfidence: row.ai_confidence as RiskLevel,
     assignee: row.assigned_to_name,
     lastSeen: relativeTime(row.last_message_at),
+    lastMessageAt: row.last_message_at,
     tags: row.tags ?? [],
     intent: row.intent,
+    sla: {
+      status: (row.sla_status ?? "not_applicable") as SlaStatus,
+      target: row.sla_target as NonNullable<InboxConversation["sla"]>["target"],
+      dueAt: row.sla_due_at ?? null,
+      breachedAt: row.sla_breached_at ?? null,
+      lastEvaluatedAt: row.sla_last_evaluated_at ?? null,
+    },
     messages: [], // populated separately in getConversationById
     aiDraft: {
       rationale: "No AI draft has been generated for this thread yet.",
@@ -131,9 +147,10 @@ export async function getConversations(
     .from("conversations")
     .select(
       `id, subject, status, priority, contact_id, company_id, assigned_to_name,
-       risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
        contacts(full_name, email, phone, tier, notes, tags),
-       companies(name)`
+       companies(name), channels(type)`
     )
     .eq("org_id", orgId)
     .order("last_message_at", { ascending: false });
@@ -147,6 +164,10 @@ export async function getConversations(
     query = query.in("ai_confidence", ["red", "yellow"]);
   } else if (view === "unassigned") {
     query = query.eq("assigned_to_name", "");
+  } else if (view === "sla-at-risk") {
+    query = query.eq("sla_status", "at_risk");
+  } else if (view === "sla-breached") {
+    query = query.eq("sla_status", "breached");
   }
 
   const { data, error } = await query;
@@ -178,9 +199,10 @@ export async function getConversationById(
       .from("conversations")
       .select(
         `id, subject, status, priority, contact_id, company_id, assigned_to_name,
-         risk_level, ai_confidence, preview, intent, tags, last_message_at,
+         assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+         sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
          contacts(full_name, email, phone, tier, notes, tags),
-         companies(name)`
+         companies(name), channels(type)`
       )
       .eq("id", id)
       .eq("org_id", orgId)
@@ -217,9 +239,10 @@ export async function getConversationsForContact(
     .from("conversations")
     .select(
       `id, subject, status, priority, contact_id, company_id, assigned_to_name,
-       risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
        contacts(full_name, email, phone, tier, notes, tags),
-       companies(name)`
+       companies(name), channels(type)`
     )
     .eq("contact_id", contactId)
     .eq("org_id", orgId)
@@ -239,9 +262,10 @@ export async function getConversationsForCompany(
     .from("conversations")
     .select(
       `id, subject, status, priority, contact_id, company_id, assigned_to_name,
-       risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
        contacts(full_name, email, phone, tier, notes, tags),
-       companies(name)`
+       companies(name), channels(type)`
     )
     .eq("company_id", companyId)
     .eq("org_id", orgId)
@@ -249,6 +273,143 @@ export async function getConversationsForCompany(
 
   if (error) return [];
   return ((data ?? []) as unknown as DbConversation[]).map(dbConvToFrontend);
+}
+
+// ── Queue health ─────────────────────────────────────────────────────────────
+
+export type QueueFilters = {
+  sla?: "all" | "at_risk" | "breached" | "ok";
+  risk?: "all" | RiskLevel;
+  assignee?: string;
+  status?: "all" | InboxConversation["status"];
+  channel?: "all" | "email";
+  intent?: string;
+};
+
+export type QueueAgingBucket = {
+  id: "under_1h" | "one_to_four_h" | "four_to_24h" | "over_24h";
+  label: string;
+  count: number;
+};
+
+export type QueueHealth = {
+  active: number;
+  atRisk: number;
+  breached: number;
+  highRisk: number;
+  unassigned: number;
+  backlogPressure: number;
+  agingBuckets: QueueAgingBucket[];
+  assignees: string[];
+  statuses: string[];
+  intents: string[];
+  channels: string[];
+};
+
+const ACTIVE_CONVERSATION_STATUSES = ["open", "in_progress", "waiting_on_customer", "waiting_on_internal"];
+
+function ageHours(row: InboxConversation) {
+  const ts = row.lastMessageAt ? new Date(row.lastMessageAt).getTime() : Date.now();
+  return Math.max(0, (Date.now() - ts) / 3_600_000);
+}
+
+function emptyAgingBuckets(): QueueAgingBucket[] {
+  return [
+    { id: "under_1h", label: "< 1h", count: 0 },
+    { id: "one_to_four_h", label: "1-4h", count: 0 },
+    { id: "four_to_24h", label: "4-24h", count: 0 },
+    { id: "over_24h", label: "24h+", count: 0 },
+  ];
+}
+
+function buildQueueHealth(conversations: InboxConversation[]): QueueHealth {
+  const agingBuckets = emptyAgingBuckets();
+  for (const conversation of conversations) {
+    const hours = ageHours(conversation);
+    if (hours < 1) agingBuckets[0]!.count += 1;
+    else if (hours < 4) agingBuckets[1]!.count += 1;
+    else if (hours < 24) agingBuckets[2]!.count += 1;
+    else agingBuckets[3]!.count += 1;
+  }
+
+  const atRisk = conversations.filter((c) => c.sla?.status === "at_risk").length;
+  const breached = conversations.filter((c) => c.sla?.status === "breached").length;
+  const highRisk = conversations.filter((c) => c.riskLevel === "red" || c.riskLevel === "yellow").length;
+  const unassigned = conversations.filter((c) => !c.assignee).length;
+  const active = conversations.length;
+  const pressureInputs = breached * 3 + atRisk * 2 + highRisk + unassigned;
+
+  return {
+    active,
+    atRisk,
+    breached,
+    highRisk,
+    unassigned,
+    backlogPressure: active === 0 ? 0 : Math.min(100, Math.round((pressureInputs / Math.max(active, 1)) * 20)),
+    agingBuckets,
+    assignees: [...new Set(conversations.map((c) => c.assignee).filter(Boolean))].sort(),
+    statuses: [...new Set(conversations.map((c) => c.status))].sort(),
+    intents: [...new Set(conversations.map((c) => c.intent || "unclassified"))].sort(),
+    channels: [...new Set(conversations.map((c) => c.channel))].sort(),
+  };
+}
+
+function applyQueueFilters(conversations: InboxConversation[], filters: QueueFilters) {
+  return conversations.filter((conversation) => {
+    if (filters.sla && filters.sla !== "all" && conversation.sla?.status !== filters.sla) return false;
+    if (filters.risk && filters.risk !== "all" && conversation.riskLevel !== filters.risk) return false;
+    if (filters.status && filters.status !== "all" && conversation.status !== filters.status) return false;
+    if (filters.channel && filters.channel !== "all" && conversation.channel !== filters.channel) return false;
+    if (filters.intent && filters.intent !== "all" && (conversation.intent || "unclassified") !== filters.intent) return false;
+    if (filters.assignee && filters.assignee !== "all") {
+      if (filters.assignee === "unassigned") return !conversation.assignee;
+      return conversation.assignee === filters.assignee;
+    }
+    return true;
+  });
+}
+
+export async function getQueueHealth(filters: QueueFilters = {}): Promise<{
+  health: QueueHealth;
+  conversations: InboxConversation[];
+}> {
+  const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) {
+    return {
+      health: buildQueueHealth([]),
+      conversations: [],
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .select(
+      `id, subject, status, priority, contact_id, company_id, assigned_to_name,
+       assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
+       contacts(full_name, email, phone, tier, notes, tags),
+       companies(name), channels(type)`
+    )
+    .eq("org_id", orgId)
+    .in("status", ACTIVE_CONVERSATION_STATUSES)
+    .order("sla_due_at", { ascending: true, nullsFirst: false })
+    .order("last_message_at", { ascending: false })
+    .limit(500);
+
+  if (error) {
+    console.error("[queries] getQueueHealth error:", error.message);
+    return {
+      health: buildQueueHealth([]),
+      conversations: [],
+    };
+  }
+
+  const conversations = ((data ?? []) as unknown as DbConversation[]).map(dbConvToFrontend);
+  return {
+    health: buildQueueHealth(conversations),
+    conversations: applyQueueFilters(conversations, filters).slice(0, 100),
+  };
 }
 
 // ── Contacts ──────────────────────────────────────────────────────────────────
@@ -815,9 +976,10 @@ export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
     .from("conversations")
     .select(
       `id, subject, status, priority, contact_id, company_id, assigned_to_name,
-       risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
        contacts(full_name, email, phone, tier, notes, tags),
-       companies(name)`
+       companies(name), channels(type)`
     )
     .eq("org_id", orgId)
     .or("risk_level.eq.red,risk_level.eq.yellow,ai_confidence.eq.red,ai_confidence.eq.yellow")

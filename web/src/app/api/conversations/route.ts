@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/security/audit-logger";
+import { refreshConversationSla } from "@/lib/sla/refresh";
+import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 /* ─────────────────────────────────────────────
    POST /api/conversations
@@ -296,19 +299,23 @@ export async function POST(req: NextRequest) {
 
   // 5. Create the opening inbound message
   const messageAuthorName = (contactName || contactEmail.split("@")[0]).slice(0, 100);
-  const { error: messageErr } = await supabase.from("messages").insert({
-    org_id: orgId,
-    conversation_id: conversationId,
-    sender_type: "customer",
-    direction: "inbound",
-    author_name: messageAuthorName,
-    body_text: firstMessage,
-    is_note: false,
-    metadata_json: { created_manually: true, created_by: appUser.id },
-  });
+  const { data: message, error: messageErr } = await supabase
+    .from("messages")
+    .insert({
+      org_id: orgId,
+      conversation_id: conversationId,
+      sender_type: "customer",
+      direction: "inbound",
+      author_name: messageAuthorName,
+      body_text: firstMessage,
+      is_note: false,
+      metadata_json: { created_manually: true, created_by: appUser.id },
+    })
+    .select("id")
+    .single();
 
-  if (messageErr) {
-    console.error("[conversations] opening message create failed:", messageErr.message);
+  if (messageErr || !message) {
+    console.error("[conversations] opening message create failed:", messageErr?.message ?? "No message returned");
     return NextResponse.json({ error: "Failed to create opening message." }, { status: 500 });
   }
 
@@ -321,6 +328,55 @@ export async function POST(req: NextRequest) {
     resourceId: conversationId,
     newValues: { subject, intent, contactId, companyId },
     req,
+  });
+
+  after(async () => {
+    const adminState = createOptionalAdminClient();
+    if (adminState.client) {
+      await refreshConversationSla({
+        db: adminState.client,
+        orgId,
+        conversationId,
+        source: "api.conversations.create",
+      });
+    }
+
+    await emitWorkflowEvent({
+      orgId,
+      eventType: "conversation.created",
+      aggregateType: "conversation",
+      aggregateId: conversationId,
+      conversationId,
+      actorId: appUser.id,
+      source: "api.conversations.create",
+      payload: {
+        subject,
+        intent,
+        riskLevel: "green",
+        priority: "normal",
+        contactId,
+        companyId,
+        assignedToName,
+      },
+    });
+
+    await emitWorkflowEvent({
+      orgId,
+      eventType: "message.received",
+      aggregateType: "message",
+      aggregateId: (message as { id: string }).id,
+      conversationId,
+      actorId: appUser.id,
+      source: "api.conversations.create",
+      payload: {
+        messageId: (message as { id: string }).id,
+        subject,
+        preview,
+        senderType: "customer",
+        direction: "inbound",
+        createdManually: true,
+      },
+    });
   });
 
   return NextResponse.json({ conversationId, contactId, companyId }, { status: 201 });

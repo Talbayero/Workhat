@@ -15,6 +15,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
   let orgData = null;
   let channelData = null;
+  let slaPolicy = null;
   let teamData: unknown[] = [];
   let callerRole = "admin";
   let callerId = "";
@@ -61,6 +62,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           }
         : null;
 
+      const { data: policy } = await supabase
+        .from("org_sla_policies")
+        .select("enabled, first_response_minutes, next_response_minutes, at_risk_threshold_minutes, business_hours_json")
+        .eq("org_id", orgId)
+        .maybeSingle();
+      slaPolicy = policy;
+
       const { data: members } = await supabase
         .from("users")
         .select("id, full_name, email, role, status, created_at")
@@ -74,6 +82,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     <SettingsShell
       org={orgData as { id: string; name: string; slug: string; crm_plan: string; ai_plan: string } | null}
       channel={channelData}
+      slaPolicy={slaPolicy as { enabled: boolean; first_response_minutes: number; next_response_minutes: number; at_risk_threshold_minutes: number; business_hours_json: Record<string, unknown> } | null}
       team={teamData as { id: string; full_name: string; email: string; role: string; status: string }[]}
       callerRole={callerRole}
       callerId={callerId}

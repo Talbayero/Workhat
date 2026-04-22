@@ -20,10 +20,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import { generateDraft, PROMPT_VERSION } from "@/lib/ai";
 import { generateEmbedding } from "@/lib/embeddings";
 import type { ConversationContext, MessageContext, KnowledgeSnippet } from "@/lib/ai/types";
+import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 // ── Request validation ────────────────────────────────────────────────────────
 
@@ -407,6 +409,8 @@ export async function POST(req: NextRequest) {
 
   const appUser = await getCurrentAppUser({ label: "ai/draft" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = await requireCapability(appUser, "ai.generate", "ai/draft");
+  if (denied) return denied;
 
   // Validate request
   let body: DraftRequestBody | null;
@@ -522,6 +526,30 @@ export async function POST(req: NextRequest) {
     } catch (e: unknown) {
       console.warn("[ai/draft] usage event failed:", e instanceof Error ? e.message : e);
     }
+  });
+
+  after(async () => {
+    await emitWorkflowEvent({
+      orgId: appUser.org_id,
+      eventType: "draft.generated",
+      aggregateType: draftId ? "ai_draft" : "conversation",
+      aggregateId: draftId ?? conversationId,
+      conversationId,
+      actorId: appUser.id,
+      source: "api.ai.draft",
+      payload: {
+        draftId,
+        sourceMessageId: sourceMessageId ?? null,
+        confidenceLevel: result.confidenceLevel,
+        riskFlags: result.riskFlags,
+        missingContext: result.missingContext,
+        recommendedTags: result.recommendedTags,
+        provider: result.provider,
+        model: result.model,
+        promptVersion: result.promptVersion,
+        latencyMs: result.latencyMs,
+      },
+    });
   });
 
   return NextResponse.json({

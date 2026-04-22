@@ -431,4 +431,58 @@ Upstash Redis is serverless-friendly, available through the Vercel Marketplace, 
 - Trusted system webhooks are rate limited but excluded from dynamic blacklisting to avoid blocking provider retry storms.
 - Per-policy thresholds remain configurable through environment variables.
 
+---
+
+## ADR-017 — Lean Event Rules Instead of a BPM Workflow Builder
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat V2 uses a lightweight database-backed event and rules engine for operational automation, not a full visual workflow or BPM engine.
+
+### Context
+
+Work Hat is evolving from CRM into an operations OS. The platform needs to react to events like new conversations, high-risk messages, draft generation, replies, and SLA breaches. Options considered were: database triggers, a visual workflow builder, a durable external workflow service, or a small application-layer rules engine.
+
+### Rationale
+
+A small application-layer rules engine gives the product useful automation while keeping the codebase understandable. Rules are ordinary org-scoped database rows; conditions are deterministic JSON comparisons; actions are a fixed TypeScript allowlist. This avoids the complexity of arbitrary workflow graphs, user-authored scripts, recursive trigger chains, and AI-based decisioning in core execution.
+
+### Consequences
+
+- There is no visual workflow builder in this phase.
+- Rule actions do not recursively emit workflow events in V2, which prevents runaway loops by design.
+- Execution is auditable through workflow execution tables, separate from compliance `audit_logs`.
+- Adding new actions requires code review and a migration/doc update.
+- Chained workflows, external webhooks, delays, approvals, and long-running orchestration remain future features.
+
+---
+
+## ADR-018 — SLA Snapshots for Queue Health
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat stores SLA configuration per org and stores the current SLA state as a snapshot on each conversation. Queue health views read these snapshots instead of recomputing deadlines from message history on every page load.
+
+### Context
+
+The product needs first-response and next-response SLA awareness, overdue detection, and manager-facing queue health without becoming a full workforce management system. The queue must be filterable by SLA state, risk, assignee, status, channel, and intent.
+
+### Rationale
+
+Conversation snapshots make SLA state fast, explainable, and auditable. The deterministic evaluator in `lib/sla/` can run after message writes and from an hourly cron to catch time-based breaches. This avoids database triggers, vague AI decisioning, and expensive message-history scans in operational views.
+
+### Consequences
+
+- SLA computation is deterministic TypeScript with a small org policy table.
+- V2 uses calendar minutes; business-hours policy JSON is reserved for a later evaluator.
+- Queue health can load quickly from indexed conversation fields.
+- `sla.breached` is emitted only on breach transitions and can feed the workflow engine.
+- If refresh jobs fail, message-write refresh still updates active threads, and the next cron run repairs overdue state.
+
 *Last updated: April 2026*

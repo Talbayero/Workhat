@@ -8,6 +8,8 @@ import {
   type GmailMessage,
 } from "@/lib/email-connector/google";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { refreshConversationSla } from "@/lib/sla/refresh";
+import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 type SupabaseDb = ReturnType<typeof createAdminClient>;
 
@@ -301,9 +303,11 @@ async function importMessage({
     : new Date().toISOString();
 
   let conversationId: string | null = null;
+  let createdConversation = false;
+  let previousRiskLevel: string | null = null;
   const { data: existingConversation, error: existingConversationError } = await db
     .from("conversations")
-    .select("id")
+    .select("id, risk_level")
     .eq("org_id", orgId)
     .eq("external_thread_id", externalThreadId)
     .maybeSingle();
@@ -312,6 +316,7 @@ async function importMessage({
 
   if (existingConversation) {
     conversationId = existingConversation.id;
+    previousRiskLevel = (existingConversation as { risk_level?: string | null }).risk_level ?? null;
     const { error: conversationUpdateError } = await db
       .from("conversations")
       .update({
@@ -348,31 +353,116 @@ async function importMessage({
       throw new Error(conversationError?.message ?? "Failed to create conversation.");
     }
     conversationId = conversation.id;
+    createdConversation = true;
   }
 
-  const { error: messageError } = await db.from("messages").insert({
-    org_id: orgId,
-    conversation_id: conversationId,
-    sender_type: "customer",
-    direction: "inbound",
-    channel_message_id: channelMessageId,
-    author_name: from.name,
-    subject,
-    body_text: bodyText,
-    body_html: html,
-    is_note: false,
-    metadata_json: {
-      provider: "gmail",
-      gmail_thread_id: message.threadId,
-      gmail_history_id: message.historyId ?? null,
-      rfc_message_id: rfcMessageId,
-      from_email: from.email,
-      label_ids: message.labelIds ?? [],
-    },
-    created_at: messageCreatedAt,
+  const { data: insertedMessage, error: messageError } = await db
+    .from("messages")
+    .insert({
+      org_id: orgId,
+      conversation_id: conversationId,
+      sender_type: "customer",
+      direction: "inbound",
+      channel_message_id: channelMessageId,
+      author_name: from.name,
+      subject,
+      body_text: bodyText,
+      body_html: html,
+      is_note: false,
+      metadata_json: {
+        provider: "gmail",
+        gmail_thread_id: message.threadId,
+        gmail_history_id: message.historyId ?? null,
+        rfc_message_id: rfcMessageId,
+        from_email: from.email,
+        label_ids: message.labelIds ?? [],
+      },
+      created_at: messageCreatedAt,
+    })
+    .select("id")
+    .single();
+
+  if (messageError || !insertedMessage) throw new Error(messageError?.message ?? "Failed to create message.");
+  if (!conversationId) throw new Error("Conversation id missing after message import.");
+
+  await refreshConversationSla({
+    db,
+    orgId,
+    conversationId,
+    source: "gmail.importer",
   });
 
-  if (messageError) throw new Error(messageError.message);
+  if (createdConversation) {
+    await emitWorkflowEvent({
+      orgId,
+      eventType: "conversation.created",
+      aggregateType: "conversation",
+      aggregateId: conversationId,
+      conversationId,
+      source: "gmail.importer",
+      payload: {
+        subject,
+        intent,
+        riskLevel,
+        priority: riskLevel === "red" ? "urgent" : "normal",
+        contactId,
+        companyId,
+        channelId,
+        provider: "gmail",
+      },
+    });
+  } else {
+    await emitWorkflowEvent({
+      orgId,
+      eventType: "conversation.updated",
+      aggregateType: "conversation",
+      aggregateId: conversationId,
+      conversationId,
+      source: "gmail.importer",
+      payload: {
+        preview,
+        previousRiskLevel,
+        riskLevel,
+        reason: "gmail_message",
+      },
+    });
+  }
+
+  await emitWorkflowEvent({
+    orgId,
+    eventType: "message.received",
+    aggregateType: "message",
+    aggregateId: insertedMessage.id,
+    conversationId,
+    source: "gmail.importer",
+    payload: {
+      messageId: insertedMessage.id,
+      subject,
+      preview,
+      senderEmail: from.email,
+      intent,
+      riskLevel,
+      provider: "gmail",
+      gmailThreadId: message.threadId,
+    },
+  });
+
+  if (previousRiskLevel && previousRiskLevel !== riskLevel && riskLevel === "red") {
+    await emitWorkflowEvent({
+      orgId,
+      eventType: "risk.changed",
+      aggregateType: "conversation",
+      aggregateId: conversationId,
+      conversationId,
+      source: "gmail.importer",
+      payload: {
+        previousRiskLevel,
+        riskLevel,
+        reason: "gmail_message_escalation",
+      },
+    });
+  }
+
   return { imported: true, historyId: message.historyId ?? null };
 }
 

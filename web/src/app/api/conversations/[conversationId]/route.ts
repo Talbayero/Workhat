@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
+import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/security/audit-logger";
+import { refreshConversationSla } from "@/lib/sla/refresh";
+import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 /* PATCH /api/conversations/:id — update status, priority, assignee, tags */
 
@@ -34,6 +39,8 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   const appUser = await getCurrentAppUser({ label: "conversations/:id" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = await requireCapability(appUser, "conversations.assign", "conversations/:id");
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {
@@ -100,6 +107,19 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   }
 
   const supabase = await createClient();
+  const { data: existing, error: existingError } = await supabase
+    .from("conversations")
+    .select("id, status, priority, assigned_to_name, risk_level, tags, intent")
+    .eq("id", conversationId)
+    .eq("org_id", appUser.org_id)
+    .maybeSingle();
+
+  if (existingError) {
+    console.error("[conversations/:id] conversation lookup failed:", existingError.message);
+    return NextResponse.json({ error: "Unable to verify this conversation." }, { status: 500 });
+  }
+  if (!existing) return NextResponse.json({ error: "Conversation not found for this workspace." }, { status: 404 });
+
   const { data, error } = await supabase
     .from("conversations")
     .update(updates)
@@ -122,6 +142,32 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     resourceType: "conversation",
     resourceId: conversationId,
     newValues: updates,
+  });
+
+  after(async () => {
+    const adminState = createOptionalAdminClient();
+    if (adminState.client) {
+      await refreshConversationSla({
+        db: adminState.client,
+        orgId: appUser.org_id,
+        conversationId,
+        source: "api.conversations.update",
+      });
+    }
+
+    await emitWorkflowEvent({
+      orgId: appUser.org_id,
+      eventType: "conversation.updated",
+      aggregateType: "conversation",
+      aggregateId: conversationId,
+      conversationId,
+      actorId: appUser.id,
+      source: "api.conversations.update",
+      payload: {
+        oldValues: JSON.parse(JSON.stringify(existing)),
+        newValues: JSON.parse(JSON.stringify(updates)),
+      },
+    });
   });
 
   return NextResponse.json({ ok: true });

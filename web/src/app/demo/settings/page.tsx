@@ -20,11 +20,20 @@ const mockTeam = [
   { id: "2", full_name: "Anika", email: "anika@example.com", role: "manager", status: "active" },
 ];
 
+const mockSlaPolicy = {
+  enabled: true,
+  first_response_minutes: 60,
+  next_response_minutes: 240,
+  at_risk_threshold_minutes: 15,
+  business_hours_json: { mode: "calendar" },
+};
+
 export default async function DemoSettingsPage() {
   return (
     <SettingsShell
       org={mockOrg}
       channel={mockChannel}
+      slaPolicy={mockSlaPolicy}
       team={mockTeam}
       callerRole="admin"
       callerId="1"

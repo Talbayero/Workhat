@@ -1,6 +1,8 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
+import { refreshConversationSla } from "@/lib/sla/refresh";
+import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 /* ─────────────────────────────────────────────
    POST /api/inbound/email
@@ -382,6 +384,8 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 7. Create conversation if no thread match ────────────────────────────
+  let createdConversation = false;
+  let previousRiskLevel: string | null = null;
   if (!conversationId) {
     const { data: newConv, error: conversationErr } = await supabase
       .from("conversations")
@@ -410,7 +414,16 @@ export async function POST(req: NextRequest) {
     }
 
     conversationId = newConv?.id ?? null;
+    createdConversation = true;
   } else {
+    const { data: existingConversation } = await supabase
+      .from("conversations")
+      .select("risk_level")
+      .eq("id", conversationId)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    previousRiskLevel = (existingConversation as { risk_level?: string } | null)?.risk_level ?? null;
+
     // Update existing conversation with latest preview + risk
     const { error: conversationUpdateErr } = await supabase
       .from("conversations")
@@ -463,6 +476,85 @@ export async function POST(req: NextRequest) {
     console.error("[inbound] Message insert error:", msgErr.message);
     return NextResponse.json({ error: "Failed to create message" }, { status: 500 });
   }
+
+  after(async () => {
+    await refreshConversationSla({
+      db: supabase,
+      orgId,
+      conversationId,
+      source: "api.inbound.email",
+    });
+
+    if (createdConversation) {
+      await emitWorkflowEvent({
+        orgId,
+        eventType: "conversation.created",
+        aggregateType: "conversation",
+        aggregateId: conversationId,
+        conversationId,
+        source: "api.inbound.email",
+        payload: {
+          subject: payload.Subject?.trim() || "(no subject)",
+          intent,
+          riskLevel,
+          priority: riskLevel === "red" ? "urgent" : "normal",
+          contactId,
+          companyId,
+          channelId,
+          assignedToName,
+        },
+      });
+    } else {
+      await emitWorkflowEvent({
+        orgId,
+        eventType: "conversation.updated",
+        aggregateType: "conversation",
+        aggregateId: conversationId,
+        conversationId,
+        source: "api.inbound.email",
+        payload: {
+          preview,
+          previousRiskLevel,
+          riskLevel,
+          reason: "inbound_message",
+        },
+      });
+    }
+
+    await emitWorkflowEvent({
+      orgId,
+      eventType: "message.received",
+      aggregateType: "message",
+      aggregateId: message!.id,
+      conversationId,
+      source: "api.inbound.email",
+      payload: {
+        messageId: message!.id,
+        subject: payload.Subject?.trim() || null,
+        preview,
+        senderEmail,
+        intent,
+        riskLevel,
+        channelId,
+      },
+    });
+
+    if (previousRiskLevel && previousRiskLevel !== riskLevel && riskLevel === "red") {
+      await emitWorkflowEvent({
+        orgId,
+        eventType: "risk.changed",
+        aggregateType: "conversation",
+        aggregateId: conversationId,
+        conversationId,
+        source: "api.inbound.email",
+        payload: {
+          previousRiskLevel,
+          riskLevel,
+          reason: "inbound_message_escalation",
+        },
+      });
+    }
+  });
 
   // ── 9. Update company open conversation count ────────────────────────────
   if (companyId && !payload.InReplyTo) {

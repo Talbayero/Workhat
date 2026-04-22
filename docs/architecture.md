@@ -40,6 +40,7 @@ The application is a single Next.js deployment with three distinct execution con
 | Route | Purpose |
 |---|---|
 | `/inbox` | Conversation list with filters (status, assignee, channel) |
+| `/queue` | SLA-aware queue health, backlog pressure, aging buckets, and operational filters |
 | `/inbox/[conversationId]` | Message thread + AI draft composer + reply sender |
 | `/contacts` / `/contacts/[id]` | Contact directory and detail |
 | `/companies` / `/companies/[id]` | Company directory and detail |
@@ -99,7 +100,15 @@ All business tables carry `org_id` for multi-tenant isolation. Every row is scop
 
 **conversations** — The central entity. Has `status` (open / closed / waiting_on_customer / waiting_on_internal), `risk_level` (green / yellow / red), and `ai_confidence`. Linked to a contact, company, and channel.
 
+Conversation rows also store the current SLA snapshot (`sla_status`, `sla_target`, `sla_due_at`, `sla_breached_at`, first/next response timestamps). These fields are derived from message history by `lib/sla/` and used for fast queue filters.
+
 **messages** — Individual messages within a conversation. Has `direction` (inbound / outbound / internal) and `sender_type`. Internal notes are messages with direction=internal.
+
+### SLA & Queue Health
+
+**org_sla_policies** — One org-level policy for deterministic response targets. Stores first-response minutes, next-response minutes, at-risk threshold, enabled state, and reserved business-hours JSON.
+
+The SLA evaluator runs after message writes and from an hourly cron at `/api/sla/refresh`. It emits `sla.breached` workflow events only when a conversation transitions into breach. Queue health reads stored conversation snapshots and surfaces active backlog, aging buckets, SLA pressure, risk, assignee, status, channel, and intent filters.
 
 ### AI
 
@@ -132,6 +141,23 @@ All business tables carry `org_id` for multi-tenant isolation. Every row is scop
 **billing_subscriptions** — Stripe subscription state per org (`provider_customer_id`, `subscription_id`).
 
 **audit_logs** — Append-only event log for security, billing, team, data, AI, and operational actions with attribution. The admin-facing `/audit` route reads this table through `lib/audit/audit-trail.ts`.
+
+### Workflow Engine
+
+**workflow_events** — Org-scoped operational event log for automation. Events include `conversation.created`, `message.received`, `draft.generated`, `reply.sent`, `conversation.updated`, `risk.changed`, and `sla.breached`.
+
+**workflow_rules** — Enabled/disabled deterministic rules with JSON conditions and an ordered allowlist of actions. Rules are evaluated by `lib/workflow-engine/`, not by database triggers.
+
+**workflow_rule_executions** and **workflow_action_executions** — Auditable execution history for every matched/skipped rule and every attempted action.
+
+**qa_follow_ups**, **workflow_notifications**, and **knowledge_gap_candidates** — Lightweight action target tables used by workflow actions without introducing a full task/workflow builder.
+
+Design constraints:
+
+- The engine is event-driven but not recursive in V2. Rule actions do not automatically emit new workflow events.
+- Conditions are deterministic comparisons against event payload and conversation context.
+- Actions are fixed TypeScript implementations, not arbitrary code or AI behavior.
+- `audit_logs` remains the compliance/security log; workflow execution tables are the operational automation log.
 
 ### Supporting
 
