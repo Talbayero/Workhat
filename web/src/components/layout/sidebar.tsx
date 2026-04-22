@@ -67,6 +67,16 @@ const navItems = [
     ),
   },
   {
+    href: "/audit",
+    label: "Audit trail",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+        <path d="M8.5 1.75L14 4v4.1c0 3.15-2.1 5.95-5.5 7.15C5.1 14.05 3 11.25 3 8.1V4l5.5-2.25z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M6 8.5l1.55 1.55L11.25 6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/settings",
     label: "Settings",
     icon: (

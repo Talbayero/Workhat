@@ -346,6 +346,14 @@ All API routes live under `src/app/api/`. Unless noted, all routes require a val
 |---|---|---|---|
 | `GET` | `/api/search` | agent+ | Full-text search across conversations, contacts, companies |
 
+### Audit Trail
+
+| Method | Path | Role | Description |
+|---|---|---|---|
+| `GET` | `/api/audit-logs` | admin/manager (`audit.read`) | Paginated, org-scoped audit log query with actor/action/entity/date filters |
+
+The admin UI for this data is `/audit`. The page and API both call `src/lib/audit/audit-trail.ts` so filtering, pagination, org scoping, and stable ordering stay consistent.
+
 ### Settings
 
 | Method | Path | Role | Description |

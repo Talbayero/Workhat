@@ -46,6 +46,7 @@ The application is a single Next.js deployment with three distinct execution con
 | `/dashboard` | Role-conditional dashboards (agent, manager, QA reviewer) |
 | `/knowledge` / `/knowledge/[id]` | SOP/FAQ knowledge base editor |
 | `/search` | Global search across conversations, contacts, companies |
+| `/audit` | Admin/manager audit trail for critical system and operational events |
 | `/settings` | Org config, channel setup, team management, billing |
 | `/onboarding` | Post-signup setup flow |
 
@@ -130,7 +131,7 @@ All business tables carry `org_id` for multi-tenant isolation. Every row is scop
 
 **billing_subscriptions** — Stripe subscription state per org (`provider_customer_id`, `subscription_id`).
 
-**audit_logs** — Append-only event log for conversation actions with attribution.
+**audit_logs** — Append-only event log for security, billing, team, data, AI, and operational actions with attribution. The admin-facing `/audit` route reads this table through `lib/audit/audit-trail.ts`.
 
 ### Supporting
 
@@ -290,6 +291,23 @@ Customers see "AI Actions" as their usage metric, not tokens.
 `lib/edit-analysis.ts` runs a deterministic diff between the AI draft and what the agent actually sent. It computes `edit_distance_score`, `change_percent`, and `similarity`. This data is stored in `edit_analyses` alongside LLM-based edit classification (tone, policy, missing_context, factual, structure, full_rewrite).
 
 Rule: deterministic diff always runs first. LLM classification is only invoked when the diff indicates a meaningful edit.
+
+### Audit Trail
+
+The `/audit` route is the operational audit monitor for admins and managers. It is server-rendered, checks the `audit.read` capability at the route level, and calls `lib/audit/audit-trail.ts` for all data access.
+
+Supported filters:
+
+| Filter | Behavior |
+|---|---|
+| Actor | Matches `actor_id` when a UUID is supplied; otherwise searches `actor_email` |
+| Action | Exact match on `audit_logs.action` |
+| Entity type | Exact match on `resource_type` |
+| Entity id | Exact UUID match on `resource_id` |
+| Date range | Inclusive created-at range |
+| Org scope | Locked to the signed-in user's `org_id`; user-supplied org IDs cannot expand scope |
+
+Results are ordered by `created_at desc, id desc` for stable pagination. The UI shows event severity, actor, resource, request metadata, and before/after JSON deltas when present.
 
 ### API Gateway & Rate Limiting
 

@@ -62,6 +62,8 @@ export function ReplyComposer({ draft }: { draft: AIDraft }) { ... }
 
 Pages (`page.tsx`) handle data fetching and auth verification at the route level. They pass data down to a `*-shell.tsx` component that owns the layout and UI state. Pages should be thin.
 
+Operational pages such as `/audit` must keep query logic in `lib/` helpers. The page resolves the user, checks the relevant capability, parses search params, and passes the helper result into the shell component.
+
 ### Error Boundaries
 
 Every route segment that can fail independently gets an `error.tsx` file. This is already in place for all main app sections.

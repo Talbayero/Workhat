@@ -42,6 +42,12 @@ const routeMeta: Record<string, RouteMeta> = {
     actionLabel: "View QA queue",
     actionHref: "/dashboard",
   },
+  audit: {
+    label: "Audit Trail",
+    description: "Monitor critical system, security, billing, and operational events.",
+    actionLabel: "Review events",
+    actionHref: "/audit",
+  },
   settings: {
     label: "Settings",
     description: "Control workspace structure, channels, team access, and AI rules.",
