@@ -13,6 +13,20 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // Allow 'any' types in test files (mocking Supabase clients)
+  {
+    files: ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
+  // Allow require() in config files
+  {
+    files: ["jest.config.js", "next.config.js", "postcss.config.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

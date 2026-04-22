@@ -8,7 +8,7 @@ import {
   createLogEntry,
   createRequestContext,
   LogEntry,
-} from '../request-context';
+} from '..';
 import { createMockNextRequest } from '@/__tests__/utils/mocks';
 
 describe('Request Context', () => {

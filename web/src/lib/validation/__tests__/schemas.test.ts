@@ -216,7 +216,7 @@ describe("Validation Schemas", () => {
       const error = new ValidationError([zodError]);
 
       expect(error.name).toBe("ValidationError");
-      expect(error.errors).toHaveLength(1);
+      expect(error.issues).toHaveLength(1);
     });
 
     it("should serialize to JSON with field details", () => {

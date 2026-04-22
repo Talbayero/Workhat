@@ -100,11 +100,11 @@ export function getAdminClientOrLogWarn(label: string) {
  */
 export function getAdminClientOrHandle(
   label: string,
-  onError: (state: Exclude<AdminClientResult, { client: any; client: null }>) => void
+  onError: (state: AdminClientResult & { client: null }) => void
 ) {
   const adminState = createOptionalAdminClient();
   if (!adminState.client) {
-    onError(adminState as any);
+    onError(adminState as AdminClientResult & { client: null });
     return null;
   }
   return adminState.client;

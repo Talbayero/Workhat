@@ -176,7 +176,7 @@ export async function parseRequestBody<T>(
     return schema.parse(body);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new ValidationError(error.errors);
+      throw new ValidationError(error.issues);
     }
     throw error;
   }
@@ -187,7 +187,7 @@ export async function parseRequestBody<T>(
  */
 export class ValidationError extends Error {
   constructor(
-    public errors: z.ZodError["errors"]
+    public issues: z.ZodIssue[]
   ) {
     super("Validation failed");
     this.name = "ValidationError";
@@ -196,10 +196,10 @@ export class ValidationError extends Error {
   toJSON() {
     return {
       error: "Validation failed",
-      details: this.errors.map((err) => ({
-        field: err.path.join("."),
-        message: err.message,
-        code: err.code,
+      details: this.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+        code: issue.code,
       })),
     };
   }
@@ -220,11 +220,11 @@ export async function validateRequest<T>(
     if (result.success) {
       return { success: true, data: result.data };
     } else {
-      return { success: false, error: new ValidationError(result.error.errors) };
+      return { success: false, error: new ValidationError(result.error.issues) };
     }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { success: false, error: new ValidationError(error.errors) };
+      return { success: false, error: new ValidationError(error.issues) };
     }
     if (error instanceof SyntaxError) {
       return {
@@ -236,7 +236,7 @@ export async function validateRequest<T>(
             received: "string",
             path: [],
             message: "Invalid JSON payload",
-          },
+          } as z.ZodIssue,
         ]),
       };
     }

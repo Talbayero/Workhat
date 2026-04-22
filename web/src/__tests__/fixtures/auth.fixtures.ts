@@ -15,10 +15,8 @@ export const TEST_AUTH_USER_ID = "test-auth-user-001";
 export function createMockAppUser(overrides?: Partial<CurrentAppUser>): CurrentAppUser {
   return {
     id: TEST_USER_ID,
-    auth_user_id: TEST_AUTH_USER_ID,
     org_id: TEST_ORG_ID,
     role: "agent",
-    email: "test@example.com",
     full_name: "Test User",
     ...overrides,
   };
@@ -30,7 +28,6 @@ export function createMockAppUser(overrides?: Partial<CurrentAppUser>): CurrentA
 export function createAdminUser(overrides?: Partial<CurrentAppUser>): CurrentAppUser {
   return createMockAppUser({
     role: "admin",
-    email: "admin@example.com",
     full_name: "Admin User",
     ...overrides,
   });
@@ -42,7 +39,6 @@ export function createAdminUser(overrides?: Partial<CurrentAppUser>): CurrentApp
 export function createManagerUser(overrides?: Partial<CurrentAppUser>): CurrentAppUser {
   return createMockAppUser({
     role: "manager",
-    email: "manager@example.com",
     full_name: "Manager User",
     ...overrides,
   });
@@ -54,7 +50,6 @@ export function createManagerUser(overrides?: Partial<CurrentAppUser>): CurrentA
 export function createAgentUser(overrides?: Partial<CurrentAppUser>): CurrentAppUser {
   return createMockAppUser({
     role: "agent",
-    email: "agent@example.com",
     full_name: "Agent User",
     ...overrides,
   });
@@ -66,7 +61,6 @@ export function createAgentUser(overrides?: Partial<CurrentAppUser>): CurrentApp
 export function createQAReviewerUser(overrides?: Partial<CurrentAppUser>): CurrentAppUser {
   return createMockAppUser({
     role: "qa_reviewer",
-    email: "qa@example.com",
     full_name: "QA Reviewer",
     ...overrides,
   });

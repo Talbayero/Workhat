@@ -109,20 +109,22 @@ export function logStructured(entry: LogEntry): void {
   console.log(JSON.stringify(entry));
 }
 
+type ExtendedContext = Partial<RequestContext> & { statusCode?: number; duration?: number; error?: Error; metadata?: Record<string, unknown> };
+
 /**
  * Convenience loggers
  */
 export const logger = {
-  debug: (service: LogEntry['service'], message: string, ctx?: Partial<RequestContext>) => {
+  debug: (service: LogEntry['service'], message: string, ctx?: ExtendedContext) => {
     logStructured(createLogEntry('debug', service, message, ctx));
   },
-  info: (service: LogEntry['service'], message: string, ctx?: Partial<RequestContext>) => {
+  info: (service: LogEntry['service'], message: string, ctx?: ExtendedContext) => {
     logStructured(createLogEntry('info', service, message, ctx));
   },
-  warn: (service: LogEntry['service'], message: string, ctx?: Partial<RequestContext>) => {
+  warn: (service: LogEntry['service'], message: string, ctx?: ExtendedContext) => {
     logStructured(createLogEntry('warn', service, message, ctx));
   },
-  error: (service: LogEntry['service'], message: string, error?: Error, ctx?: Partial<RequestContext>) => {
+  error: (service: LogEntry['service'], message: string, error?: Error, ctx?: ExtendedContext) => {
     logStructured(createLogEntry('error', service, message, { ...ctx, error }));
   },
 };
