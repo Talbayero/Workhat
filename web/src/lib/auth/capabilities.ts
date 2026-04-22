@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
+import { logAudit, logSecurityEvent } from "@/lib/security/audit-logger";
 import type { CurrentAppUser } from "@/lib/auth/app-user";
 
 export const CAPABILITIES = [
@@ -131,17 +133,50 @@ export async function hasAnyCapability(
 export async function requireCapability(
   user: CurrentAppUser,
   capability: Capability,
-  label = "authorization"
+  label = "authorization",
+  req?: NextRequest
 ) {
   if (await hasCapability(user, capability, label)) return null;
+
+  // Log failed capability check for security audit
+  await logAudit({
+    action: "security.suspicious_request",
+    orgId: user.org_id,
+    actorId: user.id,
+    actorEmail: user.email,
+    actorRole: user.role,
+    resourceType: "capability",
+    resourceId: capability,
+    success: false,
+    errorMessage: `User attempted to access ${capability} without permission`,
+    req,
+  });
+
   return NextResponse.json({ error: "Insufficient permissions." }, { status: 403 });
 }
 
 export async function requireAnyCapability(
   user: CurrentAppUser,
   capabilities: readonly Capability[],
-  label = "authorization"
+  label = "authorization",
+  req?: NextRequest
 ) {
   if (await hasAnyCapability(user, capabilities, label)) return null;
+
+  // Log failed capability check for security audit
+  await logAudit({
+    action: "security.suspicious_request",
+    orgId: user.org_id,
+    actorId: user.id,
+    actorEmail: user.email,
+    actorRole: user.role,
+    resourceType: "capability_check",
+    resourceId: capabilities.join(","),
+    resourceLabel: `Required one of: ${capabilities.join(", ")}`,
+    success: false,
+    errorMessage: `User attempted to access restricted capabilities without permission`,
+    req,
+  });
+
   return NextResponse.json({ error: "Insufficient permissions." }, { status: 403 });
 }

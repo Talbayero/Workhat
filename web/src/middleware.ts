@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { applyApiGatewayHeaders, guardApiRequest } from "@/lib/security/api-gateway";
+import { createRequestContext, logger } from "@/lib/request-context";
 
 /**
  * Next.js middleware — runs on every non-static request.
@@ -54,9 +55,16 @@ function isPublic(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // ── 0. Request context (ID generation, logging) ─────────────────────────────
+  const ctx = createRequestContext(request);
+  logger.debug("api", `${ctx.method} ${ctx.pathname} started`, ctx);
+
   // ── 1. API gateway preflight (blacklists, method/body caps, public limits) ─
   const gatewayResponse = await guardApiRequest(request, { phase: "pre-auth" });
-  if (gatewayResponse) return gatewayResponse;
+  if (gatewayResponse) {
+    gatewayResponse.headers.set("X-Request-ID", ctx.requestId);
+    return gatewayResponse;
+  }
 
   // ── 2. Session refresh via Supabase ────────────────────────────────────────
   // We need a mutable response object so Supabase can write refreshed cookies.
@@ -105,6 +113,7 @@ export async function middleware(request: NextRequest) {
 
   // Public routes always pass through.
   if (isPublic(pathname)) {
+    response.headers.set("X-Request-ID", ctx.requestId);
     return applyApiGatewayHeaders(response);
   }
 
@@ -112,16 +121,22 @@ export async function middleware(request: NextRequest) {
   if (!user) {
     if (pathname.startsWith("/api/")) {
       // API callers expect JSON, not an HTML redirect.
-      return applyApiGatewayHeaders(
-        NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      );
+      const errorResponse = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      errorResponse.headers.set("X-Request-ID", ctx.requestId);
+      return applyApiGatewayHeaders(errorResponse);
     }
     // Page route — redirect to /login preserving the intended destination.
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
-    return applyApiGatewayHeaders(NextResponse.redirect(loginUrl));
+    const redirectResponse = NextResponse.redirect(loginUrl);
+    redirectResponse.headers.set("X-Request-ID", ctx.requestId);
+    return applyApiGatewayHeaders(redirectResponse);
   }
+
+  // Inject request ID into final response
+  response.headers.set("X-Request-ID", ctx.requestId);
+  logger.info("api", `${ctx.method} ${ctx.pathname} completed`, { ...ctx, statusCode: 200 });
 
   return applyApiGatewayHeaders(response);
 }
