@@ -12,7 +12,7 @@
  * or A/B tested without touching the others.
  */
 
-import type { ConversationContext, KnowledgeSnippet, OrgPolicyEntry } from "@/lib/ai/types";
+import type { ConversationContext, KnowledgeSnippet, OrgPolicyEntry, PromptConfig } from "@/lib/ai/types";
 import { DRAFT_JSON_SCHEMA } from "@/lib/ai/schemas/draft";
 
 // ── Layer 1: System behavior ──────────────────────────────────────────────────
@@ -152,17 +152,20 @@ export type DraftPrompt = {
   userPrompt: string;
 };
 
-export function buildDraftPrompt(ctx: ConversationContext): DraftPrompt {
+export function buildDraftPrompt(ctx: ConversationContext, config: PromptConfig = {}): DraftPrompt {
   const userPrompt = [
     buildPolicyLayer(ctx.orgPolicyEntries),
     buildKnowledgeLayer(ctx.knowledgeSnippets),
     buildConversationLayer(ctx),
     buildOutputLayer(),
+    config.userAppend?.trim() ? `## Experiment Instructions\n${config.userAppend.trim()}` : "",
     "\nNow write the draft reply JSON:",
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 
   return {
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: config.systemAppend?.trim()
+      ? `${SYSTEM_PROMPT}\n\nAdditional controlled prompt-version instruction:\n${config.systemAppend.trim()}`
+      : SYSTEM_PROMPT,
     userPrompt,
   };
 }

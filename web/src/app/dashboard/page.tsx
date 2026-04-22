@@ -8,6 +8,7 @@ import {
   getQAQueueFromDB,
   getKnowledgeHealth,
   getIntentStats,
+  getAiImprovementInsights,
 } from "@/lib/supabase/queries";
 
 /*
@@ -15,12 +16,13 @@ import {
   shared shell used by the demo so both surfaces evolve together.
 */
 export default async function DashboardPage() {
-  const [stats, log, qaQueue, knowledgeHealth, intentStats] = await Promise.all([
+  const [stats, log, qaQueue, knowledgeHealth, intentStats, aiImprovement] = await Promise.all([
     getDashboardStats(),
     getRecentEditLog(8),
     getQAQueueFromDB(),
     getKnowledgeHealth(),
     getIntentStats(),
+    getAiImprovementInsights(),
   ]);
 
   return (
@@ -30,6 +32,7 @@ export default async function DashboardPage() {
       qaQueue={qaQueue}
       knowledgeHealth={knowledgeHealth}
       intentStats={intentStats}
+      aiImprovement={aiImprovement}
     />
   );
 }

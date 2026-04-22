@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { QAQueue } from "@/components/dashboard/qa-queue";
-import { type EditTypeKey, type DashboardStats, type EditLogEntry, type KnowledgeHealthPattern, type IntentStat } from "@/lib/supabase/queries";
+import { type EditTypeKey, type DashboardStats, type EditLogEntry, type KnowledgeHealthPattern, type IntentStat, type AiImprovementInsights } from "@/lib/supabase/queries";
 import type { InboxConversation } from "@/lib/mock-data";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 
@@ -32,6 +32,7 @@ type DashboardShellProps = {
   qaQueue: InboxConversation[];
   knowledgeHealth?: KnowledgeHealthPattern[];
   intentStats?: IntentStat[];
+  aiImprovement?: AiImprovementInsights;
   isDemo?: boolean;
   baseDir?: string;
 };
@@ -323,12 +324,160 @@ function IntentStatsCard({
   );
 }
 
+function categoryLabel(category: EditTypeKey | "other") {
+  return category === "other" ? "Other edit" : editTypeLabel[category];
+}
+
+function AiImprovementEngineCard({
+  insights,
+  baseDir = "",
+}: {
+  insights: AiImprovementInsights;
+  baseDir?: string;
+}) {
+  const hasData =
+    insights.promptVersions.length > 0 ||
+    insights.editPatterns.length > 0 ||
+    insights.knowledgeGaps.length > 0 ||
+    insights.knowledgeRecommendations.length > 0;
+
+  return (
+    <section className="grain-panel rounded-[24px] border border-[var(--line)] p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="eyebrow text-[9px] text-[var(--muted)]">AI Improvement Engine</p>
+          <h2 className="mt-1 text-base font-semibold">Prompt, edit, and knowledge intelligence</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
+            Built from stored AI drafts and edit analyses. Every recommendation below links back to concrete edit-analysis evidence.
+          </p>
+        </div>
+        <Link
+          href={`${baseDir}/knowledge`}
+          className="shrink-0 rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]"
+        >
+          Open knowledge base
+        </Link>
+      </div>
+
+      {!hasData ? (
+        <div className="mt-5 rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-5 text-sm text-[var(--muted)]">
+          No improvement insights yet. Generate drafts, send replies, and the edit-analysis pipeline will populate this area.
+        </div>
+      ) : (
+        <div className="mt-5 space-y-5">
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold">Prompt version performance</h3>
+              <p className="text-[10px] text-[var(--muted)]">Last 90 days</p>
+            </div>
+            <div className="mt-3 overflow-hidden rounded-[18px] border border-[var(--line)]">
+              <div className="grid grid-cols-[1.3fr_0.7fr_0.8fr_0.8fr_0.8fr_1fr] gap-3 border-b border-[var(--line)] bg-[var(--panel-strong)] px-4 py-2.5 text-[10px] uppercase text-[var(--muted)]">
+                <span>Version</span>
+                <span>Drafts</span>
+                <span>Accept</span>
+                <span>Edit dist.</span>
+                <span>Change</span>
+                <span>Rewrite</span>
+              </div>
+              {insights.promptVersions.slice(0, 5).map((metric) => (
+                <div key={metric.promptVersion} className="grid grid-cols-[1.3fr_0.7fr_0.8fr_0.8fr_0.8fr_1fr] gap-3 border-b border-[var(--line)] px-4 py-3 text-xs last:border-b-0">
+                  <span className="truncate font-medium">{metric.promptVersion}</span>
+                  <span>{metric.evaluatedDrafts}</span>
+                  <span>{metric.acceptanceRate}%</span>
+                  <span>{metric.avgEditDistance}</span>
+                  <span>{metric.avgChangePercent}%</span>
+                  <span>{metric.fullRewriteRate}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+              <h3 className="text-sm font-semibold">Repeated edit patterns</h3>
+              <div className="mt-3 space-y-3">
+                {insights.editPatterns.length === 0 ? (
+                  <p className="text-xs text-[var(--muted)]">No repeated correction cluster has crossed the threshold yet.</p>
+                ) : insights.editPatterns.slice(0, 4).map((pattern) => (
+                  <div key={pattern.id} className="rounded-[14px] border border-[var(--line)] px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 text-sm font-medium">{pattern.label}</p>
+                        <p className="mt-1 text-[10px] text-[var(--muted)]">
+                          {categoryLabel(pattern.category)} · {pattern.count} repeats · {pattern.avgChangePercent}% avg change
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-[var(--line)] px-2 py-1 text-[10px] text-[var(--muted)]">
+                        {pattern.promptVersions.join(", ")}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[10px] text-[var(--muted)]">
+                      Evidence: {pattern.sampleAnalysisIds.slice(0, 3).join(", ")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+              <h3 className="text-sm font-semibold">Likely knowledge gaps</h3>
+              <div className="mt-3 space-y-3">
+                {insights.knowledgeGaps.length === 0 ? (
+                  <p className="text-xs text-[var(--muted)]">No repeated policy, factual, or missing-context gap is strong enough yet.</p>
+                ) : insights.knowledgeGaps.slice(0, 4).map((gap) => (
+                  <div key={gap.id} className="rounded-[14px] border border-[var(--line)] px-3 py-3">
+                    <p className="text-sm font-medium">{gap.title}</p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{gap.reason}</p>
+                    <p className="mt-2 text-[10px] text-[var(--muted)]">
+                      {gap.count} repeats · {gap.avgChangePercent}% avg change · Evidence: {gap.evidenceAnalysisIds.slice(0, 3).join(", ")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+            <h3 className="text-sm font-semibold">Knowledge entries to review</h3>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {insights.knowledgeRecommendations.length === 0 ? (
+                <p className="text-xs text-[var(--muted)]">No existing knowledge entry strongly matches the repeated corrections yet.</p>
+              ) : insights.knowledgeRecommendations.slice(0, 4).map((rec) => (
+                <Link
+                  key={rec.entryId}
+                  href={`${baseDir}/knowledge/${rec.entryId}`}
+                  className="rounded-[14px] border border-[var(--line)] px-3 py-3 transition-colors hover:border-[var(--moss)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{rec.title}</p>
+                      <p className="mt-1 text-[10px] text-[var(--muted)] capitalize">{rec.category}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-[var(--line)] px-2 py-1 text-[10px] text-[var(--muted)]">
+                      score {rec.score}
+                    </span>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{rec.reason}</p>
+                  <p className="mt-2 text-[10px] text-[var(--muted)]">
+                    Evidence: {rec.evidenceAnalysisIds.slice(0, 3).join(", ")}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function DashboardShell({
   stats,
   log,
   qaQueue,
   knowledgeHealth = [],
   intentStats = [],
+  aiImprovement = { promptVersions: [], editPatterns: [], knowledgeGaps: [], knowledgeRecommendations: [] },
   isDemo = false,
   baseDir = "",
 }: DashboardShellProps) {
@@ -355,6 +504,10 @@ export function DashboardShell({
           <EditBreakdown stats={stats} hasData={hasEditData} />
           <RecentEditLog log={log} baseDir={baseDir} />
         </div>
+
+        <ErrorBoundary title="AI improvement insights failed to load" inline>
+          <AiImprovementEngineCard insights={aiImprovement} baseDir={baseDir} />
+        </ErrorBoundary>
 
         <ErrorBoundary title="QA queue failed to load" inline>
           <QAQueue queue={qaQueue} isDemo={isDemo} baseDir={baseDir} />

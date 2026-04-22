@@ -10,7 +10,7 @@
 import { buildDraftPrompt } from "@/lib/ai/prompts/draft";
 import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
 import { DRAFT_JSON_SCHEMA, parseDraftOutput } from "@/lib/ai/schemas/draft";
-import type { AIDraftOutput, ConversationContext } from "@/lib/ai/types";
+import type { AIDraftOutput, ConversationContext, PromptConfig } from "@/lib/ai/types";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -43,14 +43,15 @@ type CallResult = {
  */
 export async function callOpenAIDraft(
   ctx: ConversationContext,
-  model = OPENAI_DEFAULT_MODEL
+  model = OPENAI_DEFAULT_MODEL,
+  promptConfig: PromptConfig = {}
 ): Promise<CallResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not set");
   }
 
-  const { systemPrompt, userPrompt } = buildDraftPrompt(ctx);
+  const { systemPrompt, userPrompt } = buildDraftPrompt(ctx, promptConfig);
 
   const body = {
     model,
@@ -62,7 +63,7 @@ export async function callOpenAIDraft(
       type: "json_schema",
       json_schema: DRAFT_JSON_SCHEMA,
     },
-    temperature: 0.3, // lower = more consistent, less creative
+    temperature: promptConfig.temperature ?? 0.3, // lower = more consistent, less creative
     max_tokens: 1200,
   };
 

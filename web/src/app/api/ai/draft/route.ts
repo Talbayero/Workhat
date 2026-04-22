@@ -25,6 +25,7 @@ import { createClient } from "@/lib/supabase/server";
 import { generateDraft, PROMPT_VERSION } from "@/lib/ai";
 import { generateEmbedding } from "@/lib/embeddings";
 import type { ConversationContext, MessageContext, KnowledgeSnippet } from "@/lib/ai/types";
+import { assignPromptVersion, linkPromptAssignmentToDraft } from "@/lib/prompt-experiments";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 // ── Request validation ────────────────────────────────────────────────────────
@@ -389,14 +390,25 @@ async function emitUsageEvent(
   orgId: string,
   userId: string,
   conversationId: string,
-  latencyMs: number
+  latencyMs: number,
+  promptExperiment?: {
+    experimentId: string | null;
+    assignmentId: string | null;
+    promptVersion: string;
+    bucket: number | null;
+    reason: string;
+  }
 ) {
   const { error } = await supabase.from("usage_events").insert({
     org_id: orgId,
     user_id: userId,
     event_type: "ai_draft_generated",
     units: 1,
-    metadata_json: { conversation_id: conversationId, latency_ms: latencyMs },
+    metadata_json: {
+      conversation_id: conversationId,
+      latency_ms: latencyMs,
+      ...(promptExperiment ? { prompt_experiment: promptExperiment } : {}),
+    },
   });
 
   if (error) throw error;
@@ -475,12 +487,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 404 });
   }
 
+  const promptAssignment = await assignPromptVersion({
+    db: supabase,
+    orgId: appUser.org_id,
+    conversationId,
+  });
+
   // Generate draft
   let result: Awaited<ReturnType<typeof generateDraft>>;
   try {
     result = await generateDraft({
       context,
-      promptVersion: PROMPT_VERSION,
+      promptVersion: promptAssignment.promptVersion || PROMPT_VERSION,
+      promptConfig: promptAssignment.promptConfig,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "AI generation failed";
@@ -500,6 +519,12 @@ export async function POST(req: NextRequest) {
     appUser.org_id,
     result
   );
+
+  await linkPromptAssignmentToDraft({
+    db: supabase,
+    assignmentId: promptAssignment.assignmentId,
+    draftId,
+  });
 
   // Increment used_in_drafts for every knowledge entry that contributed to this draft.
   // Collect unique entry IDs from both snippet retrieval and policy/tone entries.
@@ -521,7 +546,14 @@ export async function POST(req: NextRequest) {
         appUser.org_id,
         appUser.id,
         conversationId,
-        result.latencyMs
+        result.latencyMs,
+        {
+          experimentId: promptAssignment.experimentId,
+          assignmentId: promptAssignment.assignmentId,
+          promptVersion: promptAssignment.promptVersion,
+          bucket: promptAssignment.bucket,
+          reason: promptAssignment.reason,
+        }
       );
     } catch (e: unknown) {
       console.warn("[ai/draft] usage event failed:", e instanceof Error ? e.message : e);
@@ -547,6 +579,12 @@ export async function POST(req: NextRequest) {
         provider: result.provider,
         model: result.model,
         promptVersion: result.promptVersion,
+        promptExperiment: {
+          experimentId: promptAssignment.experimentId,
+          assignmentId: promptAssignment.assignmentId,
+          bucket: promptAssignment.bucket,
+          reason: promptAssignment.reason,
+        },
         latencyMs: result.latencyMs,
       },
     });
@@ -564,6 +602,12 @@ export async function POST(req: NextRequest) {
       provider: result.provider,
       model: result.model,
       promptVersion: result.promptVersion,
+      promptExperiment: {
+        experimentId: promptAssignment.experimentId,
+        assignmentId: promptAssignment.assignmentId,
+        bucket: promptAssignment.bucket,
+        reason: promptAssignment.reason,
+      },
       latencyMs: result.latencyMs,
     },
   });

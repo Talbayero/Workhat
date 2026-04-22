@@ -485,4 +485,57 @@ Conversation snapshots make SLA state fast, explainable, and auditable. The dete
 - `sla.breached` is emitted only on breach transitions and can feed the workflow engine.
 - If refresh jobs fail, message-write refresh still updates active threads, and the next cron run repairs overdue state.
 
+---
+
+## ADR-019 — Deterministic AI Improvement Engine V1
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat V1 computes AI improvement insights from existing `ai_drafts`, `edit_analyses`, `conversations`, and `knowledge_entries` records using deterministic application code. It does not introduce a black-box recommendation model or automatically edit prompts and knowledge.
+
+### Context
+
+The product goal is continuous operational improvement, not only AI reply drafting. Existing draft and edit-analysis records already capture prompt version, diff metrics, edit categories, and likely correction reasons. Operators need these signals converted into prompt, knowledge, and performance recommendations.
+
+### Rationale
+
+Deterministic aggregation keeps recommendations explainable. Prompt-version metrics are direct rollups. Repeated edit patterns are grouped by category and normalized reason tokens. Knowledge recommendations use token overlap against active knowledge entries and include edit-analysis evidence IDs. This gives managers useful insight without requiring a new ML pipeline.
+
+### Consequences
+
+- Insights are org-scoped and computed at dashboard read time for V1.
+- Recommendations are review prompts, not automatic changes.
+- Every cluster and recommendation includes traceable edit-analysis evidence.
+- If tenant scale grows, the same output shape can be persisted as periodic insight snapshots.
+
+---
+
+## ADR-020 — Controlled Prompt Experiments
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat supports prompt experiments through deterministic, org-scoped traffic assignment. Prompt variants are weighted database rows, assignments are sticky per conversation, and generated drafts continue to store the selected `prompt_version`.
+
+### Context
+
+The platform needs to learn which prompt strategies improve operational outcomes without introducing random per-request behavior or removing human approval. Existing outcome analytics already compare drafts by `prompt_version`.
+
+### Rationale
+
+A small assignment layer before draft generation fits the current provider abstraction. Hash buckets give controlled allocation without ML infrastructure. Persisted assignments make the system auditable and let operators explain why a conversation used a version. Rollback is a status change to `rolled_back`, which immediately routes new drafts to the rollback version.
+
+### Consequences
+
+- Human approval remains required before sending every draft.
+- Experiments can compare multiple active prompt versions with controlled allocation.
+- Assignment and rollback are deterministic and traceable.
+- V1 does not include bandits, automatic winner promotion, or automatic prompt rewrites.
+- Prompt-version performance is analyzed through the AI Improvement Engine and `ai_drafts.prompt_version`.
+
 *Last updated: April 2026*

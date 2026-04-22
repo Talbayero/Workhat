@@ -77,9 +77,16 @@ export type ConversationContext = {
 
 export type AIProvider = "openai";
 
+export type PromptConfig = {
+  systemAppend?: string;
+  userAppend?: string;
+  temperature?: number;
+};
+
 export type GenerateDraftOptions = {
   context: ConversationContext;
   provider?: AIProvider;
   model?: string;
   promptVersion?: string;
+  promptConfig?: PromptConfig;
 };

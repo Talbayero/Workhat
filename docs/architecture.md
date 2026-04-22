@@ -118,6 +118,24 @@ The SLA evaluator runs after message writes and from an hourly cron at `/api/sla
 
 **edit_analyses** — What the agent changed from the draft. Stores diff metrics (edit_distance_score, change_percent) and the LLM-classified edit categories (tone / policy / missing_context / factual / structure / full_rewrite).
 
+### AI Improvement Engine
+
+The dashboard reads the last 90 days of `edit_analyses` joined to `ai_drafts` and `conversations` to compare performance by `prompt_version`, cluster repeated edit patterns, identify likely knowledge gaps, and recommend active `knowledge_entries` for review.
+
+V1 computes these insights at read time through deterministic helpers in `lib/ai-improvement-engine/`. Recommendations include edit-analysis evidence IDs and never modify prompts or knowledge automatically.
+
+### Prompt Experimentation
+
+**ai_prompt_versions** — Org-scoped prompt version keys with small optional prompt config (`systemAppend`, `userAppend`, `temperature`). The base prompt and JSON schema remain in code.
+
+**ai_prompt_experiments** — Controlled rollout definitions with status, deterministic traffic seed, stable version, and rollback version.
+
+**ai_prompt_experiment_variants** — Weighted prompt variants for an experiment.
+
+**ai_prompt_assignments** — Sticky conversation-level assignment records. The draft pipeline assigns a version before generation, persists the assignment, stores the selected version in `ai_drafts.prompt_version`, and links the assignment to the draft row.
+
+Prompt assignment is deterministic, org-scoped, and auditable. Rollback sets an experiment to `rolled_back`, causing new drafts to use `rollback_version_key` immediately.
+
 ### Knowledge
 
 **knowledge_entries** — SOPs, FAQs, and tone guides. Has `is_active` for soft-delete and `used_in_drafts` counter.

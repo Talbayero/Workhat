@@ -5,6 +5,12 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { buildAiImprovementInsights } from "@/lib/ai-improvement-engine/insights";
+import type {
+  AiImprovementInsights,
+  ImprovementEditRow,
+  ImprovementKnowledgeEntry,
+} from "@/lib/ai-improvement-engine/types";
 import type {
   InboxConversation,
   InboxViewId,
@@ -964,7 +970,61 @@ export async function getKnowledgeHealth(limit = 4): Promise<KnowledgeHealthPatt
       sampleReasons: value.reasons,
     }))
     .sort((a, b) => b.count - a.count || b.avgEditIntensity - a.avgEditIntensity)
-    .slice(0, limit);
+      .slice(0, limit);
+}
+
+export type {
+  AiImprovementInsights,
+  EditPatternCluster,
+  KnowledgeEntryRecommendation,
+  KnowledgeGapInsight,
+  PromptVersionMetric,
+} from "@/lib/ai-improvement-engine/types";
+
+export async function getAiImprovementInsights(): Promise<AiImprovementInsights> {
+  const supabase = await createClient();
+  const orgId = await getCurrentOrgId(supabase);
+  const empty = buildAiImprovementInsights({ edits: [], knowledgeEntries: [] });
+  if (!orgId) return empty;
+
+  const since = new Date();
+  since.setDate(since.getDate() - 90);
+
+  const [editsRes, knowledgeRes] = await Promise.all([
+    supabase
+      .from("edit_analyses")
+      .select(
+        `id, conversation_id, ai_draft_id, edit_distance_score, change_percent,
+         categories, likely_reason_summary, created_at,
+         ai_drafts(prompt_version, missing_context, recommended_tags),
+         conversations(intent, subject)`
+      )
+      .eq("org_id", orgId)
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(750),
+    supabase
+      .from("knowledge_entries")
+      .select("id, title, summary, body, category, tags, used_in_drafts, last_updated")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+      .order("used_in_drafts", { ascending: false })
+      .limit(200),
+  ]);
+
+  if (editsRes.error) {
+    console.error("[queries] getAiImprovementInsights edits error:", editsRes.error.message);
+    return empty;
+  }
+
+  if (knowledgeRes.error) {
+    console.error("[queries] getAiImprovementInsights knowledge error:", knowledgeRes.error.message);
+  }
+
+  return buildAiImprovementInsights({
+    edits: (editsRes.data ?? []) as unknown as ImprovementEditRow[],
+    knowledgeEntries: (knowledgeRes.data ?? []) as unknown as ImprovementKnowledgeEntry[],
+  });
 }
 
 export async function getQAQueueFromDB(): Promise<InboxConversation[]> {
