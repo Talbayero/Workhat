@@ -1,5 +1,5 @@
 import type { CurrentAppUser } from "@/lib/auth/app-user";
-import { createOptionalAdminClient } from "@/lib/supabase/admin";
+import { getAdminClientOrThrow } from "@/lib/supabase/admin-helpers";
 
 export const AUDIT_ACTIONS = [
   "auth.login",
@@ -186,10 +186,7 @@ function uniqueFacets(rows: AuditTrailLog[]) {
 }
 
 export async function getAuditTrail(appUser: CurrentAppUser, filters: AuditTrailFilters): Promise<AuditTrailResult> {
-  const { client, reason } = createOptionalAdminClient();
-  if (!client) {
-    throw new Error(`Audit log is temporarily unavailable: ${reason}`);
-  }
+  const client = getAdminClientOrThrow("audit-trail");
 
   const page = positiveInt(filters.page, 1);
   const pageSize = positiveInt(filters.pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);

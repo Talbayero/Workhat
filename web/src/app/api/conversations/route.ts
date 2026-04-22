@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { createClient } from "@/lib/supabase/server";
 import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
-import { createOptionalAdminClient } from "@/lib/supabase/admin";
+import { getAdminClientOrLogError, getAdminClientOrLogWarn } from "@/lib/supabase/admin-helpers";
 import { logAudit } from "@/lib/security/audit-logger";
 import { refreshConversationSla } from "@/lib/sla/refresh";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
@@ -87,15 +87,13 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = await createClient();
-  const adminState = createOptionalAdminClient();
-  if (!adminState.client) {
-    console.error("[conversations] admin client unavailable:", adminState.reason);
+  const admin = getAdminClientOrLogError("[conversations] Admin client");
+  if (!admin) {
     return NextResponse.json(
       { error: "Conversation creation is temporarily unavailable. Please try again." },
       { status: 503 }
     );
   }
-  const admin = adminState.client;
   const { org_id: orgId } = appUser;
 
   // Classify intent: use DB-driven classifier unless caller provided an explicit override.
@@ -331,10 +329,10 @@ export async function POST(req: NextRequest) {
   });
 
   after(async () => {
-    const adminState = createOptionalAdminClient();
-    if (adminState.client) {
+    const client = getAdminClientOrLogWarn("[conversations] SLA refresh");
+    if (client) {
       await refreshConversationSla({
-        db: adminState.client,
+        db: client,
         orgId,
         conversationId,
         source: "api.conversations.create",

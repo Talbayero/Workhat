@@ -29,7 +29,7 @@
  *   • All string fields are truncated to safe lengths before insert.
  */
 
-import { createOptionalAdminClient } from "@/lib/supabase/admin";
+import { getAdminClientOrLogError } from "@/lib/supabase/admin-helpers";
 import type { NextRequest } from "next/server";
 
 // ── Action type — must match the audit_action enum in migration 0027 ──────────
@@ -135,9 +135,8 @@ function extractIp(req: NextRequest): string | null {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 export async function logAudit(event: AuditEvent): Promise<void> {
-  const { client, reason } = createOptionalAdminClient();
+  const client = getAdminClientOrLogError("[audit-logger] Admin client unavailable — cannot write audit log");
   if (!client) {
-    console.error("[audit-logger] Admin client unavailable — cannot write audit log:", reason);
     return;
   }
 

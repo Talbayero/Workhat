@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createOptionalAdminClient } from "@/lib/supabase/admin";
+import { getAdminClientOrLogWarn } from "@/lib/supabase/admin-helpers";
 import { logAudit, logSecurityEvent } from "@/lib/security/audit-logger";
 import type { CurrentAppUser } from "@/lib/auth/app-user";
 
@@ -70,13 +70,12 @@ function presetCapabilitiesForRole(role: string) {
 }
 
 async function getMappedCapabilities(user: CurrentAppUser, label: string) {
-  const adminState = createOptionalAdminClient();
-  if (!adminState.client) {
-    console.warn(`[${label}] capability DB lookup unavailable:`, adminState.reason);
+  const client = getAdminClientOrLogWarn(label);
+  if (!client) {
     return presetCapabilitiesForRole(user.role);
   }
 
-  const { data: roleRows, error: roleError } = await adminState.client
+  const { data: roleRows, error: roleError } = await client
     .from("role_capabilities")
     .select("capability")
     .eq("role", user.role);
@@ -92,7 +91,7 @@ async function getMappedCapabilities(user: CurrentAppUser, label: string) {
     if (capability && isCapability(capability)) capabilities.add(capability);
   }
 
-  const { data: overrideRows, error: overrideError } = await adminState.client
+  const { data: overrideRows, error: overrideError } = await client
     .from("user_capability_overrides")
     .select("capability, effect")
     .eq("org_id", user.org_id)
