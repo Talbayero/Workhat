@@ -1,5 +1,6 @@
 import { getMailTransportSettings, providerNeedsAppPasswordHint } from "@/lib/email-connector/adapters/provider-config";
 import { getMailboxAdapter } from "@/lib/email-connector/adapters";
+import { classifyMailboxError } from "@/lib/email-connector/adapters/errors";
 import { buildStoredDiagnostics, isActiveMailboxStatus, normalizeMailboxStatus } from "@/lib/email-connector/mailbox-status";
 import type { MailboxConnectionRecord } from "@/lib/email-connector/adapters/types";
 
@@ -108,5 +109,15 @@ describe("adapter selection", () => {
     expect(() => getMailboxAdapter({ db }, connection({ provider: "custom_inbound", connection_type: "custom_inbound" }))).toThrow(
       "No mailbox adapter supports"
     );
+  });
+});
+
+describe("mailbox error classification", () => {
+  it("translates generic command failures into an operator-facing mailbox validation error", () => {
+    expect(classifyMailboxError(new Error("Command failed"))).toEqual({
+      code: "credentials_rejected",
+      message:
+        "Mailbox validation failed. Verify the mailbox credentials and provider settings. If the provider uses 2FA or blocks direct password login, use an app password instead.",
+    });
   });
 });

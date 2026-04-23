@@ -45,7 +45,52 @@ export async function validateAndActivateMailboxConnection(
     .eq("org_id", connection.org_id);
 
   const adapter = getMailboxAdapter(ctx, { ...connection, status: "validating" });
-  return adapter.activateConnection({ ...connection, status: "validating" });
+  try {
+    return await adapter.activateConnection({ ...connection, status: "validating" });
+  } catch (error) {
+    const classified = classifyMailboxError(error);
+    const diagnostics = {
+      status: "fail" as const,
+      provider: connection.provider,
+      connectionType: connection.connection_type,
+      inboundEnabled: connection.inbound_enabled !== false,
+      outboundEnabled: connection.outbound_enabled !== false,
+      lastValidatedAt: connection.last_validated_at ?? null,
+      lastInboundSyncAt: connection.last_inbound_sync_at ?? connection.last_sync_at ?? null,
+      lastOutboundSendAt: connection.last_outbound_send_at ?? null,
+      lastErrorCode: classified.code,
+      lastErrorMessage: classified.message,
+      nextAction: classified.message,
+      checks: [
+        {
+          key: "activation",
+          label: "Mailbox activation",
+          status: "fail" as const,
+          message: classified.message,
+        },
+      ],
+    };
+
+    await ctx.db
+      .from("email_connections")
+      .update({
+        status: "error",
+        sync_status: "error",
+        error_message: classified.message,
+        last_error_code: classified.code,
+        last_error_message: classified.message,
+        diagnostics_json: diagnostics,
+      })
+      .eq("id", connection.id)
+      .eq("org_id", connection.org_id);
+
+    return {
+      ok: false,
+      code: classified.code,
+      message: classified.message,
+      diagnostics,
+    };
+  }
 }
 
 export async function fetchInboundForConnection(

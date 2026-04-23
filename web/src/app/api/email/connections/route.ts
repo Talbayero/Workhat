@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { validateAndActivateMailboxConnection, type MailboxConnectionRecord } from "@/lib/email-connector/adapters";
+import { classifyMailboxError } from "@/lib/email-connector/adapters/errors";
 import { encryptSecret } from "@/lib/email-connector/encryption";
 import { logAudit } from "@/lib/security/audit-logger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -356,7 +357,21 @@ export async function POST(req: NextRequest) {
     req,
   });
 
-  const activation = await validateAndActivateMailboxConnection({ db }, saved as MailboxConnectionRecord);
+  let activation;
+  try {
+    activation = await validateAndActivateMailboxConnection({ db }, saved as MailboxConnectionRecord);
+  } catch (error) {
+    const classified = classifyMailboxError(error);
+    console.error("[email/connections] activation failed:", classified.message);
+    return NextResponse.json(
+      {
+        error: classified.message,
+        code: classified.code,
+        connection: saved,
+      },
+      { status: 422 }
+    );
+  }
   const { data: activated } = await db
     .from("email_connections")
     .select(
