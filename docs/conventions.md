@@ -93,6 +93,7 @@ Rate limit identity rules:
 - Authenticated application routes use user identity when available and fall back to IP.
 - High-cost tenant-scoped routes may use org identity when the caller can provide `orgId`; otherwise user/IP fallback is acceptable.
 - Trusted system webhooks may be rate limited, but must not trigger dynamic blacklist entries.
+- Authenticated onboarding bootstrap may fail open when the Redis rate-limit store is unavailable, because `/api/org/create` still requires a valid Supabase session and must not block first-run setup during a transient protection-store outage.
 
 Use Upstash Redis for counters and dynamic blacklist entries. Do not reintroduce in-memory `Map` counters for production request protection; they reset on serverless cold starts and do not coordinate across Vercel instances.
 

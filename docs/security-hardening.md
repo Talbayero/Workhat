@@ -300,6 +300,7 @@ SECURITY_RATE_LIMIT_MAX_REQUESTS_PER_WINDOW=100
 | Tier | Authenticated | Unauthenticated | Application |
 |---|---|---|---|
 | Public/Webhook | — | 1000/min per IP | Inbound email, Stripe webhooks |
+| Onboarding | 8/min per user/IP | 8/min per IP before auth rejection | Organization bootstrap |
 | API | 500/min per user | 100/min per IP | Dashboard, integrations |
 | Critical | 10/min per user | — | Password reset, MFA enrollment |
 
@@ -335,6 +336,8 @@ await logSecurityEvent("security.rate_limit_hit", {
 ### Monitoring
 
 Check Redis usage via Upstash dashboard. If rate-limit data is lost (Redis reset), the system continues without rate limiting (degrades gracefully).
+
+Production routes normally fail closed when the Redis-backed rate-limit store is unavailable. The exception is `/api/org/create`: onboarding still requires a valid Supabase session and request validation, but it fails open on rate-limit-store outage so first-run setup is not blocked by missing or transient Upstash configuration. Static IP blacklist, suspicious-header checks, method checks, and body-size limits still run.
 
 ---
 

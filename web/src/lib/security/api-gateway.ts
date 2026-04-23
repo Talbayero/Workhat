@@ -15,6 +15,7 @@ type RoutePolicy = {
   keyMode: RateLimitKeyMode;
   trustedSystem?: boolean;
   dynamicBlacklist?: boolean;
+  failOpenOnStoreUnavailable?: boolean;
 };
 
 type GatewayContext = {
@@ -47,6 +48,7 @@ const POLICIES: Record<string, RoutePolicy> = {
   "inbound-email-webhook": { id: "inbound-email-webhook", methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 0, keyMode: "ip", trustedSystem: true, dynamicBlacklist: false, maxBodyBytes: 2_000_000 },
   "gmail-push-webhook":    { id: "gmail-push-webhook",    methods: ["POST"], windowMs: minute, maxRequests: 240, blacklistAfter: 0, keyMode: "ip", trustedSystem: true, dynamicBlacklist: false, maxBodyBytes: 64_000 },
   "stripe-webhook":        { id: "stripe-webhook",        methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 0, keyMode: "ip", trustedSystem: true, dynamicBlacklist: false, maxBodyBytes: 256_000 },
+  "onboarding-create-org":  { id: "onboarding-create-org", methods: ["POST"], windowMs: minute, maxRequests: 8,   blacklistAfter: 0, keyMode: "user-or-ip", dynamicBlacklist: false, failOpenOnStoreUnavailable: true, maxBodyBytes: 16_384 },
   // All LLM-backed routes (30 req/min). knowledge/gaps gets its own tighter cap below.
   "expensive-ai":          { id: "expensive-ai",          windowMs: minute, maxRequests: 30,  blacklistAfter: 3, keyMode: "org-user-or-ip", maxBodyBytes: 64_000 },
   "email-connector":       { id: "email-connector",       windowMs: minute, maxRequests: 60,  blacklistAfter: 3, keyMode: "user-or-ip", maxBodyBytes: 128_000 },
@@ -125,6 +127,7 @@ function getRoutePolicy(pathname: string): RoutePolicy {
   if (pathname.startsWith("/api/inbound/email"))         return withEnvOverrides(POLICIES["inbound-email-webhook"]);
   if (pathname.startsWith("/api/email/gmail/push"))      return withEnvOverrides(POLICIES["gmail-push-webhook"]);
   if (pathname.startsWith("/api/stripe/webhook"))        return withEnvOverrides(POLICIES["stripe-webhook"]);
+  if (pathname === "/api/org/create")                    return withEnvOverrides(POLICIES["onboarding-create-org"]);
   if (pathname.startsWith("/api/ai/"))                   return withEnvOverrides(POLICIES["expensive-ai"]);
   if (pathname.startsWith("/api/email/"))                return withEnvOverrides(POLICIES["email-connector"]);
   // LLM-backed knowledge and intent routes — must be ordered before api-default.
@@ -203,7 +206,7 @@ async function redisKey(kind: string, id: string, value: string) {
 function shouldFailOpen(policy: RoutePolicy) {
   if (process.env.SECURITY_RATE_LIMIT_FAIL_OPEN === "true") return true;
   if (process.env.SECURITY_RATE_LIMIT_FAIL_OPEN === "false") return false;
-  return !productionRuntime || Boolean(policy.trustedSystem);
+  return !productionRuntime || Boolean(policy.trustedSystem) || Boolean(policy.failOpenOnStoreUnavailable);
 }
 
 function rateLimitStoreUnavailable(policy: RoutePolicy, logDetail: string, clientDetail = "Rate limiting is temporarily unavailable.") {

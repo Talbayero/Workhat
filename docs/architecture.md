@@ -387,12 +387,13 @@ Route policy groups:
 | `inbound-email-webhook` | `/api/inbound/email` | IP, trusted system | 120/min |
 | `gmail-push-webhook` | `/api/email/gmail/push` | IP, trusted system | 240/min |
 | `stripe-webhook` | `/api/stripe/webhook` | IP, trusted system | 120/min |
+| `onboarding-create-org` | `/api/org/create` | User/IP | 8/min |
 | `expensive-ai` | `/api/ai/*`, AI-backed knowledge/intent routes | Org/user/IP | 30/min |
 | `knowledge-gaps` | `/api/knowledge/gaps` | Org/user/IP | 6/min |
 | `email-connector` | `/api/email/*` except Gmail push | User/IP | 60/min |
 | `api-default` | Remaining API routes | User/IP | 180/min |
 
-Trusted system webhooks are rate limited but do not trigger dynamic blacklisting. This avoids accidentally blocking Stripe, Gmail Pub/Sub, or inbound email providers during retry storms. When Redis is missing or unavailable, production API traffic fails closed with `rate_limit_store_unavailable`; local development and trusted webhooks fail open by default.
+Trusted system webhooks are rate limited but do not trigger dynamic blacklisting. This avoids accidentally blocking Stripe, Gmail Pub/Sub, or inbound email providers during retry storms. When Redis is missing or unavailable, production API traffic generally fails closed with `rate_limit_store_unavailable`; local development, trusted webhooks, and the authenticated onboarding org-creation route fail open after method/body/static blacklist checks so first-run setup is not blocked by a transient rate-limit store outage.
 
 ---
 

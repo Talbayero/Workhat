@@ -247,6 +247,36 @@ Users getting 429 (Too Many Requests)
 
 ---
 
+### Decision Tree 3A: Onboarding Shows "Request Protection Temporarily Unavailable"
+
+```
+User cannot create org during onboarding
+│
+├─ Check response code
+│  ├─ 503 with rate_limit_store_unavailable → Redis/Upstash unavailable
+│  └─ Other error → Check /api/org/create logs
+│
+├─ Verify environment
+│  ├─ UPSTASH_REDIS_REST_URL set?
+│  ├─ UPSTASH_REDIS_REST_TOKEN set?
+│  └─ Vercel deployment has current env values?
+│
+└─ Verify onboarding policy is deployed
+   └─ /api/org/create should fail open on store outage after auth/body checks
+```
+
+**Resolution Steps:**
+
+1. Confirm the deployed commit includes the `onboarding-create-org` gateway policy.
+2. Check Vercel environment variables for `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
+3. If env vars were added or changed, redeploy so the proxy picks them up.
+4. Retry onboarding with a signed-in user.
+5. If the error persists, inspect application logs for `[api-gateway] Rate limit store unavailable` and `/api/org/create` errors.
+
+**Expected outcome:** Onboarding proceeds even during a transient rate-limit store outage, while normal API routes keep their fail-closed protection.
+
+---
+
 ### Decision Tree 4: Audit Log Corruption / Missing Entries
 
 ```
