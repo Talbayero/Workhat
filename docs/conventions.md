@@ -286,9 +286,11 @@ Treat Gmail as one adapter, not the email domain model. New inbound provider wor
 
 Custom inbound channels are configured through Settings -> Channels and managed by `/api/email/custom-inbound`. This route requires `integrations.manage`. Public deliveries go to `/api/inbound/email?channelId=<channel_id>` and must include the channel secret.
 
+Mailbox setup records live in `email_connections`. Keep `connection_type` and `provider` separate: `connection_type` is the auth/setup mode (`oauth`, `mailbox_password`, `app_password`, `imap_smtp`, `custom_inbound`), while `provider` is the actual mailbox family (`gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, `custom`, `custom_inbound`). Do not store setup method names in `provider`.
+
 ### Gmail
 
-Never store raw OAuth tokens in the database. Always encrypt via `lib/email-connector/encryption.ts` before writing to `email_connections`. Decrypt immediately before use. The encryption key must never be logged.
+Never store raw OAuth tokens or mailbox credentials in the database. Always encrypt via `lib/email-connector/encryption.ts` before writing to `email_connections`. Decrypt immediately before use. The encryption key must never be logged.
 
 Token refresh is handled automatically by the Gmail sender/importer — they detect expired access tokens and use the refresh token. Watch expiry (7-day Gmail limit) is handled by the cron renewal endpoint.
 

@@ -32,6 +32,7 @@ type SlaPolicyRecord = {
 type EmailConnection = {
   id: string;
   provider: string;
+  connection_type?: string | null;
   provider_account_email: string | null;
   display_name: string | null;
   status: string;

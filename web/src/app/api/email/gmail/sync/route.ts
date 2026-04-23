@@ -29,6 +29,7 @@ export async function POST() {
     .select("id, org_id, provider_account_email, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, last_history_id")
     .eq("org_id", appUser.org_id)
     .eq("provider", "gmail")
+    .eq("connection_type", "oauth")
     .eq("status", "connected")
     .limit(1)
     .maybeSingle();

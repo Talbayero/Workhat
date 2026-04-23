@@ -239,10 +239,11 @@ The database lives in Supabase (Postgres). There are 16 migrations in `supabase/
 |---|---|---|
 | `id` | uuid PK | |
 | `org_id` | uuid FK | |
-| `provider` | text | `gmail` |
-| `provider_account_email` | text | Connected Gmail address |
-| `access_token_ciphertext` | text | AES-256-GCM encrypted |
-| `refresh_token_ciphertext` | text | AES-256-GCM encrypted |
+| `provider` | text | Mailbox family such as `gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, `custom`, or `custom_inbound` |
+| `connection_type` | text | Setup/auth mode: `oauth`, `mailbox_password`, `app_password`, `imap_smtp`, or `custom_inbound` |
+| `provider_account_email` | text | Connected mailbox address |
+| `access_token_ciphertext` | text | AES-256-GCM encrypted OAuth token or mailbox credential |
+| `refresh_token_ciphertext` | text | AES-256-GCM encrypted refresh token when applicable |
 | `token_expires_at` | timestamptz | |
 | `status` | text | `connected`, `error`, `disconnected` |
 | `sync_status` | text | `idle`, `syncing`, `watching`, `error` |

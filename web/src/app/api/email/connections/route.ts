@@ -5,9 +5,11 @@ import { encryptSecret } from "@/lib/email-connector/encryption";
 import { logAudit } from "@/lib/security/audit-logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-type CredentialConnectionMethod = "mailbox_password" | "app_password" | "imap_smtp";
+type CredentialConnectionType = "mailbox_password" | "app_password" | "imap_smtp";
+type MailboxProvider = "gmail" | "microsoft365" | "outlook" | "exchange" | "zoho" | "icloud" | "custom";
 
 const CREDENTIAL_METHODS = new Set(["mailbox_password", "app_password", "imap_smtp"]);
+const PROVIDERS = new Set(["gmail", "microsoft365", "outlook", "exchange", "zoho", "icloud", "custom"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function stringField(body: Record<string, unknown>, key: string) {
@@ -27,11 +29,69 @@ function portField(body: Record<string, unknown>, key: string, fallback: number)
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : Number.NaN;
 }
 
+function normalizeProviderToken(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeMailboxProvider({
+  email,
+  providerHint,
+  imapHost = "",
+  smtpHost = "",
+}: {
+  email: string;
+  providerHint: string;
+  imapHost?: string;
+  smtpHost?: string;
+}): MailboxProvider {
+  const token = normalizeProviderToken(providerHint);
+  const domain = email.split("@")[1]?.toLowerCase() ?? "";
+  const hostText = `${imapHost} ${smtpHost}`.toLowerCase();
+
+  if (["gmail", "google", "googleworkspace"].includes(token) || domain === "gmail.com" || domain === "googlemail.com") {
+    return "gmail";
+  }
+  if (["microsoft365", "m365", "office365"].includes(token)) return "microsoft365";
+  if (
+    ["outlook", "hotmail", "live"].includes(token) ||
+    ["outlook.com", "hotmail.com", "live.com"].includes(domain)
+  ) {
+    return "outlook";
+  }
+  if (token === "exchange" || hostText.includes("exchange")) return "exchange";
+  if (token === "zoho" || domain.includes("zoho.") || hostText.includes("zoho.")) return "zoho";
+  if (["icloud", "apple"].includes(token) || domain === "icloud.com" || domain === "me.com" || domain === "mac.com") {
+    return "icloud";
+  }
+  if (PROVIDERS.has(token)) return token as MailboxProvider;
+  return "custom";
+}
+
 function encryptionUnavailableResponse() {
   return NextResponse.json(
     {
       error: "Mailbox credential storage is not configured.",
       hint: "Set EMAIL_TOKEN_ENCRYPTION_KEY so Work Hat can encrypt saved mailbox credentials for password, app password, and IMAP/SMTP setup.",
+    },
+    { status: 503 }
+  );
+}
+
+function isConnectionSchemaError(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("email_connections_provider_check") ||
+    normalized.includes("email_connections_connection_type_check") ||
+    normalized.includes("connection_type") ||
+    normalized.includes("schema cache")
+  );
+}
+
+function connectionSchemaUnavailableResponse() {
+  return NextResponse.json(
+    {
+      error: "Mailbox connection schema is out of date.",
+      hint: "Apply migrations through 0038_email_connection_type_provider_split.sql so Work Hat can store provider and connection type separately.",
     },
     { status: 503 }
   );
@@ -60,7 +120,7 @@ export async function GET() {
   const { data, error } = await db
     .from("email_connections")
     .select(
-      "id, provider, provider_account_email, display_name, status, sync_status, token_expires_at, last_history_id, watch_expires_at, last_sync_at, error_message, provider_metadata, created_at, updated_at"
+      "id, provider, connection_type, provider_account_email, display_name, status, sync_status, token_expires_at, last_history_id, watch_expires_at, last_sync_at, error_message, provider_metadata, created_at, updated_at"
     )
     .eq("org_id", appUser.org_id)
     .order("created_at", { ascending: false });
@@ -89,8 +149,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
 
-  const method = stringField(body, "method") as CredentialConnectionMethod;
-  if (!CREDENTIAL_METHODS.has(method)) {
+  const connectionType = stringField(body, "method") as CredentialConnectionType;
+  if (!CREDENTIAL_METHODS.has(connectionType)) {
     return NextResponse.json(
       { error: "Connection method must be mailbox_password, app_password, or imap_smtp." },
       { status: 422 }
@@ -108,31 +168,36 @@ export async function POST(req: NextRequest) {
   let credential: string;
   let displayName = senderName || email;
   let metadata: Record<string, unknown>;
+  let provider: MailboxProvider;
 
-  if (method === "mailbox_password") {
+  if (connectionType === "mailbox_password") {
     const password = stringField(body, "password");
     if (!password) {
       return NextResponse.json({ error: "Mailbox password is required." }, { status: 422 });
     }
     credential = password;
+    provider = normalizeMailboxProvider({ email, providerHint });
     metadata = {
-      connection_method: method,
+      connection_type: connectionType,
       provider_hint: providerHint || null,
+      provider,
       sender_name: senderName || null,
       credential_type: "mailbox_password",
       adapter_status: "pending",
       saved_at: now,
       saved_by_user_id: appUser.id,
     };
-  } else if (method === "app_password") {
+  } else if (connectionType === "app_password") {
     const appPassword = stringField(body, "appPassword");
     if (!appPassword) {
       return NextResponse.json({ error: "App password is required." }, { status: 422 });
     }
     credential = appPassword;
+    provider = normalizeMailboxProvider({ email, providerHint });
     metadata = {
-      connection_method: method,
+      connection_type: connectionType,
       provider_hint: providerHint || null,
+      provider,
       sender_name: senderName || null,
       credential_type: "app_password",
       adapter_status: "pending",
@@ -159,8 +224,11 @@ export async function POST(req: NextRequest) {
 
     credential = password;
     displayName = senderName || username || email;
+    provider = normalizeMailboxProvider({ email, providerHint, imapHost, smtpHost });
     metadata = {
-      connection_method: method,
+      connection_type: connectionType,
+      provider_hint: providerHint || null,
+      provider,
       username,
       sender_name: senderName || null,
       imap: {
@@ -203,12 +271,16 @@ export async function POST(req: NextRequest) {
     .from("email_connections")
     .select("id")
     .eq("org_id", appUser.org_id)
-    .eq("provider", method)
+    .eq("provider", provider)
     .eq("provider_account_email", email)
+    .eq("connection_type", connectionType)
     .maybeSingle();
 
   if (lookupError) {
     console.error("[email/connections] lookup failed:", lookupError.message);
+    if (isConnectionSchemaError(lookupError.message)) {
+      return connectionSchemaUnavailableResponse();
+    }
     return NextResponse.json({ error: "Unable to check existing mailbox connection." }, { status: 500 });
   }
 
@@ -217,7 +289,8 @@ export async function POST(req: NextRequest) {
     display_name: displayName,
     error_message: "Mailbox settings are saved. The mailbox sync adapter for this connection type is not enabled yet.",
     org_id: appUser.org_id,
-    provider: method,
+    provider,
+    connection_type: connectionType,
     provider_account_email: email,
     provider_metadata: metadata,
     refresh_token_ciphertext: null,
@@ -229,16 +302,22 @@ export async function POST(req: NextRequest) {
 
   const query = existing
     ? db.from("email_connections").update(payload).eq("id", existing.id).eq("org_id", appUser.org_id).select(
-        "id, provider, provider_account_email, display_name, status, sync_status, error_message, provider_metadata, created_at, updated_at"
+        "id, provider, connection_type, provider_account_email, display_name, status, sync_status, error_message, provider_metadata, created_at, updated_at"
       )
     : db.from("email_connections").insert(payload).select(
-        "id, provider, provider_account_email, display_name, status, sync_status, error_message, provider_metadata, created_at, updated_at"
+        "id, provider, connection_type, provider_account_email, display_name, status, sync_status, error_message, provider_metadata, created_at, updated_at"
       );
 
   const { data: saved, error } = await query.maybeSingle();
   if (error) {
     console.error("[email/connections] save failed:", error.message);
-    return NextResponse.json({ error: "Unable to save this mailbox connection." }, { status: 500 });
+    if (isConnectionSchemaError(error.message)) {
+      return connectionSchemaUnavailableResponse();
+    }
+    return NextResponse.json(
+      { error: "Unable to save this mailbox connection.", hint: "Please verify the provider, mailbox address, and setup method." },
+      { status: 500 }
+    );
   }
 
   await logAudit({
@@ -250,7 +329,8 @@ export async function POST(req: NextRequest) {
     resourceId: saved?.id ?? null,
     resourceLabel: email,
     newValues: {
-      provider: method,
+      provider,
+      connectionType,
       status: "needs_reconnect",
       credentialStored: true,
     },

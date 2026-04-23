@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
     .from("email_connections")
     .select("id, org_id, provider_account_email, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, last_history_id, provider_metadata")
     .eq("provider", "gmail")
+    .eq("connection_type", "oauth")
     .eq("provider_account_email", emailAddress)
     .in("status", ["connected", "error"])
     .limit(1)

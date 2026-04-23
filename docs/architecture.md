@@ -94,7 +94,7 @@ All business tables carry `org_id` for multi-tenant isolation. Every row is scop
 
 **channels** — Configured email/communication channels for an org. Custom inbound channels store one-way webhook token hashes and diagnostics in `config_json`.
 
-**email_connections** — Stores mailbox provider or connection-method records. Gmail rows hold OAuth tokens (AES-256-GCM encrypted), watch state, and sync history. Credential-based setup rows use `mailbox_password`, `app_password`, or `imap_smtp` providers with encrypted credentials plus non-secret adapter metadata such as hostnames, ports, TLS flags, sender name, and setup audit fields.
+**email_connections** — Stores mailbox connection records. `provider` is the actual mailbox provider or adapter family (`gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, `custom`, `custom_inbound`). `connection_type` is the setup/authentication type (`oauth`, `mailbox_password`, `app_password`, `imap_smtp`, `custom_inbound`). Gmail rows hold OAuth tokens (AES-256-GCM encrypted), watch state, and sync history. Credential-based setup rows hold encrypted credentials plus non-secret adapter metadata such as provider hints, hostnames, ports, TLS flags, sender name, and setup audit fields.
 
 **inbound_email_events** — Org-scoped webhook/import delivery log used for non-Gmail and normalized Gmail inbound processing. Stores provider identifiers, dedupe key, processing status, conversation/message links, and error diagnostics.
 

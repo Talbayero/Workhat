@@ -99,6 +99,7 @@ export async function GET(req: NextRequest) {
       .eq("org_id", appUser.org_id)
       .eq("provider", GMAIL_PROVIDER)
       .eq("provider_account_email", email)
+      .eq("connection_type", "oauth")
       .maybeSingle();
 
     if (existingError) {
@@ -116,6 +117,8 @@ export async function GET(req: NextRequest) {
     }
 
     const providerMetadata: ProviderMetadata = {
+      connection_type: "oauth",
+      provider: GMAIL_PROVIDER,
       gmail_profile: profile,
       token_type: token.token_type,
     };
@@ -126,6 +129,7 @@ export async function GET(req: NextRequest) {
         org_id: appUser.org_id,
         created_by_user_id: appUser.id,
         provider: GMAIL_PROVIDER,
+        connection_type: "oauth",
         provider_account_email: email,
         display_name: email,
         status: "connected",
@@ -138,7 +142,7 @@ export async function GET(req: NextRequest) {
         error_message: null,
         provider_metadata: providerMetadata,
       }, {
-        onConflict: "org_id,provider,provider_account_email",
+        onConflict: "org_id,provider,provider_account_email,connection_type",
       })
       .select("id")
       .single();

@@ -613,7 +613,8 @@ The four connection types map cleanly to current and future adapters while keepi
 
 ### Consequences
 
-- `email_connections.provider` now accepts `mailbox_password`, `app_password`, and `imap_smtp` in addition to existing providers.
+- `email_connections` separates `connection_type` from `provider`: setup choices are stored as `oauth`, `mailbox_password`, `app_password`, or `imap_smtp`; provider stores the actual mailbox family such as `gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, or `custom`.
+- Migration `0038_email_connection_type_provider_split.sql` supersedes the temporary 0037 method-as-provider shape and backfills any rows saved during that interim model.
 - Saved mailbox credentials require `EMAIL_TOKEN_ENCRYPTION_KEY`; custom inbound webhook tokens still do not because only one-way hashes are stored.
 - Onboarding and Settings share the same four-choice setup component.
 - Custom inbound remains backward-compatible and visible under Advanced developer setup for relays, parsers, and internal demo senders.

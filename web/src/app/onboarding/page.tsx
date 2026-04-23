@@ -20,6 +20,7 @@ type InviteFields = {
 type EmailConnection = {
   id: string;
   provider: string;
+  connection_type?: string | null;
   provider_account_email: string;
   status: "connected" | "needs_reconnect" | "disabled" | "error";
   sync_status: "idle" | "syncing" | "watching" | "error";

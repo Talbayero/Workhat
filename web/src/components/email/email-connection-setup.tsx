@@ -33,6 +33,7 @@ type ImapSmtpForm = {
   email: string;
   username: string;
   password: string;
+  providerHint: string;
   senderName: string;
   imapHost: string;
   imapPort: string;
@@ -87,6 +88,7 @@ function emptyImapSmtpForm(): ImapSmtpForm {
     email: "",
     username: "",
     password: "",
+    providerHint: "custom",
     senderName: "",
     imapHost: "",
     imapPort: "993",
@@ -138,6 +140,7 @@ export function EmailConnectionSetup({
             email: imapSmtp.email,
             username: imapSmtp.username,
             password: imapSmtp.password,
+            providerHint: imapSmtp.providerHint,
             senderName: imapSmtp.senderName,
             imapHost: imapSmtp.imapHost,
             imapPort: imapSmtp.imapPort,
@@ -281,6 +284,7 @@ export function EmailConnectionSetup({
               <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Use this for hosted email, corporate mail servers, cPanel, Zoho, or private servers.</p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
+              <SelectField label="Provider" value={imapSmtp.providerHint} onChange={(providerHint) => setImapSmtp((prev) => ({ ...prev, providerHint }))} />
               <TextField label="Mailbox email" type="email" value={imapSmtp.email} onChange={(email) => setImapSmtp((prev) => ({ ...prev, email }))} />
               <TextField label="Username" value={imapSmtp.username} onChange={(username) => setImapSmtp((prev) => ({ ...prev, username }))} />
               <TextField label="Password" type="password" value={imapSmtp.password} onChange={(password) => setImapSmtp((prev) => ({ ...prev, password }))} />
@@ -351,10 +355,12 @@ function SelectField({ label, value, onChange }: { label: string; value: string;
         className="rounded-lg border border-[var(--line)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)]"
       >
         <option value="gmail">Gmail</option>
-        <option value="outlook">Outlook / Microsoft 365</option>
+        <option value="microsoft365">Microsoft 365</option>
+        <option value="outlook">Outlook.com</option>
+        <option value="exchange">Exchange</option>
         <option value="icloud">iCloud Mail</option>
         <option value="zoho">Zoho Mail</option>
-        <option value="other">Other provider</option>
+        <option value="custom">Other provider</option>
       </select>
     </label>
   );

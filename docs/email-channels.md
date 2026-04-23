@@ -33,6 +33,13 @@ Onboarding Step 2 and Settings -> Channels start with the four mailbox connectio
 
 Credential-based methods are normalized into `email_connections` with encrypted secrets and non-secret connection metadata. They require `EMAIL_TOKEN_ENCRYPTION_KEY` because Work Hat must decrypt mailbox credentials later when the relevant mailbox adapter runs. Custom inbound webhook token storage does not require this key because webhook tokens are stored as one-way hashes in `channels.config_json`.
 
+`email_connections` separates the two concepts that the UI exposes:
+
+- `connection_type`: `oauth`, `mailbox_password`, `app_password`, `imap_smtp`, or `custom_inbound`.
+- `provider`: `gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, `custom`, or `custom_inbound`.
+
+For example, a Zoho IMAP/SMTP setup is stored as `connection_type = 'imap_smtp'` and `provider = 'zoho'`, not as provider `imap_smtp`.
+
 ## Custom Inbound Setup
 
 Settings -> Channels and onboarding keep custom inbound under Advanced developer setup. Users with `integrations.manage` can:
@@ -116,7 +123,7 @@ Operators should check:
 
 ## Manual Demo Verification
 
-1. Apply migrations through `0037_email_connection_methods.sql`.
+1. Apply migrations through `0038_email_connection_type_provider_split.sql`.
 2. Sign in as an admin or manager with `integrations.manage`.
 3. Open onboarding Step 2 or Settings -> Channels and confirm the four mailbox connection types appear first.
 4. Connect Gmail through OAuth, or save a credential-based setup record when `EMAIL_TOKEN_ENCRYPTION_KEY` is configured.

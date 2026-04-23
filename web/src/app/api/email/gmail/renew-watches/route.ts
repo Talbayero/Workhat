@@ -135,6 +135,7 @@ export async function GET(req: NextRequest) {
     .from("email_connections")
     .select("id, org_id, provider_account_email, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, last_history_id, watch_expires_at, provider_metadata")
     .eq("provider", "gmail")
+    .eq("connection_type", "oauth")
     .in("status", ["connected", "error"])
     .limit(25);
 
