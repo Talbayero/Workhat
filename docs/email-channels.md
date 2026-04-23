@@ -31,6 +31,8 @@ Settings -> Channels includes a non-Gmail webhook channel card. Users with `inte
 - Copy or regenerate the shared token.
 - View status, last successful inbound event, last event status, and last error.
 
+The onboarding flow also offers custom inbound as the recommended Step 2 path for internal dogfooding and demos. Gmail remains available as an optional connected mailbox when a team wants OAuth-based import and Gmail-backed sending, but onboarding should not imply Google Workspace is required before Work Hat can receive operational messages.
+
 The endpoint format is:
 
 ```text

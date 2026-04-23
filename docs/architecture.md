@@ -308,6 +308,8 @@ The public custom webhook route is `POST /api/inbound/email`. It verifies a per-
 
 Supported V1 payloads are intentionally generic and Postmark-compatible enough for internal relays, SMTP parsing services, and future Postmark-style providers. The route is not a visual marketplace or arbitrary integration runtime.
 
+Onboarding presents custom inbound as the first setup path so an org can dogfood or demo Work Hat without Google Workspace. Gmail is still available from onboarding and Settings as an optional mailbox adapter.
+
 Downstream effects after successful inbound processing:
 
 - `conversation.created` for a new thread, or `conversation.updated` when an existing thread receives a message.

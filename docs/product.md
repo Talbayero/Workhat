@@ -35,6 +35,7 @@ The current platform includes:
 
 - Authenticated org-scoped CRM workspace.
 - Email conversations from Gmail or custom inbound webhook channels, with Gmail-backed outbound replies.
+- Onboarding supports custom inbound first for internal demos and dogfooding, with Gmail available as an optional connected mailbox.
 - AI draft generation with non-null prompt versions.
 - Capability-based authorization over role presets.
 - SLA snapshots and queue health views.

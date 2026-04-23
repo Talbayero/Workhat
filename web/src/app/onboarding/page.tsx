@@ -28,6 +28,27 @@ type EmailConnection = {
   error_message: string | null;
 };
 
+type CustomInboundChannel = {
+  id: string;
+  status: string;
+  name: string;
+  fromName: string;
+  replyIdentity: string;
+  inboundAddress: string | null;
+  webhookEndpoint: string;
+  webhookSecret: string | null;
+  webhookSecretHint: string | null;
+  lastInboundAt: string | null;
+  lastErrorAt: string | null;
+  lastErrorMessage: string | null;
+  lastEvent: {
+    status: string;
+    errorMessage: string | null;
+    createdAt: string;
+    processedAt: string | null;
+  } | null;
+};
+
 type SettingsOrgResponse = {
   org?: {
     name?: string;
@@ -126,13 +147,23 @@ function StepOrg({ fields, onChange }: { fields: OrgFields; onChange: (f: Partia
   );
 }
 
-function StepInbox({ inboundAddress }: { inboundAddress: string }) {
+function StepInbox({
+  inboundAddress,
+  orgName,
+  supportEmail,
+}: {
+  inboundAddress: string;
+  orgName: string;
+  supportEmail: string;
+}) {
   const [connections, setConnections] = useState<EmailConnection[]>([]);
+  const [customChannel, setCustomChannel] = useState<CustomInboundChannel | null>(null);
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [urlMessage, setUrlMessage] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [watching, setWatching] = useState(false);
+  const [creatingCustom, setCreatingCustom] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
   useEffect(() => {
@@ -160,20 +191,63 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
     setLoadingConnections(true);
     setConnectionError(null);
     try {
-      const response = await fetch("/api/email/connections");
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error ?? "Unable to load email connections.");
+      const [gmailResponse, customResponse] = await Promise.all([
+        fetch("/api/email/connections"),
+        fetch("/api/email/custom-inbound"),
+      ]);
+
+      if (gmailResponse.ok) {
+        const data = await gmailResponse.json() as { connections?: EmailConnection[] };
+        setConnections(data.connections ?? []);
+      } else {
+        setConnections([]);
       }
 
-      const data = await response.json() as { connections?: EmailConnection[] };
-      setConnections(data.connections ?? []);
+      if (customResponse.ok) {
+        const data = await customResponse.json() as { channels?: CustomInboundChannel[] };
+        setCustomChannel(data.channels?.[0] ?? null);
+      } else {
+        setCustomChannel(null);
+      }
     } catch (error) {
       setConnectionError(
         friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Unable to load email connections.")
       );
     } finally {
       setLoadingConnections(false);
+    }
+  }
+
+  async function createCustomInbound() {
+    setCreatingCustom(true);
+    setConnectionError(null);
+    setSyncResult(null);
+
+    try {
+      const response = await fetch("/api/email/custom-inbound", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${orgName || "Work Hat"} inbound`,
+          fromName: orgName || "Work Hat",
+          replyIdentity: supportEmail || inboundAddress,
+        }),
+      });
+      const data = await response.json().catch(() => ({})) as {
+        channel?: CustomInboundChannel;
+        error?: string;
+      };
+
+      if (!response.ok) throw new Error(data.error ?? "Unable to create custom inbound channel.");
+
+      setCustomChannel(data.channel ?? null);
+      setSyncResult("Custom inbound channel is ready. Use the endpoint and token with your relay or demo sender.");
+    } catch (error) {
+      setConnectionError(
+        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Unable to create custom inbound channel.")
+      );
+    } finally {
+      setCreatingCustom(false);
     }
   }
 
@@ -236,62 +310,60 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
   return (
     <div className="space-y-4 mt-5">
       <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended · no forwarding required</p>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended for demos · no Google required</p>
         <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-base font-semibold">Connect your Gmail inbox</h3>
+            <h3 className="text-base font-semibold">Create a custom inbound channel</h3>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Sign in with Google, approve Work Hat, and we handle sync, importing, and sending from this mailbox.
+              Receive real inbound messages from an internal relay, SMTP parser, or demo sender without mounting a Gmail inbox.
             </p>
           </div>
-          {gmailConnection?.status === "connected" ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={syncGmail}
-                disabled={syncing}
-                className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {syncing ? "Importing..." : "Import latest email"}
-              </button>
-              <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-300">
-                Connected
-              </div>
-              <button
-                type="button"
-                onClick={enableGmailWatch}
-                disabled={watching}
-                className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] disabled:opacity-50"
-              >
-                {watching ? "Repairing..." : "Repair live updates"}
-              </button>
+          {customChannel ? (
+            <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-300">
+              Ready
             </div>
           ) : (
-            <a
-              href={`/api/email/gmail/connect?returnTo=${encodeURIComponent("/onboarding?step=inbox")}`}
+            <button
+              type="button"
+              onClick={createCustomInbound}
+              disabled={creatingCustom}
               className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-center text-xs font-medium text-white transition-opacity hover:opacity-90"
             >
-              Sign in with Google
-            </a>
+              {creatingCustom ? "Creating..." : "Create channel"}
+            </button>
           )}
         </div>
 
-        {gmailConnection && (
-          <div className="mt-4 rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs">
-            <p className="font-medium">{gmailConnection.provider_account_email}</p>
-            <p className="mt-1 text-[var(--muted)]">
-              {gmailConnection.status === "connected" ? "Ready for shared inbox replies" : `Status: ${gmailConnection.status}`}
-              {gmailConnection.sync_status ? ` · Sync: ${gmailConnection.sync_status}` : ""}
-              {gmailConnection.last_sync_at ? ` · Last sync ${new Date(gmailConnection.last_sync_at).toLocaleString()}` : ""}
-              {gmailConnection.watch_expires_at
-                ? ` · Live updates active until ${new Date(gmailConnection.watch_expires_at).toLocaleDateString()}`
-                : ""}
+        {customChannel && (
+          <div className="mt-4 space-y-3">
+            <div
+              className="cursor-pointer rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs"
+              onClick={() => navigator.clipboard?.writeText(customChannel.webhookEndpoint)}
+              title="Click to copy endpoint"
+            >
+              <p className="eyebrow text-[9px] text-[var(--muted)]">Webhook endpoint</p>
+              <p className="mt-1 break-all font-mono text-[var(--foreground)]">{customChannel.webhookEndpoint}</p>
+            </div>
+            <div
+              className="cursor-pointer rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs"
+              onClick={() => customChannel.webhookSecret && navigator.clipboard?.writeText(customChannel.webhookSecret)}
+              title="Click to copy token"
+            >
+              <p className="eyebrow text-[9px] text-[var(--muted)]">Shared token</p>
+              <p className="mt-1 break-all font-mono text-[var(--foreground)]">
+                {customChannel.webhookSecret ?? customChannel.webhookSecretHint ?? "Regenerate in Settings if needed"}
+              </p>
+            </div>
+            <p className="text-xs leading-5 text-[var(--muted)]">
+              Send test JSON to this endpoint with the token as `Authorization: Bearer`. The message will appear in Inbox and Queue.
+              {customChannel.lastInboundAt ? ` Last inbound: ${new Date(customChannel.lastInboundAt).toLocaleString()}.` : ""}
+              {customChannel.lastErrorMessage ? ` Last error: ${customChannel.lastErrorMessage}` : ""}
             </p>
           </div>
         )}
 
         {loadingConnections && (
-          <p className="mt-3 text-xs text-[var(--muted)]">Checking existing connections...</p>
+          <p className="mt-3 text-xs text-[var(--muted)]">Checking existing channels...</p>
         )}
         {connectionError && (
           <p className="mt-3 text-xs text-[rgba(220,80,80,0.9)]">{connectionError}</p>
@@ -314,23 +386,56 @@ function StepInbox({ inboundAddress }: { inboundAddress: string }) {
         )}
       </div>
 
-      <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4 opacity-70">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Coming next</p>
+      <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Optional connected mailbox</p>
         <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-base font-semibold">Connect Outlook / Microsoft 365</h3>
+            <h3 className="text-base font-semibold">Connect your Gmail inbox</h3>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Same Work Hat connector layer, using Microsoft Graph subscriptions and delta sync.
+              Use Google OAuth when you want Work Hat to import recent Gmail conversations and send approved replies from that mailbox.
             </p>
           </div>
-          <button
-            type="button"
-            disabled
-            className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-xs font-medium text-[var(--muted)]"
-          >
-            Soon
-          </button>
+          {gmailConnection?.status === "connected" ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={syncGmail}
+                disabled={syncing}
+                className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {syncing ? "Importing..." : "Import latest email"}
+              </button>
+              <button
+                type="button"
+                onClick={enableGmailWatch}
+                disabled={watching}
+                className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] disabled:opacity-50"
+              >
+                {watching ? "Repairing..." : "Repair live updates"}
+              </button>
+            </div>
+          ) : (
+            <a
+              href={`/api/email/gmail/connect?returnTo=${encodeURIComponent("/onboarding?step=inbox")}`}
+              className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-center text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)]"
+            >
+              Sign in with Google
+            </a>
+          )}
         </div>
+        {gmailConnection && (
+          <div className="mt-4 rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs">
+            <p className="font-medium">{gmailConnection.provider_account_email}</p>
+            <p className="mt-1 text-[var(--muted)]">
+              {gmailConnection.status === "connected" ? "Ready for shared inbox replies" : `Status: ${gmailConnection.status}`}
+              {gmailConnection.sync_status ? ` · Sync: ${gmailConnection.sync_status}` : ""}
+              {gmailConnection.last_sync_at ? ` · Last sync ${new Date(gmailConnection.last_sync_at).toLocaleString()}` : ""}
+              {gmailConnection.watch_expires_at
+                ? ` · Live updates active until ${new Date(gmailConnection.watch_expires_at).toLocaleDateString()}`
+                : ""}
+            </p>
+          </div>
+        )}
       </div>
 
       <details className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
@@ -559,8 +664,8 @@ const STEP_META: { id: StepId; title: string; description: string }[] = [
   },
   {
     id: "inbox",
-    title: "Connect your inbox",
-    description: "Sign in with Google so Work Hat can import and reply from your mailbox.",
+    title: "Choose an inbound channel",
+    description: "Use custom inbound for non-Gmail workflows, or connect Gmail when you want mailbox sync.",
   },
   {
     id: "knowledge",
@@ -719,7 +824,13 @@ export default function OnboardingPage() {
         onChange={(f) => setOrgFields((prev) => ({ ...prev, ...f }))}
       />
     ),
-    inbox: <StepInbox inboundAddress={inboundAddress || fallbackInboundAddress(orgSlug)} />,
+    inbox: (
+      <StepInbox
+        inboundAddress={inboundAddress || fallbackInboundAddress(orgSlug)}
+        orgName={orgFields.orgName}
+        supportEmail={orgFields.supportEmail}
+      />
+    ),
     knowledge: <StepKnowledge />,
     invite: (
       <StepInvite

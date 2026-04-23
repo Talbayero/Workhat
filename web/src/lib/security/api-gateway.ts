@@ -49,6 +49,7 @@ const POLICIES: Record<string, RoutePolicy> = {
   "gmail-push-webhook":    { id: "gmail-push-webhook",    methods: ["POST"], windowMs: minute, maxRequests: 240, blacklistAfter: 0, keyMode: "ip", trustedSystem: true, dynamicBlacklist: false, maxBodyBytes: 64_000 },
   "stripe-webhook":        { id: "stripe-webhook",        methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 0, keyMode: "ip", trustedSystem: true, dynamicBlacklist: false, maxBodyBytes: 256_000 },
   "onboarding-create-org":  { id: "onboarding-create-org", methods: ["POST"], windowMs: minute, maxRequests: 8,   blacklistAfter: 0, keyMode: "user-or-ip", dynamicBlacklist: false, failOpenOnStoreUnavailable: true, maxBodyBytes: 16_384 },
+  "email-setup":            { id: "email-setup",            windowMs: minute, maxRequests: 30,  blacklistAfter: 0, keyMode: "user-or-ip", dynamicBlacklist: false, failOpenOnStoreUnavailable: true, maxBodyBytes: 128_000 },
   // All LLM-backed routes (30 req/min). knowledge/gaps gets its own tighter cap below.
   "expensive-ai":          { id: "expensive-ai",          windowMs: minute, maxRequests: 30,  blacklistAfter: 3, keyMode: "org-user-or-ip", maxBodyBytes: 64_000 },
   "email-connector":       { id: "email-connector",       windowMs: minute, maxRequests: 60,  blacklistAfter: 3, keyMode: "user-or-ip", maxBodyBytes: 128_000 },
@@ -128,6 +129,9 @@ function getRoutePolicy(pathname: string): RoutePolicy {
   if (pathname.startsWith("/api/email/gmail/push"))      return withEnvOverrides(POLICIES["gmail-push-webhook"]);
   if (pathname.startsWith("/api/stripe/webhook"))        return withEnvOverrides(POLICIES["stripe-webhook"]);
   if (pathname === "/api/org/create")                    return withEnvOverrides(POLICIES["onboarding-create-org"]);
+  if (pathname === "/api/email/connections")             return withEnvOverrides(POLICIES["email-setup"]);
+  if (pathname === "/api/email/custom-inbound")           return withEnvOverrides(POLICIES["email-setup"]);
+  if (pathname === "/api/email/gmail/connect")            return withEnvOverrides(POLICIES["email-setup"]);
   if (pathname.startsWith("/api/ai/"))                   return withEnvOverrides(POLICIES["expensive-ai"]);
   if (pathname.startsWith("/api/email/"))                return withEnvOverrides(POLICIES["email-connector"]);
   // LLM-backed knowledge and intent routes — must be ordered before api-default.
