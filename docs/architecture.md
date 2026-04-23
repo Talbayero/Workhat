@@ -92,7 +92,7 @@ All business tables carry `org_id` for multi-tenant isolation. Every row is scop
 
 **contacts** — Individual people. Each contact can link to a company. Email stored as `citext` for case-insensitive matching.
 
-**channels** — Configured email/communication channels for an org. Gmail channels link to `email_connections`; custom inbound channels store encrypted webhook configuration in `config_json`.
+**channels** — Configured email/communication channels for an org. Gmail channels link to `email_connections`; custom inbound channels store one-way webhook token hashes and diagnostics in `config_json`.
 
 **email_connections** — Stores provider connection records. Gmail rows hold OAuth tokens (AES-256-GCM encrypted), watch state, and sync history. Custom inbound rows use the `custom_inbound` provider shape when a separate provider connection record is needed.
 
@@ -442,9 +442,8 @@ CRON_SECRET=
 GMAIL_PUSH_TOKEN=
 
 # Custom inbound email channels
-# Per-channel webhook secrets are generated in Settings -> Channels and stored encrypted.
+# Per-channel webhook tokens are generated in Settings -> Channels and stored as one-way hashes.
 # POSTMARK_INBOUND_TOKEN remains as a legacy fallback only for old webhook setups without per-channel secrets.
-# Requires EMAIL_TOKEN_ENCRYPTION_KEY because webhook tokens are encrypted before being stored.
 
 # Security
 SECURITY_IP_BLACKLIST=              # Comma-separated IP list
@@ -479,7 +478,7 @@ RESEND_API_KEY=
 
 **PWA is not implemented.** The app has favicons and an apple-icon but no `manifest.json` or service worker. Push notifications (browser-native) are not wired up; real-time sync is handled server-side via Gmail Pub/Sub.
 
-**Postmark/Resend env vars are compatibility only.** Custom inbound email does not require Postmark or Resend. `POSTMARK_INBOUND_TOKEN` only supports legacy webhook setups when a channel does not have an encrypted per-channel secret.
+**Postmark/Resend env vars are compatibility only.** Custom inbound email does not require Postmark or Resend. `POSTMARK_INBOUND_TOKEN` only supports legacy webhook setups when a channel does not have a per-channel token.
 
 **Demo routes serve mock data from `lib/mock-data.ts`** (44 KB). They require no authentication and are used for sales demos and manual QA.
 

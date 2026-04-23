@@ -25,6 +25,7 @@ import {
 } from "@/lib/email-connector/inbound";
 import { refreshConversationSla } from "@/lib/sla/refresh";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
+import { hashInboundWebhookSecret } from "@/lib/email-connector/webhook-secret";
 
 type Row = Record<string, unknown>;
 type Tables = Record<string, Row[]>;
@@ -256,7 +257,19 @@ describe("webhook token helpers", () => {
     expect(extractInboundToken(new Headers({ "x-workhat-inbound-token": "secret-2" }))).toBe("secret-2");
   });
 
-  it("supports legacy shared token only when the channel has no encrypted secret", () => {
+  it("verifies hashed per-channel webhook tokens without encryption env", () => {
+    delete process.env.EMAIL_TOKEN_ENCRYPTION_KEY;
+    const inboundChannel = channel({
+      config_json: {
+        webhook_secret_hash: hashInboundWebhookSecret("channel-token"),
+      },
+    });
+
+    expect(verifyInboundChannelToken(inboundChannel, "channel-token")).toBe(true);
+    expect(verifyInboundChannelToken(inboundChannel, "wrong")).toBe(false);
+  });
+
+  it("supports legacy shared token only when the channel has no per-channel secret", () => {
     process.env.POSTMARK_INBOUND_TOKEN = "legacy-token";
     expect(verifyInboundChannelToken(channel(), "legacy-token")).toBe(true);
     expect(verifyInboundChannelToken(channel(), "wrong")).toBe(false);

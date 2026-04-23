@@ -585,7 +585,7 @@ A small normalized inbound contract keeps domain logic deterministic and explain
 
 ### Consequences
 
-- Custom inbound channels store encrypted per-channel webhook secrets in `channels.config_json` and expose endpoint/status diagnostics in Settings -> Channels.
+- Custom inbound channels store one-way per-channel webhook token hashes in `channels.config_json` and expose endpoint/status diagnostics in Settings -> Channels. Full tokens are shown only immediately after creation or regeneration.
 - `inbound_email_events` is the operational delivery log and dedupe table for webhook/import processing.
 - The custom webhook route verifies a shared token and returns idempotent duplicate responses for replayed provider deliveries.
 - Gmail import now normalizes into the same processing layer, reducing divergent behavior between Gmail and non-Gmail inbound.

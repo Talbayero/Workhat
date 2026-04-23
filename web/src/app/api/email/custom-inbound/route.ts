@@ -1,15 +1,19 @@
-import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
-import { encryptSecret, decryptSecret } from "@/lib/email-connector/encryption";
+import {
+  generateInboundWebhookSecret,
+  hashInboundWebhookSecret,
+  inboundWebhookSecretHint,
+} from "@/lib/email-connector/webhook-secret";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type ChannelConfig = {
   display_name?: string;
   from_name?: string;
   reply_identity?: string;
-  webhook_secret_ciphertext?: string;
+  webhook_secret_hash?: string;
+  webhook_secret_ciphertext?: string | null;
   webhook_secret_hint?: string;
   last_inbound_at?: string | null;
   last_error_at?: string | null;
@@ -22,34 +26,8 @@ function appBaseUrl(req: NextRequest) {
   return req.nextUrl.origin;
 }
 
-function generateSecret() {
-  return `wh_in_${randomBytes(24).toString("base64url")}`;
-}
-
-function secretHint(secret: string) {
-  return `${secret.slice(0, 8)}...${secret.slice(-6)}`;
-}
-
 function normalizeText(value: unknown, max = 120) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
-}
-
-function isMissingEncryptionKey(error: unknown) {
-  return error instanceof Error && error.message.includes("EMAIL_TOKEN_ENCRYPTION_KEY");
-}
-
-function setupErrorResponse(error: unknown) {
-  if (isMissingEncryptionKey(error)) {
-    console.error("[custom-inbound] encryption key missing for webhook secret storage");
-    return NextResponse.json({
-      error: "Custom inbound setup is missing EMAIL_TOKEN_ENCRYPTION_KEY.",
-      hint: "Set EMAIL_TOKEN_ENCRYPTION_KEY in Vercel to a high-entropy value, for example output from: openssl rand -base64 32",
-    }, { status: 503 });
-  }
-
-  const message = error instanceof Error ? error.message : "Unknown setup error.";
-  console.error("[custom-inbound] setup failed:", message);
-  return NextResponse.json({ error: "Custom inbound channel setup failed." }, { status: 500 });
 }
 
 function databaseErrorResponse(error: { message?: string; code?: string; details?: string | null } | null | undefined) {
@@ -71,16 +49,7 @@ function serializeChannel(req: NextRequest, row: {
   status: string;
   inbound_address: string | null;
   config_json: ChannelConfig;
-}, event?: { status: string; received_at: string; error_message: string | null } | null) {
-  let webhookSecret: string | null = null;
-  if (row.config_json.webhook_secret_ciphertext) {
-    try {
-      webhookSecret = decryptSecret(row.config_json.webhook_secret_ciphertext);
-    } catch {
-      webhookSecret = null;
-    }
-  }
-
+}, event?: { status: string; received_at: string; error_message: string | null } | null, oneTimeSecret?: string | null) {
   return {
     id: row.id,
     status: row.status,
@@ -89,8 +58,8 @@ function serializeChannel(req: NextRequest, row: {
     replyIdentity: row.config_json.reply_identity ?? "",
     inboundAddress: row.inbound_address,
     webhookEndpoint: `${appBaseUrl(req)}/api/inbound/email?channelId=${row.id}`,
-    webhookSecret,
-    webhookSecretHint: row.config_json.webhook_secret_hint ?? (webhookSecret ? secretHint(webhookSecret) : null),
+    webhookSecret: oneTimeSecret ?? null,
+    webhookSecretHint: row.config_json.webhook_secret_hint ?? (oneTimeSecret ? inboundWebhookSecretHint(oneTimeSecret) : null),
     lastInboundAt: row.config_json.last_inbound_at ?? null,
     lastErrorAt: row.config_json.last_error_at ?? null,
     lastErrorMessage: row.config_json.last_error_message ?? null,
@@ -191,7 +160,7 @@ export async function POST(req: NextRequest) {
 
   if (action === "regenerate") {
     if (!channelId) return NextResponse.json({ error: "channelId is required." }, { status: 400 });
-    const secret = generateSecret();
+    const secret = generateInboundWebhookSecret();
     const { data: existing, error: lookupError } = await db
       .from("channels")
       .select("id, status, inbound_address, config_json")
@@ -202,16 +171,12 @@ export async function POST(req: NextRequest) {
     if (lookupError) return NextResponse.json({ error: "Unable to load channel." }, { status: 500 });
     if (!existing) return NextResponse.json({ error: "Custom inbound channel not found." }, { status: 404 });
 
-    let config: ChannelConfig;
-    try {
-      config = {
-        ...((existing as { config_json: ChannelConfig }).config_json ?? {}),
-        webhook_secret_ciphertext: encryptSecret(secret),
-        webhook_secret_hint: secretHint(secret),
-      };
-    } catch (error) {
-      return setupErrorResponse(error);
-    }
+    const config = {
+      ...((existing as { config_json: ChannelConfig }).config_json ?? {}),
+      webhook_secret_hash: hashInboundWebhookSecret(secret),
+      webhook_secret_hint: inboundWebhookSecretHint(secret),
+      webhook_secret_ciphertext: null,
+    };
     const { data, error } = await db
       .from("channels")
       .update({ config_json: config })
@@ -220,7 +185,7 @@ export async function POST(req: NextRequest) {
       .select("id, status, inbound_address, config_json")
       .single();
     if (error || !data) return NextResponse.json({ error: "Unable to regenerate webhook token." }, { status: 500 });
-    return NextResponse.json({ channel: serializeChannel(req, data as { id: string; status: string; inbound_address: string | null; config_json: ChannelConfig }) });
+    return NextResponse.json({ channel: serializeChannel(req, data as { id: string; status: string; inbound_address: string | null; config_json: ChannelConfig }, null, secret) });
   }
 
   if (action === "update") {
@@ -252,22 +217,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ channel: serializeChannel(req, data as { id: string; status: string; inbound_address: string | null; config_json: ChannelConfig }) });
   }
 
-  const secret = generateSecret();
-  let config: ChannelConfig;
-  try {
-    config = {
-      display_name: name,
-      from_name: fromName,
-      reply_identity: replyIdentity,
-      webhook_secret_ciphertext: encryptSecret(secret),
-      webhook_secret_hint: secretHint(secret),
-      last_inbound_at: null,
-      last_error_at: null,
-      last_error_message: null,
-    };
-  } catch (error) {
-    return setupErrorResponse(error);
-  }
+  const secret = generateInboundWebhookSecret();
+  const config: ChannelConfig = {
+    display_name: name,
+    from_name: fromName,
+    reply_identity: replyIdentity,
+    webhook_secret_hash: hashInboundWebhookSecret(secret),
+    webhook_secret_hint: inboundWebhookSecretHint(secret),
+    last_inbound_at: null,
+    last_error_at: null,
+    last_error_message: null,
+  };
 
   const { data, error } = await db
     .from("channels")
@@ -287,6 +247,6 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({
-    channel: serializeChannel(req, data as { id: string; status: string; inbound_address: string | null; config_json: ChannelConfig }),
+    channel: serializeChannel(req, data as { id: string; status: string; inbound_address: string | null; config_json: ChannelConfig }, null, secret),
   }, { status: 201 });
 }

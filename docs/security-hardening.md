@@ -504,7 +504,7 @@ Public webhook routes are unauthenticated by Supabase session, so each route mus
 
 `POST /api/inbound/email` is the supported non-Gmail inbound email path. Security controls:
 
-- Per-channel shared secrets are generated from Settings -> Channels and stored encrypted in `channels.config_json.webhook_secret_ciphertext`.
+- Per-channel shared secrets are generated from Settings -> Channels and stored as one-way hashes in `channels.config_json.webhook_secret_hash`.
 - Callers pass the secret through `Authorization: Bearer <token>`, `X-WorkHat-Inbound-Token`, or `X-Inbound-Token`.
 - The route validates JSON shape and caps normalized subject/body/header lengths before domain processing.
 - The org/channel is resolved from a signed channel id (`?channelId=<uuid>`) or a configured recipient address; no user-supplied org id is accepted.
@@ -512,7 +512,7 @@ Public webhook routes are unauthenticated by Supabase session, so each route mus
 - Bad tokens are logged as `security.suspicious_request` when the target channel can be resolved.
 - Delivery status, last success, and last error are stored on channel diagnostics and in `inbound_email_events`.
 
-Legacy `POSTMARK_INBOUND_TOKEN` is accepted only when a channel has no encrypted per-channel secret, to preserve old webhook setups during migration.
+Legacy `POSTMARK_INBOUND_TOKEN` is accepted only when a channel has no per-channel token, to preserve old webhook setups during migration.
 
 ---
 

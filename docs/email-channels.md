@@ -28,12 +28,12 @@ Settings -> Channels includes a non-Gmail webhook channel card. Users with `inte
 - Create a custom inbound channel.
 - Set a channel name and reply identity metadata.
 - Copy the webhook endpoint.
-- Copy or regenerate the shared token.
+- Copy the shared token after creation or regeneration.
 - View status, last successful inbound event, last event status, and last error.
 
 The onboarding flow also offers custom inbound as the recommended Step 2 path for internal dogfooding and demos. Gmail remains available as an optional connected mailbox when a team wants OAuth-based import and Gmail-backed sending, but onboarding should not imply Google Workspace is required before Work Hat can receive operational messages.
 
-Custom inbound token storage requires `EMAIL_TOKEN_ENCRYPTION_KEY` in the deployed environment. Use a high-entropy value such as `openssl rand -base64 32`. Without this key, channel creation fails before Work Hat can persist the webhook secret.
+Custom inbound token storage does not require `EMAIL_TOKEN_ENCRYPTION_KEY`. Work Hat stores a one-way hash of the generated webhook token, so the full token is shown only immediately after creation or regeneration. Gmail OAuth still requires `EMAIL_TOKEN_ENCRYPTION_KEY` because Gmail access and refresh tokens must be decrypted later for API calls.
 
 The endpoint format is:
 
@@ -107,21 +107,20 @@ Operators should check:
 ## Manual Demo Verification
 
 1. Apply migration `0036_custom_inbound_email.sql`.
-2. Confirm `EMAIL_TOKEN_ENCRYPTION_KEY` is set in the deployed app environment.
-3. Sign in as an admin or manager with `integrations.manage`.
-4. Open onboarding Step 2 or Settings -> Channels and create a custom inbound channel.
-5. Copy the endpoint and token.
-6. Send a test request with a unique `externalMessageId`.
-7. Confirm the conversation appears in Inbox and Queue.
-8. Confirm the sender contact was created and company was associated for a business domain.
-9. Confirm SLA status populated on the conversation.
-10. Confirm workflow events exist for the delivery.
-11. Repeat the same request and confirm no duplicate message appears.
+2. Sign in as an admin or manager with `integrations.manage`.
+3. Open onboarding Step 2 or Settings -> Channels and create a custom inbound channel.
+4. Copy the endpoint and token before leaving the page.
+5. Send a test request with a unique `externalMessageId`.
+6. Confirm the conversation appears in Inbox and Queue.
+7. Confirm the sender contact was created and company was associated for a business domain.
+8. Confirm SLA status populated on the conversation.
+9. Confirm workflow events exist for the delivery.
+10. Repeat the same request and confirm no duplicate message appears.
 
 ## Backward Compatibility
 
 Gmail support remains active. Gmail import now calls the shared inbound processor after fetching and normalizing Gmail payloads.
 
-`POSTMARK_INBOUND_TOKEN` remains a legacy fallback only for channels without encrypted per-channel secrets. New custom inbound channels should use Settings-generated secrets.
+`POSTMARK_INBOUND_TOKEN` remains a legacy fallback only for channels without per-channel tokens. New custom inbound channels should use Settings-generated tokens.
 
 *Last updated: April 2026*

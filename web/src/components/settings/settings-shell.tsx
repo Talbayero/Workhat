@@ -1278,10 +1278,13 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
               <p className="text-xs font-medium text-[var(--muted)]">Shared token</p>
               <div className="mt-1 flex items-center gap-2">
                 <code className="flex-1 overflow-x-auto rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-2.5 text-xs font-mono text-[var(--foreground)]">
-                  {customChannel.webhookSecret ?? customChannel.webhookSecretHint ?? "Token unavailable"}
+                  {customChannel.webhookSecret ?? customChannel.webhookSecretHint ?? "Token hidden; regenerate to copy a new token"}
                 </code>
                 {customChannel.webhookSecret && <CopyButton value={customChannel.webhookSecret} />}
               </div>
+              <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">
+                Full tokens are shown only immediately after creation or regeneration.
+              </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">

@@ -1,5 +1,6 @@
 import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
 import { decryptSecret } from "@/lib/email-connector/encryption";
+import { verifyInboundWebhookSecretHash } from "@/lib/email-connector/webhook-secret";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { refreshConversationSla } from "@/lib/sla/refresh";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
@@ -276,13 +277,18 @@ export async function resolveInboundChannel({
 
 export function verifyInboundChannelToken(channel: InboundChannel, token: string) {
   const cfg = channel.config_json ?? {};
+  const hashed = typeof cfg.webhook_secret_hash === "string" ? cfg.webhook_secret_hash : "";
+  if (hashed) {
+    return verifyInboundWebhookSecretHash(token, hashed);
+  }
+
   const encrypted = typeof cfg.webhook_secret_ciphertext === "string" ? cfg.webhook_secret_ciphertext : "";
   if (encrypted) {
     return Boolean(token) && token === decryptSecret(encrypted);
   }
 
-  // Compatibility with the pre-V2 Postmark route. New custom channels should
-  // use per-channel encrypted secrets instead of this environment-level token.
+  // Compatibility with the pre-V2 Postmark route. New custom channels use
+  // per-channel hashed webhook secrets instead of this environment-level token.
   const legacy = process.env.POSTMARK_INBOUND_TOKEN;
   return Boolean(legacy) && token === legacy;
 }

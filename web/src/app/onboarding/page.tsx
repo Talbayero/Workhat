@@ -355,11 +355,11 @@ function StepInbox({
             >
               <p className="eyebrow text-[9px] text-[var(--muted)]">Shared token</p>
               <p className="mt-1 break-all font-mono text-[var(--foreground)]">
-                {customChannel.webhookSecret ?? customChannel.webhookSecretHint ?? "Regenerate in Settings if needed"}
+                {customChannel.webhookSecret ?? customChannel.webhookSecretHint ?? "Regenerate in Settings to copy a new token"}
               </p>
             </div>
             <p className="text-xs leading-5 text-[var(--muted)]">
-              Send test JSON to this endpoint with the token as `Authorization: Bearer`. The message will appear in Inbox and Queue.
+              Send test JSON to this endpoint with the token as `Authorization: Bearer`. Full tokens are shown only immediately after creation or regeneration.
               {customChannel.lastInboundAt ? ` Last inbound: ${new Date(customChannel.lastInboundAt).toLocaleString()}.` : ""}
               {customChannel.lastErrorMessage ? ` Last error: ${customChannel.lastErrorMessage}` : ""}
             </p>
