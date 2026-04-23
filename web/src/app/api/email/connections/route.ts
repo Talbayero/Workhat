@@ -82,7 +82,10 @@ function isConnectionSchemaError(message: string) {
   const normalized = message.toLowerCase();
   return (
     normalized.includes("email_connections_provider_check") ||
+    normalized.includes("email_connections_status_check") ||
+    normalized.includes("email_connections_sync_status_check") ||
     normalized.includes("email_connections_connection_type_check") ||
+    normalized.includes("email_connections_org_provider_account_type_key") ||
     normalized.includes("connection_type") ||
     normalized.includes("schema cache")
   );
@@ -92,7 +95,7 @@ function connectionSchemaUnavailableResponse() {
   return NextResponse.json(
     {
       error: "Mailbox connection schema is out of date.",
-      hint: "Apply migrations through 0039_mailbox_adapter_runtime.sql so Work Hat can store provider, connection type, status, and diagnostics separately.",
+      hint: "Apply migrations through 0040_email_connection_normalization_repair.sql so Work Hat can normalize provider, connection type, lifecycle status, and runtime sync state safely.",
     },
     { status: 503 }
   );

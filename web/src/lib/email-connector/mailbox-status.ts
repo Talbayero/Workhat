@@ -9,6 +9,7 @@ export function isActiveMailboxStatus(status: string | null | undefined) {
 }
 
 export function normalizeMailboxStatus(status: string | null | undefined): MailboxConnectionStatus {
+  if (status === "draft") return "draft";
   if (status === "connected") return "active";
   if (status === "needs_reconnect") return "configured";
   if (status === "disabled") return "disconnected";

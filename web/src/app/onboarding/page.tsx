@@ -22,7 +22,7 @@ type EmailConnection = {
   provider: string;
   connection_type?: string | null;
   provider_account_email: string;
-  status: "configured" | "validating" | "active" | "error" | "disconnected" | "connected";
+  status: "draft" | "configured" | "validating" | "active" | "error" | "disconnected" | "connected";
   sync_status: "idle" | "syncing" | "watching" | "error";
   last_history_id: string | null;
   last_sync_at: string | null;

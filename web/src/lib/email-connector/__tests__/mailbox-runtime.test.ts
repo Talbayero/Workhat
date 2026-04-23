@@ -42,6 +42,7 @@ function connection(overrides: Partial<MailboxConnectionRecord> = {}): MailboxCo
 
 describe("mailbox runtime status", () => {
   it("normalizes legacy statuses into V2 runtime states", () => {
+    expect(normalizeMailboxStatus("draft")).toBe("draft");
     expect(normalizeMailboxStatus("connected")).toBe("active");
     expect(normalizeMailboxStatus("needs_reconnect")).toBe("configured");
     expect(normalizeMailboxStatus("disabled")).toBe("disconnected");

@@ -18,6 +18,7 @@ export type MailboxConnectionType =
   | "custom_inbound";
 
 export type MailboxConnectionStatus =
+  | "draft"
   | "configured"
   | "validating"
   | "active"
