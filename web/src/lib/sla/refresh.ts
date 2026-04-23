@@ -2,7 +2,7 @@ import { emitWorkflowEvent } from "@/lib/workflow-engine";
 import { computeConversationSla, DEFAULT_SLA_POLICY } from "@/lib/sla/compute";
 import type { AdminDb, OrgSlaPolicy, SlaConversationState, SlaMessage } from "@/lib/sla/types";
 
-const ACTIVE_STATUSES = ["open", "in_progress", "waiting_on_customer", "waiting_on_internal"];
+const ACTIVE_STATUSES = ["open", "waiting_on_customer", "waiting_on_internal"];
 
 async function loadOrgPolicy(db: AdminDb, orgId: string): Promise<OrgSlaPolicy> {
   const { data, error } = await db

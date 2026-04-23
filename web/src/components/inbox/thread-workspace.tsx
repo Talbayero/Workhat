@@ -277,8 +277,8 @@ export function ThreadWorkspace({
         }
       }
 
-      // 3. Mark as resolved — this is the authoritative step
-      await handleStatusChange("resolved");
+      // 3. Close the conversation — this is the authoritative step
+      await handleStatusChange("closed");
       setShowClosureCard(false);
     } catch (err) {
       console.error("[closure] resolve failed:", err);
@@ -489,7 +489,7 @@ export function ThreadWorkspace({
                   disabled={statusUpdating}
                   onChange={(e) => handleStatusChange(e.target.value as ConversationStatus)}
                   className={`rounded-full border px-2.5 py-1 text-[10px] font-medium bg-transparent cursor-pointer outline-none disabled:opacity-50 ${
-                    status === "resolved" || status === "archived"
+                    status === "closed"
                       ? "border-[var(--line)] text-[var(--muted)]"
                       : status === "open"
                       ? "border-[rgba(120,161,122,0.25)] bg-[rgba(120,161,122,0.05)] text-[var(--foreground)]"
@@ -501,9 +501,7 @@ export function ThreadWorkspace({
                   <option value="open">Open</option>
                   <option value="waiting_on_customer">Waiting on customer</option>
                   <option value="waiting_on_internal">Waiting on team</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="archived">Archived</option>
+                  <option value="closed">Closed</option>
                 </select>
 
                 {/* Intent pill */}
@@ -587,7 +585,7 @@ export function ThreadWorkspace({
                   {confidenceLabel[conversation.aiConfidence]}
                 </span>
               </div>
-              {status !== "resolved" ? (
+              {status !== "closed" ? (
                 <button
                   onClick={handleResolveClick}
                   disabled={statusUpdating || showClosureCard}

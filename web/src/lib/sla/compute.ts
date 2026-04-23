@@ -7,7 +7,7 @@ import type {
   SlaTarget,
 } from "@/lib/sla/types";
 
-const CLOSED_STATUSES = new Set(["resolved", "archived"]);
+const CLOSED_STATUSES = new Set(["closed"]);
 
 export const DEFAULT_SLA_POLICY: OrgSlaPolicy = {
   org_id: "",

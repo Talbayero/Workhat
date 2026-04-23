@@ -8,8 +8,7 @@ import {
   type GmailMessage,
 } from "@/lib/email-connector/google";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { refreshConversationSla } from "@/lib/sla/refresh";
-import { emitWorkflowEvent } from "@/lib/workflow-engine";
+import { processInboundEmail, type InboundChannel, type NormalizedInboundEmail } from "@/lib/email-connector/inbound";
 
 type SupabaseDb = ReturnType<typeof createAdminClient>;
 
@@ -30,18 +29,6 @@ export type GmailImportResult = {
   latestHistoryId: string | null;
   mode: "full" | "history";
 };
-
-const GENERIC_DOMAINS = new Set([
-  "gmail.com",
-  "yahoo.com",
-  "hotmail.com",
-  "outlook.com",
-  "icloud.com",
-  "me.com",
-  "aol.com",
-  "protonmail.com",
-  "live.com",
-]);
 
 function getHeader(message: GmailMessage, name: string) {
   const headers = message.payload?.headers ?? [];
@@ -99,23 +86,6 @@ function parseEmailAddress(value: string) {
   return { name: email.split("@")[0], email };
 }
 
-function classifyIntent(subject: string, body: string) {
-  const text = `${subject} ${body}`.toLowerCase();
-  if (/invoice|payment|charge|refund|bill|subscription|cancel|pricing|receipt|overcharg/.test(text)) return "billing";
-  if (/urgent|asap|critical|down|broken|error|bug|issue|problem|help|not working|crash|fail/.test(text)) return "support";
-  if (/escalat|manager|unacceptable|terrible|worst|legal|lawsuit|complaint/.test(text)) return "escalation";
-  if (/feature|suggest|would.*nice|can you add|request|idea|improvement/.test(text)) return "feature_request";
-  if (/getting started|onboard|setup|how.*do|new user|tutorial|access|sign.?up/.test(text)) return "onboarding";
-  return "general";
-}
-
-function scoreRisk(subject: string, body: string): "green" | "yellow" | "red" {
-  const text = `${subject} ${body}`.toLowerCase();
-  if (/urgent|legal|lawsuit|chargeback|fraud|cancel.*account|escalat|unacceptable|terrible|manager/.test(text)) return "red";
-  if (/frustrated|not working|disappointed|broken|delay|overcharge|disappoint|slow|bad/.test(text)) return "yellow";
-  return "green";
-}
-
 export async function getFreshGmailAccessToken(db: SupabaseDb, connection: EmailConnection) {
   if (!connection.refresh_token_ciphertext) {
     throw new Error("Gmail connection is missing a refresh token. Reconnect Gmail.");
@@ -149,334 +119,92 @@ export async function getFreshGmailAccessToken(db: SupabaseDb, connection: Email
   return refreshed.access_token;
 }
 
-async function ensureContactAndCompany({
-  db,
-  orgId,
-  fromName,
-  fromEmail,
-}: {
-  db: SupabaseDb;
-  orgId: string;
-  fromName: string;
-  fromEmail: string;
-}) {
-  // Cap at the same limits as the contacts API route.
-  const safeName = fromName.slice(0, 100);
-  const [firstName, ...restName] = safeName.split(" ");
-  const { data: existingContact, error: existingContactError } = await db
-    .from("contacts")
-    .select("id, company_id")
-    .eq("org_id", orgId)
-    .eq("email", fromEmail)
-    .maybeSingle();
-
-  if (existingContactError) throw new Error(existingContactError.message);
-
-  let contactId = (existingContact as { id: string; company_id: string | null } | null)?.id ?? null;
-  let companyId = (existingContact as { id: string; company_id: string | null } | null)?.company_id ?? null;
-
-  if (contactId) {
-    const { error: contactUpdateError } = await db
-      .from("contacts")
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq("id", contactId);
-
-    if (contactUpdateError) throw new Error(contactUpdateError.message);
-  } else {
-    const { data: contact, error } = await db
-      .from("contacts")
-      .insert({
-        org_id: orgId,
-        first_name: firstName || fromName,
-        last_name: restName.join(" "),
-        full_name: safeName,
-        email: fromEmail,
-        status: "active",
-        last_activity_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (error || !contact) throw new Error(error?.message ?? "Failed to create contact.");
-    contactId = contact.id;
-  }
-
-  const domain = fromEmail.split("@")[1] ?? "";
-  if (domain && !GENERIC_DOMAINS.has(domain) && !companyId) {
-    const { data: existingCompany, error: existingCompanyError } = await db
-      .from("companies")
-      .select("id")
-      .eq("org_id", orgId)
-      .eq("domain", domain)
-      .maybeSingle();
-
-    if (existingCompanyError) throw new Error(existingCompanyError.message);
-
-    if (existingCompany) {
-      companyId = existingCompany.id;
-    } else {
-      const companyName = domain
-        .split(".")[0]
-        .replace(/-/g, " ")
-        .replace(/\b\w/g, (letter) => letter.toUpperCase())
-        .slice(0, 200);
-      const { data: company, error: companyError } = await db
-        .from("companies")
-        .insert({
-          org_id: orgId,
-          name: companyName,
-          domain,
-          tier: "standard",
-          open_conversations: 0,
-          active_contacts: 0,
-        })
-        .select("id")
-        .single();
-      if (companyError) throw new Error(companyError.message);
-      companyId = company?.id ?? null;
-    }
-
-    if (companyId && contactId) {
-      const { error: contactCompanyError } = await db
-        .from("contacts")
-        .update({ company_id: companyId })
-        .eq("id", contactId)
-        .is("company_id", null);
-
-      if (contactCompanyError) throw new Error(contactCompanyError.message);
-    }
-  }
-
-  return { contactId, companyId };
-}
-
 async function importMessage({
   db,
   accessToken,
-  orgId,
-  channelId,
+  channel,
   messageId,
 }: {
   db: SupabaseDb;
   accessToken: string;
-  orgId: string;
-  channelId: string;
+  channel: InboundChannel;
   messageId: string;
 }) {
   const message = await fetchGmailMessage(accessToken, messageId);
-  const channelMessageId = `gmail:${message.id}`;
-
-  const { data: existingMessage, error: existingMessageError } = await db
-    .from("messages")
-    .select("id")
-    .eq("org_id", orgId)
-    .eq("channel_message_id", channelMessageId)
-    .maybeSingle();
-
-  if (existingMessageError) throw new Error(existingMessageError.message);
-
-  if (existingMessage) {
-    return { imported: false, historyId: message.historyId ?? null };
-  }
-
   const from = parseEmailAddress(getHeader(message, "From"));
-  // Cap email-derived header strings before any DB write.
-  from.name  = from.name.slice(0, 100);
-  from.email = from.email.slice(0, 254);
+  const to = parseEmailAddress(getHeader(message, "To") || channel.inbound_address || "inbound@workhat.local");
   const subject = (getHeader(message, "Subject") || "(no subject)").slice(0, 500);
   const rfcMessageId = (getHeader(message, "Message-ID") || null)?.slice(0, 500) ?? null;
+  const inReplyTo = (getHeader(message, "In-Reply-To") || null)?.slice(0, 500) ?? null;
+  const references = getHeader(message, "References").split(/\s+/).filter(Boolean).slice(0, 20);
   const { text, html } = extractBodies(message.payload);
   const bodyText = stripQuotedReply(text || (html ? stripHtml(html) : message.snippet ?? "")).slice(0, 100_000);
-  const preview = bodyText.replace(/\s+/g, " ").trim().slice(0, 160);
-  const intent = classifyIntent(subject, bodyText);
-  const riskLevel = scoreRisk(subject, bodyText);
-  const { contactId, companyId } = await ensureContactAndCompany({
-    db,
-    orgId,
-    fromName: from.name,
-    fromEmail: from.email,
-  });
-
-  const externalThreadId = `gmail:${message.threadId}`;
   const messageCreatedAt = message.internalDate
     ? new Date(Number(message.internalDate)).toISOString()
     : new Date().toISOString();
 
-  let conversationId: string | null = null;
-  let createdConversation = false;
-  let previousRiskLevel: string | null = null;
-  const { data: existingConversation, error: existingConversationError } = await db
-    .from("conversations")
-    .select("id, risk_level")
-    .eq("org_id", orgId)
-    .eq("external_thread_id", externalThreadId)
-    .maybeSingle();
-
-  if (existingConversationError) throw new Error(existingConversationError.message);
-
-  if (existingConversation) {
-    conversationId = existingConversation.id;
-    previousRiskLevel = (existingConversation as { risk_level?: string | null }).risk_level ?? null;
-    const { error: conversationUpdateError } = await db
-      .from("conversations")
-      .update({
-        preview,
-        last_message_at: messageCreatedAt,
-        ...(riskLevel === "red" ? { risk_level: "red" } : {}),
-      })
-      .eq("id", conversationId);
-
-    if (conversationUpdateError) throw new Error(conversationUpdateError.message);
-  } else {
-    const { data: conversation, error: conversationError } = await db
-      .from("conversations")
-      .insert({
-        org_id: orgId,
-        contact_id: contactId,
-        company_id: companyId,
-        channel_id: channelId,
-        subject,
-        status: "open",
-        priority: riskLevel === "red" ? "urgent" : "normal",
-        risk_level: riskLevel,
-        ai_confidence: "yellow",
-        intent,
-        preview,
-        assigned_to_name: "",
-        last_message_at: messageCreatedAt,
-        external_thread_id: externalThreadId,
-      })
-      .select("id")
-      .single();
-
-    if (conversationError || !conversation) {
-      throw new Error(conversationError?.message ?? "Failed to create conversation.");
-    }
-    conversationId = conversation.id;
-    createdConversation = true;
-  }
-
-  const { data: insertedMessage, error: messageError } = await db
-    .from("messages")
-    .insert({
-      org_id: orgId,
-      conversation_id: conversationId,
-      sender_type: "customer",
-      direction: "inbound",
-      channel_message_id: channelMessageId,
-      author_name: from.name,
-      subject,
-      body_text: bodyText,
-      body_html: html,
-      is_note: false,
-      metadata_json: {
-        provider: "gmail",
-        gmail_thread_id: message.threadId,
-        gmail_history_id: message.historyId ?? null,
-        rfc_message_id: rfcMessageId,
-        from_email: from.email,
-        label_ids: message.labelIds ?? [],
-      },
-      created_at: messageCreatedAt,
-    })
-    .select("id")
-    .single();
-
-  if (messageError || !insertedMessage) throw new Error(messageError?.message ?? "Failed to create message.");
-  if (!conversationId) throw new Error("Conversation id missing after message import.");
-
-  await refreshConversationSla({
-    db,
-    orgId,
-    conversationId,
-    source: "gmail.importer",
-  });
-
-  if (createdConversation) {
-    await emitWorkflowEvent({
-      orgId,
-      eventType: "conversation.created",
-      aggregateType: "conversation",
-      aggregateId: conversationId,
-      conversationId,
-      source: "gmail.importer",
-      payload: {
-        subject,
-        intent,
-        riskLevel,
-        priority: riskLevel === "red" ? "urgent" : "normal",
-        contactId,
-        companyId,
-        channelId,
-        provider: "gmail",
-      },
-    });
-  } else {
-    await emitWorkflowEvent({
-      orgId,
-      eventType: "conversation.updated",
-      aggregateType: "conversation",
-      aggregateId: conversationId,
-      conversationId,
-      source: "gmail.importer",
-      payload: {
-        preview,
-        previousRiskLevel,
-        riskLevel,
-        reason: "gmail_message",
-      },
-    });
-  }
-
-  await emitWorkflowEvent({
-    orgId,
-    eventType: "message.received",
-    aggregateType: "message",
-    aggregateId: insertedMessage.id,
-    conversationId,
-    source: "gmail.importer",
-    payload: {
-      messageId: insertedMessage.id,
-      subject,
-      preview,
-      senderEmail: from.email,
-      intent,
-      riskLevel,
-      provider: "gmail",
-      gmailThreadId: message.threadId,
+  const normalized: NormalizedInboundEmail = {
+    provider: "gmail",
+    externalMessageId: message.id,
+    externalThreadId: message.threadId ?? null,
+    inReplyTo,
+    references,
+    headers: {
+      "message-id": rfcMessageId ?? "",
+      "in-reply-to": inReplyTo ?? "",
+      references: references.join(" "),
     },
+    from: {
+      email: from.email.slice(0, 254),
+      name: from.name.slice(0, 100),
+    },
+    to: [{ email: to.email.slice(0, 254), name: to.name.slice(0, 100) }],
+    cc: [],
+    subject,
+    textBody: bodyText,
+    htmlBody: html,
+    receivedAt: messageCreatedAt,
+    metadata: {
+      gmail_history_id: message.historyId ?? null,
+      rfc_message_id: rfcMessageId,
+      label_ids: message.labelIds ?? [],
+    },
+  };
+
+  const result = await processInboundEmail({
+    db,
+    channel,
+    message: normalized,
+    source: "gmail.importer",
   });
 
-  if (previousRiskLevel && previousRiskLevel !== riskLevel && riskLevel === "red") {
-    await emitWorkflowEvent({
-      orgId,
-      eventType: "risk.changed",
-      aggregateType: "conversation",
-      aggregateId: conversationId,
-      conversationId,
-      source: "gmail.importer",
-      payload: {
-        previousRiskLevel,
-        riskLevel,
-        reason: "gmail_message_escalation",
-      },
-    });
-  }
-
-  return { imported: true, historyId: message.historyId ?? null };
+  return { imported: !result.duplicate, historyId: message.historyId ?? null };
 }
 
-async function getChannelId(db: SupabaseDb, orgId: string) {
-  const { data: channel, error } = await db
+async function getChannel(db: SupabaseDb, orgId: string): Promise<InboundChannel> {
+  const { data: gmailChannel, error: gmailChannelError } = await db
     .from("channels")
-    .select("id")
+    .select("id, org_id, provider, status, inbound_address, config_json")
     .eq("org_id", orgId)
     .eq("type", "email")
+    .eq("provider", "gmail")
+    .limit(1)
+    .maybeSingle();
+
+  if (gmailChannelError) throw new Error(gmailChannelError.message);
+  if (gmailChannel) return gmailChannel as InboundChannel;
+
+  const { data: channel, error } = await db
+    .from("channels")
+    .select("id, org_id, provider, status, inbound_address, config_json")
+    .eq("org_id", orgId)
+    .eq("type", "email")
+    .limit(1)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   if (!channel) throw new Error("No email channel found for this workspace.");
-  return channel.id as string;
+  return channel as InboundChannel;
 }
 
 export async function importRecentGmailInbox({
@@ -489,7 +217,7 @@ export async function importRecentGmailInbox({
   maxResults?: number;
 }): Promise<GmailImportResult> {
   const accessToken = await getFreshGmailAccessToken(db, connection);
-  const channelId = await getChannelId(db, connection.org_id);
+  const channel = await getChannel(db, connection.org_id);
   const list = await listGmailInboxMessages({ accessToken, maxResults });
   let imported = 0;
   let skipped = 0;
@@ -499,8 +227,7 @@ export async function importRecentGmailInbox({
     const result = await importMessage({
       db,
       accessToken,
-      orgId: connection.org_id,
-      channelId,
+      channel,
       messageId: item.id,
     });
     latestHistoryId = result.historyId ?? latestHistoryId;
@@ -529,7 +256,7 @@ export async function importGmailHistory({
   maxPages?: number;
 }): Promise<GmailImportResult> {
   const accessToken = await getFreshGmailAccessToken(db, connection);
-  const channelId = await getChannelId(db, connection.org_id);
+  const channel = await getChannel(db, connection.org_id);
   let imported = 0;
   let skipped = 0;
   let scanned = 0;
@@ -551,8 +278,7 @@ export async function importGmailHistory({
         const result = await importMessage({
           db,
           accessToken,
-          orgId: connection.org_id,
-          channelId,
+          channel,
           messageId,
         });
         latestHistoryId = result.historyId ?? latestHistoryId;

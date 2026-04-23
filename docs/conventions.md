@@ -7,7 +7,7 @@ These are the rules that keep the codebase consistent. When in doubt, match the 
 ## Documentation
 
 - All platform documentation lives in `docs/`. See `docs/README.md` for the rules.
-- Planning docs at the repo root (`prd.md`, `technical-build-spec.md`, etc.) are historical. Don't edit them — update `docs/` instead.
+- Historical planning docs live in `docs/archive/planning/`. Don't edit them as active guidance — update the relevant active `docs/` file instead.
 - Decision records go in `docs/decisions.md`. Every significant architectural or integration choice gets an entry.
 - Update the relevant `docs/` file in the same PR as the code change. Stale documentation is treated as a bug.
 
@@ -29,10 +29,10 @@ web/src/
 ├── lib/            # Server-side business logic and utilities
 │   ├── ai/         # AI orchestration (provider, prompts, schemas)
 │   ├── auth/       # getCurrentAppUser() and auth helpers
-│   ├── email-connector/  # Gmail API, importing, sending, encryption
+│   ├── email-connector/  # Provider-neutral inbound email, Gmail adapter/sender, encryption
 │   ├── security/   # Rate limiting, circuit breaker
 │   └── supabase/   # Client variants (server, client, admin, queries)
-└── middleware.ts   # Edge middleware — runs before every request
+└── proxy.ts        # Edge proxy — runs before every request
 ```
 
 **Rule:** Business logic belongs in `lib/`. Route handlers call into `lib/` — they don't contain logic themselves beyond request parsing, auth checks, and response shaping. Components receive data as props; they don't call `lib/` directly.
@@ -80,11 +80,11 @@ export async function POST(request: Request) { ... }
 
 No catch-all route handlers. If a resource has different semantics at the collection vs. item level, use separate directories: `conversations/route.ts` and `conversations/[conversationId]/route.ts`.
 
-### Middleware
+### Proxy
 
-`middleware.ts` is the only place for cross-cutting request concerns. The order is: API gateway preflight → session refresh → API gateway identity limits → auth routing. Do not add route-specific business logic here.
+`proxy.ts` is the only place for cross-cutting request concerns. The order is: API gateway preflight -> session refresh -> API gateway identity limits -> auth routing. Do not add route-specific business logic here.
 
-The `matcher` config must explicitly list patterns. Public routes are defined in `middleware.ts` — if you add a new public route (webhook, demo page, marketing page), add it there too.
+The `matcher` config must explicitly list patterns. Public routes are defined in `proxy.ts`; if you add a new public route (webhook, demo page, marketing page), add it there too.
 
 API rate limits belong in `lib/security/api-gateway.ts`, not individual route handlers. Preserve the route-group policy model unless a route has materially different risk or cost characteristics. Policy keys should be stable, lowercase, and hyphenated because environment overrides are derived from them.
 
@@ -158,7 +158,7 @@ Use:
 - `requireCapability()` when a standard JSON `403` is correct.
 - `hasAnyCapability()` or `requireAnyCapability()` only when a route intentionally accepts more than one capability.
 
-Do not put authorization logic in middleware (it doesn't have the app user) or in components (clients can't be trusted). Capability checks live in API routes and server components only.
+Do not put fine-grained authorization logic in `proxy.ts` (it doesn't have the app user) or in components (clients can't be trusted). Capability checks live in API routes and server components only.
 
 Per-user capability overrides are optional and org-scoped. They should be used sparingly for exceptions, not as a replacement for clean role presets.
 
@@ -209,7 +209,10 @@ Use standard HTTP status codes: 400 (bad request), 401 (unauthenticated), 403 (f
 Webhook routes are public (no session required) but must verify the caller's identity via a secret or signature:
 - Stripe: HMAC-SHA256 signature verification in `lib/stripe.ts`
 - Gmail Pub/Sub: `GMAIL_PUSH_TOKEN` header check
+- Custom inbound email: per-channel shared token accepted as `Authorization: Bearer`, `X-WorkHat-Inbound-Token`, or `X-Inbound-Token`
 - Cron jobs: `CRON_SECRET` Authorization header check
+
+Webhook route handlers stay thin. They parse the request, verify the caller, and call a `lib/` processor. Domain behavior such as contact creation, conversation threading, SLA refresh, and workflow event emission belongs in `lib/`, not inside public webhook route files.
 
 ---
 
@@ -276,6 +279,12 @@ All AI calls go through `lib/ai/index.ts`. Never call the OpenAI SDK directly fr
 
 Always pass `prompt_version` when generating drafts — it's a non-null column in `ai_drafts` and is required for auditability. Increment the version whenever the prompt structure meaningfully changes.
 
+### Email Channels
+
+Treat Gmail as one adapter, not the email domain model. New inbound provider work should normalize into `NormalizedInboundEmail` in `lib/email-connector/inbound.ts`, then call `processInboundEmail()`. Provider-specific code may fetch, authenticate, or parse external payloads, but conversation/contact/company/SLA/workflow logic should remain provider-neutral.
+
+Custom inbound channels are configured through Settings -> Channels and managed by `/api/email/custom-inbound`. This route requires `integrations.manage`. Public deliveries go to `/api/inbound/email?channelId=<channel_id>` and must include the channel secret.
+
 ### Gmail
 
 Never store raw OAuth tokens in the database. Always encrypt via `lib/email-connector/encryption.ts` before writing to `email_connections`. Decrypt immediately before use. The encryption key must never be logged.
@@ -290,13 +299,14 @@ No Stripe SDK. All Stripe calls use direct `fetch` to the Stripe REST API with t
 
 ## Testing
 
-There is no automated test framework in the V1 codebase. Manual testing uses:
+Automated tests use Jest for focused `lib/` coverage. Add tests next to the helper being changed, usually under `src/lib/**/__tests__/`.
+
+Manual testing uses:
 
 - **Demo routes** (`/demo/*`) — serve mock data from `lib/mock-data.ts`. These can be used to verify UI without any auth or real data.
 - **`/api/email/gmail/diagnostics`** — debug endpoint for Gmail connection state.
+- **Settings -> Channels** — custom inbound channel endpoint/secret/status diagnostics.
 - **Supabase local** (`supabase start`) — local Postgres instance for DB testing against migrations.
-
-When a test framework is introduced, the convention will be unit tests for `lib/` functions (especially AI prompt building, diff analysis, and encryption) and integration tests for API routes against a local Supabase instance. This document will be updated at that time.
 
 ---
 

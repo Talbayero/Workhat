@@ -55,7 +55,7 @@ function countOpen(
   return convs.filter(
     (c) =>
       c.contact_id === contactId &&
-      !["resolved", "archived"].includes(c.status)
+      c.status !== "closed"
   ).length;
 }
 async function getCurrentOrgId(
@@ -312,7 +312,7 @@ export type QueueHealth = {
   channels: string[];
 };
 
-const ACTIVE_CONVERSATION_STATUSES = ["open", "in_progress", "waiting_on_customer", "waiting_on_internal"];
+const ACTIVE_CONVERSATION_STATUSES = ["open", "waiting_on_customer", "waiting_on_internal"];
 
 function ageHours(row: InboxConversation) {
   const ts = row.lastMessageAt ? new Date(row.lastMessageAt).getTime() : Date.now();
@@ -1116,7 +1116,7 @@ export async function getIntentStats(): Promise<IntentStat[]> {
     }
     const stat = byIntent.get(key)!;
     stat.count++;
-    if (!["resolved", "archived"].includes(row.status ?? "")) stat.openCount++;
+    if (row.status !== "closed") stat.openCount++;
     if (row.risk_level === "red") stat.redCount++;
   }
 

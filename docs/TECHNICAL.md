@@ -48,7 +48,7 @@ Browser / Mobile
 ┌─────────────────────────────────────────────────────────────┐
 │  Next.js on Vercel Edge / Node.js runtime                   │
 │                                                             │
-│  middleware.ts                                              │
+│  proxy.ts                                                   │
 │    │─ API gateway (rate limits, IP blacklist, body caps)    │
 │    │─ Session refresh (Supabase cookie reissue)             │
 │    └─ Auth routing (401/redirect for protected routes)      │
@@ -66,8 +66,8 @@ Supabase             OpenAI API
   Row Level Security
      │
      ▼
-Gmail API          Postmark (inbound webhook)
-Pub/Sub            Resend (outbound email)
+Gmail API          Postmark (legacy inbound webhook)
+Pub/Sub            Gmail outbound replies
      │
      ▼
 Stripe (billing)
@@ -75,7 +75,7 @@ Stripe (billing)
 
 ### Request lifecycle
 
-1. Every request hits `middleware.ts` first.
+1. Every request hits `proxy.ts` first.
 2. The API gateway runs rate limiting and IP blacklist checks.
 3. Supabase refreshes the session cookie if it is about to expire.
 4. Auth routing checks whether the route is public or protected.
@@ -87,7 +87,7 @@ Stripe (billing)
 
 ### Auth provider
 
-Supabase Auth with magic link (passwordless email). There is no password flow.
+Supabase Auth with email/password and Google OAuth for Gmail connection flows.
 
 ### App user resolution
 
@@ -595,7 +595,7 @@ Four plans are supported: `starter`, `pro`, `scale`, `enterprise`. Each plan has
 ### Authentication
 
 - All protected routes require a valid Supabase session cookie.
-- The middleware layer uses `supabase.auth.getUser()` (validated against the Supabase Auth server) — never `getSession()` (which only reads a local cookie and can be spoofed).
+- The proxy layer uses `supabase.auth.getUser()` (validated against the Supabase Auth server) — never `getSession()` (which only reads a local cookie and can be spoofed).
 - API routes return `401 JSON` for unauthenticated requests; page routes redirect to `/login?next=<path>`.
 
 ### Authorization

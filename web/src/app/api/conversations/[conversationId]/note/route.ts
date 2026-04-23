@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
 
 type NotePayload = {
@@ -41,6 +42,8 @@ export async function POST(
   if (!appUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = await requireCapability(appUser, "conversations.reply", "conversation-note", req);
+  if (denied) return denied;
 
   const supabase = await createClient();
   const { id: userId, org_id: orgId, full_name: fullName } = appUser;

@@ -43,12 +43,12 @@ The repo accumulated planning documents at the root (`prd.md`, `technical-build-
 
 ### Rationale
 
-A single, explicit docs home eliminates ambiguity about where to write and where to look. Root-level planning docs are preserved as historical artifacts but are explicitly marked as non-authoritative. New documentation must go in `docs/` or it will not be found.
+A single, explicit docs home eliminates ambiguity about where to write and where to look. Historical planning docs are preserved under `docs/archive/planning/` and marked as non-authoritative. New documentation must go in `docs/` or it will not be found.
 
 ### Consequences
 
 - Contributors have one place to check and one place to update.
-- The root-level planning docs will gradually diverge from reality and should eventually be archived or removed.
+- Historical planning docs are archived under `docs/archive/planning/` and should not be treated as active guidance.
 - Every meaningful code change should include a `docs/` update in the same PR.
 
 ---
@@ -74,7 +74,7 @@ Server components dramatically simplify data fetching patterns: fetch data in th
 
 - All routes are in `app/`. Server components are the default — `"use client"` is opt-in.
 - Cannot use Pages Router conventions (e.g., `getServerSideProps`, `getStaticProps`). Data fetching is done directly in async server components or in `route.ts` handlers.
-- Middleware runs at the edge and doesn't have access to Node.js APIs.
+- Proxy code runs at the edge and doesn't have access to Node.js APIs.
 
 ---
 
@@ -131,29 +131,29 @@ The service role key is validated at startup in `lib/supabase/admin.ts`: it chec
 
 ---
 
-## ADR-005 — Middleware-Based Auth with Supabase SSR
+## ADR-005 — Edge Proxy-Based Auth with Supabase SSR
 
 **Date:** 2026-01
 **Status:** Accepted
 
 ### Decision
 
-Authentication enforcement runs in `middleware.ts` using Supabase's `@supabase/ssr` package to refresh session cookies and `supabase.auth.getUser()` to validate sessions server-side on every request.
+Authentication enforcement runs in `proxy.ts` using Supabase's `@supabase/ssr` package to refresh session cookies and `supabase.auth.getUser()` to validate sessions server-side on every request.
 
 ### Context
 
-Options considered: (1) verify auth only in individual route handlers, (2) verify auth only in server component layouts, (3) verify auth in middleware centrally. Options 1 and 2 risk missing a route and leaving it unprotected. Option 3 is centralized and auditable.
+Options considered: (1) verify auth only in individual route handlers, (2) verify auth only in server component layouts, (3) verify auth in the edge proxy centrally. Options 1 and 2 risk missing a route and leaving it unprotected. Option 3 is centralized and auditable.
 
 ### Rationale
 
-A single middleware file is the only place where auth enforcement can be guaranteed across all routes. It also handles the cookie refresh needed to prevent sessions from expiring mid-use. `getUser()` validates the JWT against the Supabase server (not just locally), which prevents use of tampered or expired tokens.
+A single proxy file is the only place where auth enforcement can be guaranteed across all routes. It also handles the cookie refresh needed to prevent sessions from expiring mid-use. `getUser()` validates the JWT against the Supabase server (not just locally), which prevents use of tampered or expired tokens.
 
-The middleware classifies routes as public or protected. Public routes (webhooks, demo, marketing, OAuth callbacks) pass through without session checks. All others require a valid session.
+The proxy classifies routes as public or protected. Public routes (webhooks, demo, marketing, OAuth callbacks) pass through without session checks. All others require a valid session.
 
 ### Consequences
 
-- Adding a new route that should be public requires updating the public route list in `middleware.ts`. This is intentional — the default is protected.
-- The middleware runs on the edge runtime, which has limitations (no Node.js built-ins). Business logic must remain in Node.js API routes.
+- Adding a new route that should be public requires updating the public route list in `proxy.ts`. This is intentional — the default is protected.
+- The proxy runs on the edge runtime, which has limitations (no Node.js built-ins). Business logic must remain in Node.js API routes.
 - Webhook routes must be explicitly listed as public — they must still perform their own caller-identity verification (signature, shared secret).
 
 ---
@@ -186,7 +186,7 @@ Each factory has one job and one set of valid callers. `server.ts` is for server
 ## ADR-007 — Gmail API (not Postmark/Resend) as the Email Integration
 
 **Date:** 2026-02
-**Status:** Accepted
+**Status:** Superseded for inbound by ADR-022; still accepted for Gmail OAuth/Pub/Sub and Gmail outbound
 
 ### Decision
 
@@ -205,8 +205,8 @@ A direct Gmail OAuth integration lets customers connect their existing support i
 - Each connected Gmail account requires an OAuth 2.0 grant with `gmail.readonly` and `gmail.send` scopes. This requires a Google Cloud project and OAuth app approval for production.
 - Gmail push watches expire every 7 days. A cron job at `/api/email/gmail/renew-watches` must run to renew them.
 - Gmail API rate limits apply. High-volume orgs may hit limits — this will require quota increases from Google.
-- Postmark and Resend env vars remain in the codebase but are inactive. They should be removed in a future cleanup.
-- Non-Gmail inbound email (the `/api/inbound/email` route) is scaffolded but not fully implemented for V1.
+- Postmark and Resend outbound env vars remain compatibility/debt unless a future outbound provider decision supersedes Gmail sending.
+- Non-Gmail inbound email is now handled by the provider-neutral custom inbound path described in ADR-022.
 
 ---
 
@@ -537,5 +537,59 @@ A small assignment layer before draft generation fits the current provider abstr
 - Assignment and rollback are deterministic and traceable.
 - V1 does not include bandits, automatic winner promotion, or automatic prompt rewrites.
 - Prompt-version performance is analyzed through the AI Improvement Engine and `ai_drafts.prompt_version`.
+
+---
+
+## ADR-021 — Application Status Values Must Match Database Enums
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Conversation lifecycle writes use the migration-backed `conversation_status` enum values: `open`, `closed`, `waiting_on_customer`, and `waiting_on_internal`.
+
+### Context
+
+Some app surfaces still used legacy display/workflow labels such as `resolved`, `archived`, and `in_progress`, while the active Supabase migration defines `conversation_status` as an enum without those values. That mismatch can pass TypeScript and build checks but fail at runtime when API routes update conversations or when SQL indexes reference invalid enum literals.
+
+### Rationale
+
+The database enum is the source of truth for persisted status. Keeping application writes aligned with the enum prevents production-only failures, keeps SLA and queue-health queries explainable, and makes migration behavior easier to audit. Product language can still say "Resolve" in the UI, but the persisted terminal state is `closed`.
+
+### Consequences
+
+- App code must not write `resolved`, `archived`, or `in_progress` unless a future migration intentionally extends the enum.
+- SLA computation treats `closed` as terminal.
+- Queue and open-count filters use the active enum values.
+- Audit action names remain event labels and do not need to mirror database status literals.
+
+---
+
+## ADR-022 — Provider-Neutral Inbound Email Pipeline
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat supports inbound email through a provider-neutral normalization and processing layer. Gmail is an adapter into this layer, and `/api/inbound/email` is a supported custom/non-Gmail webhook route for internal relays, SMTP parsing services, and future Postmark-style inbound sources.
+
+### Context
+
+Work Hat needs real dogfooding and demo workflows without requiring Google Workspace or mounting a Gmail inbox. The previous implementation made Gmail the practical default and left the public inbound webhook path as future/scaffold behavior, which blocked internal operational usage.
+
+### Rationale
+
+A small normalized inbound contract keeps domain logic deterministic and explainable. Provider-specific code handles authentication and payload parsing, then the shared processor handles org/channel resolution, contact/company creation, conversation threading, message creation, SLA refresh, workflow events, idempotency, and diagnostics. This gives the product a first-class non-Gmail path without introducing a large integrations marketplace or outbound provider abstraction.
+
+### Consequences
+
+- Custom inbound channels store encrypted per-channel webhook secrets in `channels.config_json` and expose endpoint/status diagnostics in Settings -> Channels.
+- `inbound_email_events` is the operational delivery log and dedupe table for webhook/import processing.
+- The custom webhook route verifies a shared token and returns idempotent duplicate responses for replayed provider deliveries.
+- Gmail import now normalizes into the same processing layer, reducing divergent behavior between Gmail and non-Gmail inbound.
+- Outbound replies still use Gmail in this phase; adding non-Gmail outbound requires a separate decision.
+- Deployments must apply migration `0036_custom_inbound_email.sql` before relying on the new inbound processor in production.
 
 *Last updated: April 2026*

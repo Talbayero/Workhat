@@ -10,7 +10,7 @@ import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 /* PATCH /api/conversations/:id — update status, priority, assignee, tags */
 
-const VALID_STATUSES = new Set(["open", "waiting_on_customer", "waiting_on_internal", "in_progress", "resolved", "archived"]);
+const VALID_STATUSES = new Set(["open", "waiting_on_customer", "waiting_on_internal", "closed"]);
 const VALID_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
 const MAX_ASSIGNED_NAME_LENGTH = 100;
 const MAX_INTENT_LENGTH = 80;

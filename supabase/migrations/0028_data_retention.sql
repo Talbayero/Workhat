@@ -47,11 +47,13 @@ create table if not exists data_retention_policies (
   unique (org_id, data_category)
 );
 
-create index data_retention_policies_org_idx on data_retention_policies (org_id);
+create index if not exists data_retention_policies_org_idx
+  on data_retention_policies (org_id);
 
 alter table data_retention_policies enable row level security;
 
 -- Only admins can read/write retention policies
+drop policy if exists "retention_policies_admin_select" on data_retention_policies;
 create policy "retention_policies_admin_select"
   on data_retention_policies for select
   using (
@@ -61,6 +63,7 @@ create policy "retention_policies_admin_select"
     )
   );
 
+drop policy if exists "retention_policies_admin_all" on data_retention_policies;
 create policy "retention_policies_admin_all"
   on data_retention_policies for all
   using (
@@ -70,14 +73,28 @@ create policy "retention_policies_admin_all"
     )
   );
 
+drop policy if exists "retention_policies_service" on data_retention_policies;
 create policy "retention_policies_service"
   on data_retention_policies for all
   using (auth.role() = 'service_role');
 
 -- ── Data deletion / DSAR requests ────────────────────────────────────────────
 
-create type deletion_request_status as enum ('pending', 'in_progress', 'completed', 'rejected');
-create type deletion_request_type   as enum ('erasure', 'export', 'correction');
+do $$
+begin
+  if not exists (
+    select 1 from pg_type where typname = 'deletion_request_status'
+  ) then
+    create type deletion_request_status as enum ('pending', 'in_progress', 'completed', 'rejected');
+  end if;
+
+  if not exists (
+    select 1 from pg_type where typname = 'deletion_request_type'
+  ) then
+    create type deletion_request_type as enum ('erasure', 'export', 'correction');
+  end if;
+end
+$$;
 
 create table if not exists data_deletion_requests (
   id              uuid        primary key default gen_random_uuid(),
@@ -95,15 +112,21 @@ create table if not exists data_deletion_requests (
   completed_by    uuid        references users(id) on delete set null,
   notes           text,
 
-  -- 30-day SLA deadline (GDPR Art. 12)
-  due_by          timestamptz not null generated always as (requested_at + interval '30 days') stored
+  -- 30-day SLA deadline (GDPR Art. 12). This is a default, not a generated
+  -- column, because timestamptz arithmetic is not immutable in PostgreSQL.
+  due_by          timestamptz not null default (now() + interval '30 days')
 );
 
-create index data_deletion_requests_org_idx    on data_deletion_requests (org_id, requested_at desc);
-create index data_deletion_requests_status_idx on data_deletion_requests (org_id, status) where status = 'pending';
+create index if not exists data_deletion_requests_org_idx
+  on data_deletion_requests (org_id, requested_at desc);
+
+create index if not exists data_deletion_requests_status_idx
+  on data_deletion_requests (org_id, status)
+  where status = 'pending';
 
 alter table data_deletion_requests enable row level security;
 
+drop policy if exists "deletion_requests_admin" on data_deletion_requests;
 create policy "deletion_requests_admin"
   on data_deletion_requests for all
   using (
@@ -113,6 +136,7 @@ create policy "deletion_requests_admin"
     )
   );
 
+drop policy if exists "deletion_requests_service" on data_deletion_requests;
 create policy "deletion_requests_service"
   on data_deletion_requests for all
   using (auth.role() = 'service_role');
@@ -142,7 +166,7 @@ begin
   -- Uses the default period; per-org overrides would require per-org iteration.
   delete from public.conversations
   where updated_at < now() - (v_default_conv || ' days')::interval
-    and status in ('resolved', 'archived');
+    and status = 'closed';
 
   get diagnostics v_conv_deleted = row_count;
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
 import { getAdminClientOrLogError, getAdminClientOrLogWarn } from "@/lib/supabase/admin-helpers";
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
     full_name?: string;
   }>({ label: "conversations", select: "id, org_id, role, full_name" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = await requireCapability(appUser, "records.manage", "conversations", req);
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {

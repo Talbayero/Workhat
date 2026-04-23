@@ -45,7 +45,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         .select("id, inbound_address, config_json")
         .eq("org_id", orgId)
         .eq("type", "email")
-        .single();
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
       const cfg =
         (channel as { inbound_address: string | null; config_json: Record<string, string> } | null)

@@ -1,24 +1,20 @@
 # Work Hat CRM
 
-Work Hat CRM is an AI-first operations CRM for support teams. This workspace currently contains:
+Work Hat CRM is an AI-assisted operations CRM for support and customer operations teams.
 
-- `web/`: the Next.js app
-- `supabase/`: SQL migrations for the database
-- product and implementation planning docs at the repo root
+## Repository
 
-## Current Status
+- `web/` — Next.js application
+- `supabase/` — Supabase migration history
+- `docs/` — product, architecture, engineering, security, compliance, and SOC 2 readiness documentation
 
-The app has a Milestone 1 product shell in place:
+## Documentation
 
-- inbox route
-- conversation detail route
-- dashboard placeholder
-- login and onboarding placeholders
-- Work Hat branding aligned with `work-hat.com`
+All substantive project documentation is centralized in [docs/README.md](./docs/README.md).
+
+Start there for product context, architecture, security hardening, SOC 2 readiness, runbooks, engineering notes, and archived planning artifacts.
 
 ## Local Development
-
-From the app directory:
 
 ```bash
 cd web
@@ -26,34 +22,12 @@ npm install
 npm run dev
 ```
 
-Production check:
+## Verification
 
 ```bash
 cd web
+npm test -- --runInBand
+npm run type-check
+npm run lint
 npm run build
 ```
-
-## GitHub + Vercel
-
-Recommended setup:
-
-1. Push this workspace to GitHub.
-2. Import the repo into Vercel.
-3. Set the project Root Directory to `web`.
-4. Use the default Next.js build settings.
-5. Add environment variables from `web/.env.example`.
-6. Attach the `work-hat.com` domain after the first deploy.
-
-## Database
-
-Initial migrations live in:
-
-- `supabase/migrations/0001_extensions_and_enums.sql`
-- `supabase/migrations/0002_organizations_and_users.sql`
-- `supabase/migrations/0003_companies_contacts_channels.sql`
-
-Supporting planning docs:
-
-- `prd.md`
-- `technical-build-spec.md`
-- `supabase-schema-migration-plan.md`

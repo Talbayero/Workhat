@@ -14,9 +14,9 @@ Work Hat CRM is an AI-first operations CRM for customer support and BPO teams. T
 | Auth | Supabase Auth | Email/password + Google OAuth (Gmail scope) |
 | Storage | Supabase Storage | Not yet heavily used in V1 |
 | AI | OpenAI Chat Completions (GPT-4o) | Provider-abstracted via `lib/ai/` |
-| Email | Gmail API | OAuth 2.0 + Google Cloud Pub/Sub push |
+| Email | Provider-neutral inbound pipeline + Gmail API | Custom inbound webhook for non-Gmail sources; Gmail OAuth/Pub/Sub for Gmail; Gmail outbound replies |
 | Billing | Stripe | Checkout Sessions + Webhooks, no SDK |
-| Hosting | Vercel (assumed) | Edge middleware, cron jobs |
+| Hosting | Vercel (assumed) | Edge proxy, cron jobs |
 | i18n | Custom dictionary loader | English + Spanish (`en`, `es`) |
 
 ---
@@ -29,7 +29,7 @@ The application is a single Next.js deployment with three distinct execution con
 
 **Node.js (server components + API routes)** — The bulk of business logic. Server components fetch data directly from Supabase using the server client. API route handlers (`route.ts` files) handle mutations, AI calls, email operations, and webhook ingestion. The Supabase admin client is only used here.
 
-**Next.js Middleware (edge runtime)** — Runs on every request before it reaches any route. Handles the API gateway (Redis-backed rate limiting, IP blacklisting, body-size caps), session cookie refresh, and auth-based routing (unauthenticated redirect, post-login redirect).
+**Next.js Proxy (edge runtime)** — Runs on every request before it reaches any route. Handles the API gateway (Redis-backed rate limiting, IP blacklisting, body-size caps), session cookie refresh, and auth-based routing (unauthenticated redirect, post-login redirect).
 
 ---
 
@@ -66,7 +66,7 @@ The application is a single Next.js deployment with three distinct execution con
 
 | Route | Purpose |
 |---|---|
-| `/api/inbound/email` | Public webhook for inbound email (future non-Gmail providers) |
+| `/api/inbound/email` | Public webhook for custom/non-Gmail inbound email sources |
 | `/api/email/gmail/push` | Google Cloud Pub/Sub push endpoint |
 | `/api/email/gmail/callback` | Gmail OAuth redirect handler |
 | `/api/stripe/webhook` | Stripe billing event handler |
@@ -92,9 +92,11 @@ All business tables carry `org_id` for multi-tenant isolation. Every row is scop
 
 **contacts** — Individual people. Each contact can link to a company. Email stored as `citext` for case-insensitive matching.
 
-**channels** — Configured email/communication channels for an org (e.g., "support@acme.com via Gmail"). Linked to `email_connections`.
+**channels** — Configured email/communication channels for an org. Gmail channels link to `email_connections`; custom inbound channels store encrypted webhook configuration in `config_json`.
 
-**email_connections** — Stores Gmail OAuth tokens (AES-256-GCM encrypted), watch state, sync history.
+**email_connections** — Stores provider connection records. Gmail rows hold OAuth tokens (AES-256-GCM encrypted), watch state, and sync history. Custom inbound rows use the `custom_inbound` provider shape when a separate provider connection record is needed.
+
+**inbound_email_events** — Org-scoped webhook/import delivery log used for non-Gmail and normalized Gmail inbound processing. Stores provider identifiers, dedupe key, processing status, conversation/message links, and error diagnostics.
 
 ### Conversation & Messaging
 
@@ -211,7 +213,7 @@ Auth flows:
 - Email + password signup/login (standard Supabase)
 - Google OAuth — used exclusively for Gmail API access (not as a login method in its own right). Tokens are stored encrypted in `email_connections`, not in Supabase Auth.
 
-Session validation in middleware uses `supabase.auth.getUser()` — this validates the JWT against the Supabase server on every protected request, not just locally.
+Session validation in `proxy.ts` uses `supabase.auth.getUser()` — this validates the JWT against the Supabase server on every protected request, not just locally.
 
 ### Authorization (Compatibility RBAC + Capabilities)
 
@@ -239,7 +241,7 @@ Core capabilities:
 | `qa.review` | Submit QA reviews and inspect edit-analysis coaching views |
 | `settings.manage` | Manage organization-level settings |
 | `billing.manage` | Start checkout and manage billing state |
-| `integrations.manage` | Connect, disconnect, sync, or watch Gmail integrations |
+| `integrations.manage` | Connect, disconnect, sync, or configure email integrations and inbound channels |
 | `team.manage` | Change roles or remove users |
 | `team.invite` | Invite team members without granting full role-management power |
 | `team.skills.manage` | Update agent routing skills without full team-admin rights |
@@ -270,7 +272,7 @@ Three client variants, each used in specific contexts:
 
 ### Migrations
 
-30 migrations in `supabase/migrations/` named `NNNN_<description>.sql`. Migration numbers are the source of truth for schema history. The `supabase-schema-migration-plan.md` at the repo root is a historical planning artifact — the migrations themselves are authoritative.
+Numbered migrations in `supabase/migrations/` follow `NNNN_<description>.sql`. Migration numbers are the source of truth for schema history. The archived `docs/archive/planning/supabase-schema-migration-plan.md` file is historical context — the migrations themselves are authoritative.
 
 Apply with: `supabase db push` (or `supabase migration up` against a local instance).
 
@@ -298,6 +300,21 @@ The admin client bypasses RLS — never use it in user-facing contexts.
 
 ## Integrations
 
+### Email Inbound
+
+Inbound email is normalized before it touches conversation domain logic. `lib/email-connector/inbound.ts` defines the provider-neutral message shape: provider name, external message/thread ids, headers, sender, recipients, subject, text/html body, received timestamp, and metadata.
+
+The public custom webhook route is `POST /api/inbound/email`. It verifies a per-channel shared token, validates and normalizes the JSON payload, resolves the org/channel by `channelId` or configured recipient address, records an `inbound_email_events` row for idempotency/diagnostics, then creates or updates contacts, companies, conversations, messages, SLA snapshots, and workflow events.
+
+Supported V1 payloads are intentionally generic and Postmark-compatible enough for internal relays, SMTP parsing services, and future Postmark-style providers. The route is not a visual marketplace or arbitrary integration runtime.
+
+Downstream effects after successful inbound processing:
+
+- `conversation.created` for a new thread, or `conversation.updated` when an existing thread receives a message.
+- `message.received` exactly once per deduped delivery.
+- `risk.changed` when an existing conversation escalates to red risk.
+- SLA refresh through `lib/sla/refresh` so queue health remains current.
+
 ### Gmail
 
 Work Hat connects to Gmail via OAuth 2.0. Each org can connect one or more Gmail accounts via `/api/email/gmail/connect` → `/api/email/gmail/callback`.
@@ -306,7 +323,7 @@ Token storage: access and refresh tokens are encrypted with AES-256-GCM (`lib/em
 
 Real-time sync: Google Cloud Pub/Sub pushes new message notifications to `/api/email/gmail/push`. The watch is set up via `/api/email/gmail/watch` and renewed by a cron job at `/api/email/gmail/renew-watches` (requires `CRON_SECRET` header for Vercel Cron authorization).
 
-Inbound processing: `lib/email-connector/gmail-importer.ts` parses Gmail message payloads, matches threads to existing conversations, and creates new conversations + messages. Threading logic uses Gmail's `threadId` and standard `In-Reply-To` / `References` headers.
+Inbound processing: `lib/email-connector/gmail-importer.ts` is now a Gmail adapter. It fetches Gmail payloads, normalizes them into the same inbound message shape used by custom webhook sources, and calls the shared inbound processor. Threading still uses Gmail `threadId` plus standard `In-Reply-To` / `References` headers.
 
 Outbound: `lib/email-connector/gmail-sender.ts` sends replies via the Gmail API using the connected account's OAuth token.
 
@@ -355,11 +372,11 @@ Results are ordered by `created_at desc, id desc` for stable pagination. The UI 
 
 ### API Gateway & Rate Limiting
 
-`lib/security/api-gateway.ts` protects all `/api/*` traffic from middleware. Rate counters and dynamic blacklist entries are stored in Upstash Redis, not process memory, so limits survive Vercel cold starts and scale across function instances.
+`lib/security/api-gateway.ts` protects all `/api/*` traffic from `proxy.ts`. Rate counters and dynamic blacklist entries are stored in Upstash Redis, not process memory, so limits survive Vercel cold starts and scale across function instances.
 
 The gateway runs in two phases:
 
-1. **Pre-auth phase** — static blacklist, suspicious middleware headers, HTTP method checks, body-size limits, and IP-based limits for public/trusted routes such as waitlist, inbound email, Gmail push, and Stripe webhook.
+1. **Pre-auth phase** — static blacklist, suspicious proxy headers, HTTP method checks, body-size limits, and IP-based limits for public/trusted routes such as waitlist, inbound email, Gmail push, and Stripe webhook.
 2. **Post-auth phase** — user-aware limits after Supabase has verified the session. Authenticated route groups use user identity when available and fall back to IP for unauthenticated API callers. The policy model also supports org identity when a caller passes `orgId`.
 
 Route policy groups:
@@ -421,6 +438,10 @@ CRON_SECRET=
 # Gmail push webhook auth (shared secret)
 GMAIL_PUSH_TOKEN=
 
+# Custom inbound email channels
+# Per-channel webhook secrets are generated in Settings -> Channels and stored encrypted.
+# POSTMARK_INBOUND_TOKEN remains as a legacy fallback only for old webhook setups without per-channel secrets.
+
 # Security
 SECURITY_IP_BLACKLIST=              # Comma-separated IP list
 SECURITY_DYNAMIC_BLACKLIST_TTL_MS=
@@ -438,7 +459,7 @@ TURNSTILE_SECRET_KEY=               # Cloudflare Turnstile for forms
 # Example:
 # SECURITY_RATE_LIMIT_EXPENSIVE_AI_MAX_REQUESTS=20
 
-# Legacy — not active in V1
+# Legacy / compatibility
 POSTMARK_SERVER_TOKEN=
 POSTMARK_INBOUND_TOKEN=
 RESEND_API_KEY=
@@ -448,13 +469,13 @@ RESEND_API_KEY=
 
 ## Verification Notes
 
-**The README at the repo root is outdated.** It describes "Milestone 1 shell" but the codebase is well past that — 30 DB migrations, 39 API routes, a full Gmail integration, AI draft pipeline, edit analysis, and billing infrastructure are all present and functional.
+**The repo root README is intentionally short.** Active platform documentation is centralized in `docs/README.md`.
 
 **pgvector is installed but not the primary retrieval path.** Migration 0012 added the extension and embedding column to `knowledge_chunks`. In V1, retrieval uses Postgres full-text search (`content_tsv` TSVector). Semantic search via pgvector is planned for V2.
 
 **PWA is not implemented.** The app has favicons and an apple-icon but no `manifest.json` or service worker. Push notifications (browser-native) are not wired up; real-time sync is handled server-side via Gmail Pub/Sub.
 
-**Postmark/Resend env vars exist but are inactive.** Gmail is the production email integration. The legacy variables can be removed when the codebase is cleaned up.
+**Postmark/Resend env vars are compatibility only.** Custom inbound email does not require Postmark or Resend. `POSTMARK_INBOUND_TOKEN` only supports legacy webhook setups when a channel does not have an encrypted per-channel secret.
 
 **Demo routes serve mock data from `lib/mock-data.ts`** (44 KB). They require no authentication and are used for sales demos and manual QA.
 

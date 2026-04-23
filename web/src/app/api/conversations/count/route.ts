@@ -16,7 +16,7 @@ export async function GET() {
     .from("conversations")
     .select("id", { count: "exact", head: true })
     .eq("org_id", appUser.org_id)
-    .not("status", "in", "(resolved,archived)");
+    .neq("status", "closed");
 
   if (error) {
     console.error("[conversations/count] query failed:", error.message);

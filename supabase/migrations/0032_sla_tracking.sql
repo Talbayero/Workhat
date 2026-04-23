@@ -57,7 +57,7 @@ create index if not exists org_sla_policies_org_idx
 
 create index if not exists conversations_org_sla_idx
   on public.conversations (org_id, sla_status, sla_due_at)
-  where status not in ('resolved', 'archived');
+  where status in ('open', 'waiting_on_customer', 'waiting_on_internal');
 
 create index if not exists conversations_org_status_sla_idx
   on public.conversations (org_id, status, sla_due_at);

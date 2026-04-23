@@ -43,7 +43,7 @@ export type InboxConversation = {
   companyName: string;
   subject: string;
   preview: string;
-  status: "open" | "in_progress" | "waiting_on_customer" | "waiting_on_internal" | "resolved" | "archived";
+  status: "open" | "waiting_on_customer" | "waiting_on_internal" | "closed";
   channel: "email";
   riskLevel: RiskLevel;
   aiConfidence: RiskLevel;
@@ -477,7 +477,7 @@ export const conversations: InboxConversation[] = [
     subject: "Need invoice wording updated for our finance team",
     preview:
       "Please update the wording so it reflects annual support retainer, not consulting.",
-    status: "resolved",
+    status: "closed",
     channel: "email",
     riskLevel: "green",
     aiConfidence: "green",
@@ -1032,11 +1032,9 @@ export function filterKnowledgeEntries(category: KnowledgeCategory | "all") {
 
 export const conversationStatusLabel: Record<InboxConversation["status"], string> = {
   open: "Open",
-  in_progress: "In progress",
   waiting_on_customer: "Waiting on customer",
   waiting_on_internal: "Waiting on team",
-  resolved: "Resolved",
-  archived: "Archived",
+  closed: "Closed",
 };
 
 // --- Dashboard ---

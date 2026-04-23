@@ -97,12 +97,16 @@ User sees "Insufficient permissions" on feature they should have access to
 
 ---
 
-### Decision Tree 2: Gmail API Errors / Email Not Syncing
+### Decision Tree 2: Email Not Syncing
 
 ```
 Inbound emails not appearing or send failures
 │
-├─ Check Gmail connectivity
+├─ Is the affected channel Gmail or custom inbound?
+│  ├─ Gmail → Check Gmail connectivity
+│  └─ Custom inbound → Check webhook delivery diagnostics
+│
+├─ For Gmail
 │  ├─ Is Gmail API responding?
 │  │  └─ Rate limited? → Back off, retry after 60s
 │  ├─ Is OAuth token expired?
@@ -110,8 +114,15 @@ Inbound emails not appearing or send failures
 │  └─ Is webhook delivery failing?
 │     └─ Check Pub/Sub delivery status
 │
+├─ For custom inbound
+│  ├─ Is the channel active in Settings → Channels?
+│  ├─ Is the provider posting to /api/inbound/email?channelId=<channel_id>?
+│  ├─ Does the request include the current channel token?
+│  ├─ Are duplicate deliveries being deduped in inbound_email_events?
+│  └─ Is last_error_message populated on the channel?
+│
 ├─ Check audit logs:
-│  curl https://api.workhat.app/api/audit-logs?action=security.suspicious_request&detail=Gmail
+│  curl https://api.workhat.app/api/audit-logs?action=security.suspicious_request
 │
 └─ Escalate to DevOps if API is down
 ```
@@ -146,6 +157,31 @@ Inbound emails not appearing or send failures
    SELECT gmail_access_token_expires_at FROM org_integrations
    WHERE org_id = 'org-123' AND service = 'gmail';
    ```
+
+7. **For custom inbound, inspect delivery status:**
+   ```sql
+   SELECT id, status, external_message_id, error_message, processed_at, created_at
+   FROM inbound_email_events
+   WHERE org_id = 'org-123' AND channel_id = 'channel-123'
+   ORDER BY created_at DESC
+   LIMIT 20;
+   ```
+
+8. **Check channel diagnostics:**
+   ```sql
+   SELECT id, provider, status, inbound_address,
+          config_json->>'last_inbound_at' AS last_inbound_at,
+          config_json->>'last_error_at' AS last_error_at,
+          config_json->>'last_error_message' AS last_error_message
+   FROM channels
+   WHERE org_id = 'org-123' AND type = 'email';
+   ```
+
+9. **If token errors are suspected:**
+   - Regenerate the custom inbound token in Settings -> Channels.
+   - Update the relay/provider secret.
+   - Send a test delivery with a new `externalMessageId`.
+   - Confirm one `message.received` workflow event and one inbound `messages` row.
 
 **Expected outcome:** Emails sync again. Check audit logs for `conversation.created` entries confirming inbound processing.
 
@@ -473,6 +509,7 @@ After resolving any incident:
 
 - [Security Hardening](./security-hardening.md) — Authorization, audit logging, rate limiting
 - [Architecture](./architecture.md) — System design, integration points
+- [Email Channels](./email-channels.md) — Gmail/custom inbound setup and diagnostics
 - [Decisions](./decisions.md) — Why we made these choices
 
 ---

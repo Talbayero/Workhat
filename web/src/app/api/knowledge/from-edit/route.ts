@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
 import { entryFromCorrection } from "@/lib/ai/knowledge-gen";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
+import { requireCapability } from "@/lib/auth/capabilities";
 
 /* ─────────────────────────────────────────────
    POST /api/knowledge/from-edit
@@ -22,6 +23,8 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
 export async function POST(req: NextRequest) {
   const appUser = await getCurrentAppUser({ label: "from-edit", select: "id, org_id, role, email" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = await requireCapability(appUser, "conversations.reply", "from-edit", req);
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {
@@ -67,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     admin
       .from("sent_replies")
-      .select("id, org_id, conversation_id, source_ai_draft_id, body_text")
+      .select("id, org_id, conversation_id, source_ai_draft_id, sent_by_user_id, body_text")
       .eq("id", sentReplyId)
       .eq("org_id", appUser.org_id)
       .maybeSingle(),
@@ -92,6 +95,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "AI draft and sent reply do not belong to the same conversation." },
       { status: 400 }
+    );
+  }
+
+  if (replyResult.data.sent_by_user_id !== appUser.id) {
+    return NextResponse.json(
+      { error: "Only the sender of this reply can turn its correction into a knowledge candidate." },
+      { status: 403 }
     );
   }
 

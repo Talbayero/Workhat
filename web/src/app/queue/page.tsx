@@ -11,7 +11,7 @@ type Props = {
 
 const SLA_FILTERS = new Set(["all", "at_risk", "breached", "ok"]);
 const RISK_FILTERS = new Set(["all", "green", "yellow", "red"]);
-const STATUS_FILTERS = new Set(["all", "open", "in_progress", "waiting_on_customer", "waiting_on_internal"]);
+const STATUS_FILTERS = new Set(["all", "open", "waiting_on_customer", "waiting_on_internal"]);
 const CHANNEL_FILTERS = new Set(["all", "email"]);
 
 function first(value: string | string[] | undefined) {

@@ -12,11 +12,9 @@ const SLA_LABEL: Record<SlaStatus, string> = {
 
 const STATUS_LABEL: Record<string, string> = {
   open: "Open",
-  in_progress: "In progress",
   waiting_on_customer: "Waiting on customer",
   waiting_on_internal: "Waiting on internal",
-  resolved: "Resolved",
-  archived: "Archived",
+  closed: "Closed",
 };
 
 function formatDueAt(value: string | null | undefined) {

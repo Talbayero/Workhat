@@ -13,8 +13,9 @@ This document details the security hardening infrastructure added to Work Hat CR
 4. [Data Protection & Retention](#data-protection--retention)
 5. [Admin Client & Fallback Strategy](#admin-client--fallback-strategy)
 6. [Input Validation Strategy](#input-validation-strategy)
-7. [Error Handling & Logging](#error-handling--logging)
-8. [Incident Response](#incident-response)
+7. [Webhook Security](#webhook-security)
+8. [Error Handling & Logging](#error-handling--logging)
+9. [Incident Response](#incident-response)
 
 ---
 
@@ -90,6 +91,34 @@ export async function POST(req: NextRequest) {
   // ...
 }
 ```
+
+### Current Route Coverage
+
+As of the April 2026 hardening pass, authenticated write routes are expected to enforce explicit app-layer capabilities before relying on Supabase RLS. This is important for SOC 2 access-control evidence because capability revocations must affect API behavior even when an org-scoped RLS policy is broad.
+
+| Operation | Required capability |
+|---|---|
+| Send customer reply or post internal note | `conversations.reply` |
+| Update conversation status, priority, assignment, tags, or intent | `conversations.assign` |
+| Create contacts, companies, or manual conversations | `records.manage` |
+| Generate AI drafts | `ai.generate` |
+| Configure prompt experiments | `ai.configure` or `settings.manage` |
+| Create or update knowledge entries | `knowledge.edit` |
+| Submit QA reviews | `qa.review` |
+| Manage org/SLA/team settings | `settings.manage`, `team.manage`, or related capability |
+
+The route scan used during hardening checks authenticated `POST`, `PATCH`, `PUT`, and `DELETE` handlers that call `getCurrentAppUser()` and confirms they also call `requireCapability()` or `requireAnyCapability()`.
+
+### Conversation Status Vocabulary
+
+The org-scoped migration path uses the `conversation_status` enum values `open`, `closed`, `waiting_on_customer`, and `waiting_on_internal`. Application code must not write legacy text statuses such as `resolved`, `archived`, or `in_progress` unless a future migration first adds those enum values.
+
+Operationally:
+
+- Closing a conversation writes `closed`.
+- SLA refresh treats only `closed` as terminal.
+- Queue health and open-count queries filter active work with the migration-backed status set.
+- Audit action names such as `conversation.resolved` are event labels and are not database status values.
 
 ### Capability Override Precedence
 
@@ -276,10 +305,10 @@ SECURITY_RATE_LIMIT_MAX_REQUESTS_PER_WINDOW=100
 
 ### Triggering Rate Limits
 
-Rate limiting is enforced in `middleware.ts`:
+Rate limiting is enforced in `proxy.ts`:
 
 ```typescript
-// In middleware.ts
+// In proxy.ts
 const gatewayResponse = await guardApiRequest(request, { phase: "pre-auth" });
 if (gatewayResponse) return gatewayResponse;  // Rate limit hit
 ```
@@ -464,6 +493,26 @@ const body = CreateCompanySchema.parse(await req.json());
 
 ---
 
+## Webhook Security
+
+Public webhook routes are unauthenticated by Supabase session, so each route must verify its own caller identity before processing side effects.
+
+### Custom Inbound Email
+
+`POST /api/inbound/email` is the supported non-Gmail inbound email path. Security controls:
+
+- Per-channel shared secrets are generated from Settings -> Channels and stored encrypted in `channels.config_json.webhook_secret_ciphertext`.
+- Callers pass the secret through `Authorization: Bearer <token>`, `X-WorkHat-Inbound-Token`, or `X-Inbound-Token`.
+- The route validates JSON shape and caps normalized subject/body/header lengths before domain processing.
+- The org/channel is resolved from a signed channel id (`?channelId=<uuid>`) or a configured recipient address; no user-supplied org id is accepted.
+- Idempotency is enforced with `inbound_email_events.dedupe_key` plus `messages.channel_message_id` checks.
+- Bad tokens are logged as `security.suspicious_request` when the target channel can be resolved.
+- Delivery status, last success, and last error are stored on channel diagnostics and in `inbound_email_events`.
+
+Legacy `POSTMARK_INBOUND_TOKEN` is accepted only when a channel has no encrypted per-channel secret, to preserve old webhook setups during migration.
+
+---
+
 ## Error Handling & Logging
 
 ### Error Response Format
@@ -606,7 +655,7 @@ curl https://api.workhat.app/api/audit-logs?action=security.suspicious_request&s
 - [Architecture](./architecture.md) — System design and integration points
 - [Conventions](./conventions.md) — Code style and patterns
 - [Decisions](./decisions.md) — Architecture decision records
-- [On-Call Runbook](./on-call-runbook.md) — Incident response procedures *(to be created)*
+- [On-Call Runbook](./on-call-runbook.md) — Incident response procedures
 
 ---
 

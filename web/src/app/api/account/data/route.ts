@@ -41,8 +41,8 @@ export async function GET(req: NextRequest) {
   const [users, contacts, companies, conversations, knowledge] = await Promise.all([
     supabase.from("users").select("id, full_name, email, role, status, created_at").eq("org_id", appUser.org_id),
     supabase.from("contacts").select("id, first_name, last_name, email, phone, location, tags, status, tier, created_at").eq("org_id", appUser.org_id),
-    supabase.from("companies").select("id, name, industry, website, tags, created_at").eq("org_id", appUser.org_id),
-    supabase.from("conversations").select("id, subject, status, channel, created_at, resolved_at").eq("org_id", appUser.org_id),
+    supabase.from("companies").select("id, name, domain, industry, tags, created_at").eq("org_id", appUser.org_id),
+    supabase.from("conversations").select("id, subject, status, channel_id, created_at, updated_at").eq("org_id", appUser.org_id),
     supabase.from("knowledge_entries").select("id, title, category, summary, tags, is_active, created_at").eq("org_id", appUser.org_id),
   ]);
 

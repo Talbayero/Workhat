@@ -44,6 +44,26 @@ type EmailConnection = {
   updated_at: string;
 };
 
+type CustomInboundChannel = {
+  id: string;
+  status: string;
+  name: string;
+  fromName: string;
+  replyIdentity: string;
+  inboundAddress: string | null;
+  webhookEndpoint: string;
+  webhookSecret: string | null;
+  webhookSecretHint: string | null;
+  lastInboundAt: string | null;
+  lastErrorAt: string | null;
+  lastErrorMessage: string | null;
+  lastEvent: {
+    status: string;
+    received_at: string;
+    error_message: string | null;
+  } | null;
+};
+
 type EmailDiagnosticCheck = {
   key: string;
   label: string;
@@ -833,10 +853,15 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [connections, setConnections] = useState<EmailConnection[]>([]);
+  const [customChannels, setCustomChannels] = useState<CustomInboundChannel[]>([]);
+  const [customName, setCustomName] = useState("Work Hat internal inbound");
+  const [customFromName, setCustomFromName] = useState("");
+  const [customReplyIdentity, setCustomReplyIdentity] = useState("");
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [connectionAction, setConnectionAction] = useState<"sync" | "watch" | "disconnect" | null>(null);
+  const [customAction, setCustomAction] = useState<"create" | "update" | "regenerate" | null>(null);
   const [diagnostics, setDiagnostics] = useState<EmailDiagnostics | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
@@ -845,6 +870,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
   const hasAddress = Boolean(inboundAddress);
   const primaryConnection = connections.find((connection) => connection.status === "connected") ?? connections[0] ?? null;
   const isConnected = primaryConnection?.status === "connected";
+  const customChannel = customChannels[0] ?? null;
 
   useEffect(() => {
     void refreshConnections();
@@ -869,18 +895,73 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
     setConnectionsLoading(true);
     setConnectionError(null);
     try {
-      const res = await fetch("/api/email/connections");
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(payload.error ?? "Could not load email connections.");
+      const [connectionsRes, customRes] = await Promise.all([
+        fetch("/api/email/connections"),
+        fetch("/api/email/custom-inbound"),
+      ]);
+      const connectionsPayload = await connectionsRes.json().catch(() => ({}));
+      const customPayload = await customRes.json().catch(() => ({}));
+      if (!connectionsRes.ok) {
+        throw new Error(connectionsPayload.error ?? "Could not load email connections.");
       }
-      setConnections(Array.isArray(payload.connections) ? payload.connections : []);
+      if (!customRes.ok) {
+        throw new Error(customPayload.error ?? "Could not load custom inbound channels.");
+      }
+      const nextConnections = Array.isArray(connectionsPayload.connections) ? connectionsPayload.connections : [];
+      const nextCustom = Array.isArray(customPayload.channels) ? customPayload.channels : [];
+      setConnections(nextConnections);
+      setCustomChannels(nextCustom);
+      const firstCustom = nextCustom[0] as CustomInboundChannel | undefined;
+      if (firstCustom) {
+        setCustomName(firstCustom.name || "Custom inbound");
+        setCustomFromName(firstCustom.fromName || "");
+        setCustomReplyIdentity(firstCustom.replyIdentity || "");
+      }
     } catch (error) {
       setConnectionError(
         friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Could not load email connections.")
       );
     } finally {
       setConnectionsLoading(false);
+    }
+  }
+
+  async function saveCustomInbound(action: "create" | "update" | "regenerate") {
+    if (action !== "create" && !customChannel) return;
+    setCustomAction(action);
+    setConnectionError(null);
+    setConnectionNotice(null);
+    try {
+      const res = await fetch("/api/email/custom-inbound", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          channelId: customChannel?.id,
+          name: customName,
+          fromName: customFromName,
+          replyIdentity: customReplyIdentity,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error ?? "Could not save custom inbound channel.");
+      }
+      if (payload.channel) {
+        setCustomChannels([payload.channel]);
+        setCustomName(payload.channel.name || customName);
+        setCustomFromName(payload.channel.fromName || "");
+        setCustomReplyIdentity(payload.channel.replyIdentity || "");
+      }
+      setConnectionNotice(
+        action === "regenerate"
+          ? "Custom inbound token regenerated. Update your relay with the new token before sending more mail."
+          : "Custom inbound channel saved."
+      );
+    } catch (error) {
+      setConnectionError(error instanceof Error ? error.message : "Could not save custom inbound channel.");
+    } finally {
+      setCustomAction(null);
     }
   }
 
@@ -1099,6 +1180,117 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
             </div>
           )}
         </div>
+      </SectionCard>
+
+      <SectionCard>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="eyebrow text-[9px] text-[var(--muted)]">Custom inbound</p>
+            <p className="mt-1 text-base font-semibold">Non-Gmail webhook channel</p>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
+              Use this for internal dogfooding, demos, SMTP relays, or parsed inbound providers that can POST normalized email events to Work Hat.
+            </p>
+          </div>
+          <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
+            customChannel?.status === "active"
+              ? "border-emerald-400/25 text-emerald-200"
+              : "border-[var(--line)] text-[var(--muted)]"
+          }`}>
+            <span className={`h-2 w-2 rounded-full ${customChannel?.status === "active" ? "bg-emerald-400" : "bg-[var(--muted)]"}`} />
+            {customChannel ? customChannel.status : "not configured"}
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <label className="flex flex-col gap-1 text-xs font-medium text-[var(--muted)]">
+            Channel name
+            <input
+              value={customName}
+              onChange={(event) => setCustomName(event.target.value)}
+              disabled={!canEdit}
+              className="rounded-lg border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-[var(--muted)]">
+            From / reply name
+            <input
+              value={customFromName}
+              onChange={(event) => setCustomFromName(event.target.value)}
+              disabled={!canEdit}
+              placeholder="Work Hat Support"
+              className="rounded-lg border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-[var(--muted)]">
+            Reply identity
+            <input
+              value={customReplyIdentity}
+              onChange={(event) => setCustomReplyIdentity(event.target.value)}
+              disabled={!canEdit}
+              placeholder="support@yourdomain.com"
+              className="rounded-lg border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {!customChannel ? (
+            <button
+              onClick={() => saveCustomInbound("create")}
+              disabled={!canEdit || customAction !== null}
+              className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-45"
+            >
+              {customAction === "create" ? "Creating..." : "Create custom channel"}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => saveCustomInbound("update")}
+                disabled={!canEdit || customAction !== null}
+                className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-45"
+              >
+                {customAction === "update" ? "Saving..." : "Save channel"}
+              </button>
+              <button
+                onClick={() => saveCustomInbound("regenerate")}
+                disabled={!canEdit || customAction !== null}
+                className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[rgba(255,190,190,0.9)] transition-colors hover:border-[rgba(144,50,61,0.75)] disabled:opacity-45"
+              >
+                {customAction === "regenerate" ? "Regenerating..." : "Regenerate token"}
+              </button>
+            </>
+          )}
+        </div>
+
+        {customChannel && (
+          <div className="mt-5 space-y-3">
+            <div>
+              <p className="text-xs font-medium text-[var(--muted)]">Webhook endpoint</p>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="flex-1 overflow-x-auto rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-2.5 text-xs font-mono text-[var(--foreground)]">
+                  {customChannel.webhookEndpoint}
+                </code>
+                <CopyButton value={customChannel.webhookEndpoint} />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-[var(--muted)]">Shared token</p>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="flex-1 overflow-x-auto rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-2.5 text-xs font-mono text-[var(--foreground)]">
+                  {customChannel.webhookSecret ?? customChannel.webhookSecretHint ?? "Token unavailable"}
+                </code>
+                {customChannel.webhookSecret && <CopyButton value={customChannel.webhookSecret} />}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <ConnectorMetric label="Last inbound" value={formatTimestamp(customChannel.lastInboundAt)} />
+              <ConnectorMetric label="Last event" value={customChannel.lastEvent ? `${customChannel.lastEvent.status} at ${formatTimestamp(customChannel.lastEvent.received_at)}` : "Not received"} />
+              <ConnectorMetric label="Last error" value={customChannel.lastErrorMessage ?? "None"} />
+            </div>
+          </div>
+        )}
       </SectionCard>
 
       <SectionCard>
