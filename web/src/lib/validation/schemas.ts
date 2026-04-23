@@ -33,7 +33,7 @@ export const CompanyTierSchema = z.enum(["standard", "pro", "enterprise", "vip"]
 /**
  * Common string fields with length constraints
  */
-export const NameSchema = z.string().min(1).max(200, "Name must be 200 characters or less");
+export const NameSchema = z.string().trim().min(1).max(200, "Name must be 200 characters or less");
 export const ShortTextSchema = z.string().max(100, "Text must be 100 characters or less");
 export const MediumTextSchema = z.string().max(500, "Text must be 500 characters or less");
 export const LongTextSchema = z.string().max(2000, "Text must be 2000 characters or less");
@@ -44,7 +44,8 @@ export const LongTextSchema = z.string().max(2000, "Text must be 2000 characters
 export const TagsSchema = z
   .array(z.string().max(50))
   .max(20, "Maximum 20 tags allowed")
-  .transform((tags) => [...new Set(tags)]); // Deduplicate
+  .transform((tags) => [...new Set(tags)]) // Deduplicate
+  .default([]);
 
 // ── Request body schemas ─────────────────────────────────────────────────────
 

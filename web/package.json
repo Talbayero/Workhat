@@ -9,6 +9,8 @@
     "lint": "eslint",
     "test": "jest",
     "test:coverage": "jest --coverage",
+    "test:e2e": "jest src/__tests__/e2e --runInBand",
+    "test:integration": "jest src/__tests__/integration --runInBand",
     "test:watch": "jest --watch",
     "type-check": "tsc --noEmit"
   },
@@ -22,12 +24,15 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "jest": "^30.3.0",
+    "jest-environment-node": "^30.3.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

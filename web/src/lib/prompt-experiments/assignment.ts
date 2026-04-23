@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { PROMPT_VERSION } from "@/lib/ai";
+import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import type { PromptConfig } from "@/lib/ai/types";
 import type {
   PromptAssignment,
@@ -34,6 +35,33 @@ function mergeConfig(base: PromptConfig, override: PromptConfig): PromptConfig {
     ...base,
     ...override,
   };
+}
+
+async function fetchExistingAssignment({
+  db,
+  orgId,
+  experimentId,
+  conversationId,
+}: {
+  db: SupabaseServerClient;
+  orgId: string;
+  experimentId: string;
+  conversationId: string;
+}) {
+  const { data, error } = await db
+    .from("ai_prompt_assignments")
+    .select("id, prompt_version_key, assignment_key, bucket")
+    .eq("org_id", orgId)
+    .eq("experiment_id", experimentId)
+    .eq("conversation_id", conversationId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[prompt-experiments] existing assignment lookup failed:", error.message);
+    return null;
+  }
+
+  return data as { id: string; prompt_version_key: string; assignment_key: string; bucket: number | null } | null;
 }
 
 async function loadVersionConfig(
@@ -145,23 +173,21 @@ export async function assignPromptVersion({
     });
   }
 
-  const { data: existing } = await db
-    .from("ai_prompt_assignments")
-    .select("id, prompt_version_key, assignment_key, bucket")
-    .eq("org_id", orgId)
-    .eq("experiment_id", experiment.id)
-    .eq("conversation_id", conversationId)
-    .maybeSingle();
+  const existing = await fetchExistingAssignment({
+    db,
+    orgId,
+    experimentId: experiment.id,
+    conversationId,
+  });
 
   if (existing) {
-    const row = existing as { id: string; prompt_version_key: string; assignment_key: string; bucket: number | null };
     return {
-      assignmentId: row.id,
+      assignmentId: existing.id,
       experimentId: experiment.id,
-      promptVersion: row.prompt_version_key,
-      promptConfig: await loadVersionConfig(db, orgId, row.prompt_version_key),
-      assignmentKey: row.assignment_key,
-      bucket: row.bucket,
+      promptVersion: existing.prompt_version_key,
+      promptConfig: await loadVersionConfig(db, orgId, existing.prompt_version_key),
+      assignmentKey: existing.assignment_key,
+      bucket: existing.bucket,
       reason: "sticky_assignment",
     };
   }
@@ -196,8 +222,19 @@ export async function assignPromptVersion({
   const versionConfig = await loadVersionConfig(db, orgId, promptVersion);
   const variantConfig = parsePromptConfig(variant?.config_json);
   const assignmentKey = `${orgId}:${experiment.id}:${conversationId}`;
+  const adminState = createOptionalAdminClient();
+  if (!adminState.client) {
+    console.warn("[prompt-experiments] admin client unavailable for assignment insert:", adminState.reason);
+    return buildFallbackAssignment({
+      db,
+      orgId,
+      conversationId,
+      promptVersion: experiment.stable_version_key || PROMPT_VERSION,
+      reason: "stable_fallback",
+    });
+  }
 
-  const { data: inserted, error: insertError } = await db
+  const { data: inserted, error: insertError } = await adminState.client
     .from("ai_prompt_assignments")
     .insert({
       org_id: orgId,
@@ -213,10 +250,46 @@ export async function assignPromptVersion({
 
   if (insertError) {
     console.warn("[prompt-experiments] assignment insert failed:", insertError.message);
+    const racedAssignment = await fetchExistingAssignment({
+      db,
+      orgId,
+      experimentId: experiment.id,
+      conversationId,
+    });
+
+    if (racedAssignment) {
+      return {
+        assignmentId: racedAssignment.id,
+        experimentId: experiment.id,
+        promptVersion: racedAssignment.prompt_version_key,
+        promptConfig: await loadVersionConfig(db, orgId, racedAssignment.prompt_version_key),
+        assignmentKey: racedAssignment.assignment_key,
+        bucket: racedAssignment.bucket,
+        reason: "sticky_assignment",
+      };
+    }
+
+    return buildFallbackAssignment({
+      db,
+      orgId,
+      conversationId,
+      promptVersion: experiment.stable_version_key || PROMPT_VERSION,
+      reason: "stable_fallback",
+    });
+  }
+
+  if (!inserted) {
+    return buildFallbackAssignment({
+      db,
+      orgId,
+      conversationId,
+      promptVersion: experiment.stable_version_key || PROMPT_VERSION,
+      reason: "stable_fallback",
+    });
   }
 
   return {
-    assignmentId: (inserted as { id?: string } | null)?.id ?? null,
+    assignmentId: (inserted as { id: string }).id,
     experimentId: experiment.id,
     promptVersion,
     promptConfig: mergeConfig(versionConfig, variantConfig),
@@ -227,20 +300,28 @@ export async function assignPromptVersion({
 }
 
 export async function linkPromptAssignmentToDraft({
-  db,
+  orgId,
   assignmentId,
   draftId,
 }: {
-  db: SupabaseServerClient;
+  orgId: string;
   assignmentId: string | null;
   draftId: string | null;
 }) {
   if (!assignmentId || !draftId) return;
 
-  const { error } = await db
+  const adminState = createOptionalAdminClient();
+  if (!adminState.client) {
+    console.warn("[prompt-experiments] admin client unavailable for assignment link:", adminState.reason);
+    return;
+  }
+
+  const { error } = await adminState.client
     .from("ai_prompt_assignments")
     .update({ ai_draft_id: draftId })
-    .eq("id", assignmentId);
+    .eq("id", assignmentId)
+    .eq("org_id", orgId)
+    .is("ai_draft_id", null);
 
   if (error) {
     console.warn("[prompt-experiments] assignment draft link failed:", error.message);

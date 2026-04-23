@@ -11,9 +11,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export function createMockNextRequest(overrides?: Partial<NextRequest>): NextRequest {
   const mockRequest = {
+    url: "http://localhost:3000/api/test",
     nextUrl: new URL("http://localhost:3000/api/test"),
     method: "GET",
-    headers: new Map([
+    headers: new Headers([
       ["content-type", "application/json"],
       ["user-agent", "Jest/TestClient"],
       ["x-forwarded-for", "192.168.1.1"],
@@ -73,9 +74,8 @@ export function createMockRequestWithBody(
  * Create a mock request with headers
  */
 export function createMockRequestWithHeaders(headers: Record<string, string>): NextRequest {
-  const headerMap = new Map(Object.entries(headers));
   return createMockNextRequest({
-    headers: headerMap,
+    headers: new Headers(headers),
   });
 }
 

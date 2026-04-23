@@ -1,26 +1,87 @@
 /**
  * Tests for lib/auth/capabilities.ts
- * Coverage: Authorization, capability resolution, edge cases
  */
 
-import { hasCapability, requireCapability, CAPABILITIES } from "../capabilities";
-import type { CurrentAppUser } from "../app-user";
+import { CAPABILITIES, hasCapability, requireCapability } from "../capabilities";
 import {
   createAdminUser,
   createAgentUser,
   createManagerUser,
-  createMockAppUser,
   TEST_ORG_ID,
   TEST_USER_ID,
 } from "@/__tests__/fixtures/auth.fixtures";
-import { createMockSupabaseClient } from "@/__tests__/utils/mocks";
 
-// Mock the admin client
 jest.mock("@/lib/supabase/admin", () => ({
   createOptionalAdminClient: jest.fn(),
 }));
 
+jest.mock("@/lib/security/audit-logger", () => ({
+  logAudit: jest.fn(async () => undefined),
+}));
+
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
+
+type QueryResponse = {
+  data: unknown;
+  error: { message: string } | null;
+};
+
+type MockQuery = {
+  select: jest.Mock<MockQuery, []>;
+  eq: jest.Mock<MockQuery, [string, string]>;
+  then: (
+    resolve: (value: QueryResponse) => unknown,
+    reject: (reason?: unknown) => unknown
+  ) => Promise<unknown>;
+};
+
+function createQuery(response: QueryResponse, onEq?: (column: string, value: string) => void) {
+  const query: MockQuery = {
+    select: jest.fn(() => query),
+    eq: jest.fn((column: string, value: string) => {
+      onEq?.(column, value);
+      return query;
+    }),
+    then: (
+      resolve: (value: QueryResponse) => unknown,
+      reject: (reason?: unknown) => unknown
+    ) => Promise.resolve(response).then(resolve, reject),
+  };
+
+  return query;
+}
+
+function mockAdminClient({
+  roleRows,
+  overrideRows = [],
+  roleError = null,
+  onEq,
+}: {
+  roleRows: unknown[];
+  overrideRows?: unknown[];
+  roleError?: { message: string } | null;
+  onEq?: (column: string, value: string) => void;
+}) {
+  return {
+    from: jest.fn((table: string) => {
+      if (table === "role_capabilities") {
+        return createQuery({ data: roleRows, error: roleError }, onEq);
+      }
+      if (table === "user_capability_overrides") {
+        return createQuery({ data: overrideRows, error: null }, onEq);
+      }
+      return createQuery({ data: [], error: null }, onEq);
+    }),
+  };
+}
+
+function availableAdminState(options: Parameters<typeof mockAdminClient>[0]) {
+  return {
+    client: mockAdminClient(options) as never,
+    reason: "service_role_key_valid" as const,
+    keyRole: "service_role" as const,
+  };
+}
 
 describe("Capabilities System", () => {
   const mockCreateOptionalAdminClient = createOptionalAdminClient as jest.MockedFunction<
@@ -29,368 +90,134 @@ describe("Capabilities System", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(console, "warn").mockImplementation(() => undefined);
   });
 
-  describe("hasCapability()", () => {
-    it("should return true for admin with all capabilities", async () => {
-      const adminUser = createAdminUser();
-      const mockClient = createMockSupabaseClient();
-
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
-
-      // Mock role_capabilities response
-      mockClient.from = jest.fn((table: string) => {
-        if (table === "role_capabilities") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: CAPABILITIES.map((cap) => ({ capability: cap })),
-              error: null,
-            }),
-          };
-        }
-        return {
-          select: jest.fn().mockResolvedValue({ data: [], error: null }),
-        };
-      }) as any;
-
-      const result = await hasCapability(adminUser, "billing.manage");
-      expect(result).toBe(true);
-    });
-
-    it("should return false for agent without billing capability", async () => {
-      const agentUser = createAgentUser();
-      const mockClient = createMockSupabaseClient();
-
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
-
-      // Mock agent capabilities (limited set)
-      mockClient.from = jest.fn((table: string) => {
-        if (table === "role_capabilities") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [
-                { capability: "conversations.read" },
-                { capability: "conversations.reply" },
-                { capability: "ai.generate" },
-                { capability: "knowledge.read" },
-              ],
-              error: null,
-            }),
-          };
-        }
-        return {
-          select: jest.fn().mockResolvedValue({ data: [], error: null }),
-        };
-      }) as any;
-
-      const result = await hasCapability(agentUser, "billing.manage");
-      expect(result).toBe(false);
-    });
-
-    it("should apply grant overrides", async () => {
-      const agentUser = createAgentUser();
-      const mockClient = createMockSupabaseClient();
-
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
-
-      // Mock: agent base capabilities + override grant
-      mockClient.from = jest.fn((table: string) => {
-        if (table === "role_capabilities") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [
-                { capability: "conversations.read" },
-                { capability: "conversations.reply" },
-                { capability: "ai.generate" },
-                { capability: "knowledge.read" },
-              ],
-              error: null,
-            }),
-          };
-        }
-        if (table === "user_capability_overrides") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [{ capability: "billing.manage", effect: "grant" }],
-              error: null,
-            }),
-            eq: jest.fn().mockReturnThis(),
-          };
-        }
-        return {
-          select: jest.fn().mockResolvedValue({ data: [], error: null }),
-          eq: jest.fn().mockReturnThis(),
-        };
-      }) as any;
-
-      const result = await hasCapability(agentUser, "billing.manage");
-      expect(result).toBe(true);
-    });
-
-    it("should apply revoke overrides", async () => {
-      const managerUser = createManagerUser();
-      const mockClient = createMockSupabaseClient();
-
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
-
-      // Mock: manager base capabilities + revoke billing
-      mockClient.from = jest.fn((table: string) => {
-        if (table === "role_capabilities") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [
-                { capability: "conversations.read" },
-                { capability: "billing.manage" },
-                { capability: "team.manage" },
-              ],
-              error: null,
-            }),
-          };
-        }
-        if (table === "user_capability_overrides") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [{ capability: "billing.manage", effect: "revoke" }],
-              error: null,
-            }),
-            eq: jest.fn().mockReturnThis(),
-          };
-        }
-        return {
-          select: jest.fn().mockResolvedValue({ data: [], error: null }),
-          eq: jest.fn().mockReturnThis(),
-        };
-      }) as any;
-
-      const result = await hasCapability(managerUser, "billing.manage");
-      expect(result).toBe(false);
-    });
-
-    it("should handle admin client unavailability (fallback to role preset)", async () => {
-      const agentUser = createAgentUser();
-
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: null,
-        reason: "Not configured",
-      });
-
-      // Should fallback to role preset: agent has conversations.read
-      const canRead = await hasCapability(agentUser, "conversations.read");
-      expect(canRead).toBe(true);
-
-      // But not billing.manage
-      const canBill = await hasCapability(agentUser, "billing.manage");
-      expect(canBill).toBe(false);
-    });
-
-    it("should handle role_capabilities query error (fallback to preset)", async () => {
-      const agentUser = createAgentUser();
-      const mockClient = createMockSupabaseClient();
-
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
-
-      mockClient.from = jest.fn((table: string) => {
-        if (table === "role_capabilities") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: null,
-              error: { message: "Connection refused" },
-            }),
-          };
-        }
-        return {
-          select: jest.fn().mockResolvedValue({ data: [], error: null }),
-        };
-      }) as any;
-
-      // Should fallback to role preset
-      const result = await hasCapability(agentUser, "conversations.read");
-      expect(result).toBe(true);
-    });
-
-    it("should verify org_id isolation in override queries", async () => {
-      const agentUser = createAgentUser({ org_id: TEST_ORG_ID });
-      const mockClient = createMockSupabaseClient();
-
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
-
-      const eqSpy = jest.fn().mockReturnThis();
-
-      mockClient.from = jest.fn((table: string) => {
-        if (table === "role_capabilities") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [],
-              error: null,
-            }),
-          };
-        }
-        if (table === "user_capability_overrides") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [],
-              error: null,
-            }),
-            eq: eqSpy,
-          };
-        }
-        return { eq: eqSpy };
-      }) as any;
-
-      await hasCapability(agentUser, "billing.manage");
-
-      // Verify org_id filter was applied
-      expect(eqSpy).toHaveBeenCalledWith("org_id", TEST_ORG_ID);
-      expect(eqSpy).toHaveBeenCalledWith("user_id", TEST_USER_ID);
-    });
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
-  describe("requireCapability()", () => {
-    it("should return null when user has capability", async () => {
-      const adminUser = createAdminUser();
-      const mockClient = createMockSupabaseClient();
+  it("returns true for admin with mapped capabilities", async () => {
+    mockCreateOptionalAdminClient.mockReturnValue(
+      availableAdminState({
+        roleRows: CAPABILITIES.map((capability) => ({ capability })),
+      })
+    );
 
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
-
-      mockClient.from = jest.fn(() => ({
-        select: jest.fn().mockResolvedValue({
-          data: CAPABILITIES.map((cap) => ({ capability: cap })),
-          error: null,
-        }),
-        eq: jest.fn().mockReturnThis(),
-      })) as any;
-
-      const result = await requireCapability(adminUser, "billing.manage");
-      expect(result).toBeNull();
-    });
-
-    it("should return 403 when user lacks capability", async () => {
-      const agentUser = createAgentUser();
-      const mockClient = createMockSupabaseClient();
-
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
-
-      mockClient.from = jest.fn(() => ({
-        select: jest.fn().mockResolvedValue({
-          data: [
-            { capability: "conversations.read" },
-            { capability: "conversations.reply" },
-            { capability: "ai.generate" },
-            { capability: "knowledge.read" },
-          ],
-          error: null,
-        }),
-        eq: jest.fn().mockReturnThis(),
-      })) as any;
-
-      const result = await requireCapability(agentUser, "billing.manage");
-      expect(result).not.toBeNull();
-      expect(result?.status).toBe(403);
-    });
+    await expect(hasCapability(createAdminUser(), "billing.manage")).resolves.toBe(true);
   });
 
-  describe("Edge Cases", () => {
-    it("should ignore invalid capability strings in overrides", async () => {
-      const agentUser = createAgentUser();
-      const mockClient = createMockSupabaseClient();
+  it("returns false when the mapped role lacks a capability", async () => {
+    mockCreateOptionalAdminClient.mockReturnValue(
+      availableAdminState({
+        roleRows: [
+          { capability: "conversations.read" },
+          { capability: "conversations.reply" },
+          { capability: "ai.generate" },
+          { capability: "knowledge.read" },
+        ],
+      })
+    );
 
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
+    await expect(hasCapability(createAgentUser(), "billing.manage")).resolves.toBe(false);
+  });
 
-      mockClient.from = jest.fn((table: string) => {
-        if (table === "role_capabilities") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [{ capability: "conversations.read" }],
-              error: null,
-            }),
-          };
-        }
-        if (table === "user_capability_overrides") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [
-                { capability: "invalid.capability", effect: "grant" },
-                { capability: "billing.manage", effect: "grant" },
-              ],
-              error: null,
-            }),
-            eq: jest.fn().mockReturnThis(),
-          };
-        }
-        return {
-          select: jest.fn().mockResolvedValue({ data: [], error: null }),
-          eq: jest.fn().mockReturnThis(),
-        };
-      }) as any;
+  it("applies grant overrides", async () => {
+    mockCreateOptionalAdminClient.mockReturnValue(
+      availableAdminState({
+        roleRows: [{ capability: "conversations.read" }],
+        overrideRows: [{ capability: "billing.manage", effect: "grant" }],
+      })
+    );
 
-      // Invalid capability should be ignored; only valid grant applied
-      const result = await hasCapability(agentUser, "billing.manage");
-      expect(result).toBe(true);
+    await expect(hasCapability(createAgentUser(), "billing.manage")).resolves.toBe(true);
+  });
+
+  it("applies revoke overrides", async () => {
+    mockCreateOptionalAdminClient.mockReturnValue(
+      availableAdminState({
+        roleRows: [
+          { capability: "conversations.read" },
+          { capability: "billing.manage" },
+          { capability: "team.manage" },
+        ],
+        overrideRows: [{ capability: "billing.manage", effect: "revoke" }],
+      })
+    );
+
+    await expect(hasCapability(createManagerUser(), "billing.manage")).resolves.toBe(false);
+  });
+
+  it("falls back to role presets when admin client is unavailable", async () => {
+    mockCreateOptionalAdminClient.mockReturnValue({
+      client: null,
+      reason: "missing_env",
     });
 
-    it("should handle empty override list", async () => {
-      const agentUser = createAgentUser();
-      const mockClient = createMockSupabaseClient();
+    await expect(hasCapability(createAgentUser(), "conversations.read")).resolves.toBe(true);
+    await expect(hasCapability(createAgentUser(), "billing.manage")).resolves.toBe(false);
+  });
 
-      mockCreateOptionalAdminClient.mockReturnValue({
-        client: mockClient,
-        reason: null,
-      });
+  it("falls back to role presets when role capability lookup fails", async () => {
+    mockCreateOptionalAdminClient.mockReturnValue(
+      availableAdminState({
+        roleRows: [],
+        roleError: { message: "Connection refused" },
+      })
+    );
 
-      mockClient.from = jest.fn((table: string) => {
-        if (table === "role_capabilities") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [{ capability: "conversations.read" }],
-              error: null,
-            }),
-          };
-        }
-        if (table === "user_capability_overrides") {
-          return {
-            select: jest.fn().mockResolvedValue({
-              data: [],
-              error: null,
-            }),
-            eq: jest.fn().mockReturnThis(),
-          };
-        }
-        return {
-          select: jest.fn().mockResolvedValue({ data: [], error: null }),
-          eq: jest.fn().mockReturnThis(),
-        };
-      }) as any;
+    await expect(hasCapability(createAgentUser(), "conversations.read")).resolves.toBe(true);
+  });
 
-      // Should use role preset; no overrides to apply
-      const result = await hasCapability(agentUser, "conversations.read");
-      expect(result).toBe(true);
-    });
+  it("filters override lookups by org_id and user_id", async () => {
+    const eqSpy = jest.fn();
+
+    mockCreateOptionalAdminClient.mockReturnValue(
+      availableAdminState({
+        roleRows: [{ capability: "conversations.read" }],
+        onEq: eqSpy,
+      })
+    );
+
+    await hasCapability(createAgentUser({ org_id: TEST_ORG_ID }), "billing.manage");
+
+    expect(eqSpy).toHaveBeenCalledWith("role", "agent");
+    expect(eqSpy).toHaveBeenCalledWith("org_id", TEST_ORG_ID);
+    expect(eqSpy).toHaveBeenCalledWith("user_id", TEST_USER_ID);
+  });
+
+  it("returns null from requireCapability when allowed", async () => {
+    mockCreateOptionalAdminClient.mockReturnValue(
+      availableAdminState({
+        roleRows: CAPABILITIES.map((capability) => ({ capability })),
+      })
+    );
+
+    await expect(requireCapability(createAdminUser(), "billing.manage")).resolves.toBeNull();
+  });
+
+  it("returns 403 from requireCapability when denied", async () => {
+    mockCreateOptionalAdminClient.mockReturnValue(
+      availableAdminState({
+        roleRows: [{ capability: "conversations.read" }],
+      })
+    );
+
+    const response = await requireCapability(createAgentUser(), "billing.manage");
+    expect(response?.status).toBe(403);
+  });
+
+  it("ignores invalid capability strings in overrides", async () => {
+    mockCreateOptionalAdminClient.mockReturnValue(
+      availableAdminState({
+        roleRows: [{ capability: "conversations.read" }],
+        overrideRows: [
+          { capability: "invalid.capability", effect: "grant" },
+          { capability: "billing.manage", effect: "grant" },
+        ],
+      })
+    );
+
+    await expect(hasCapability(createAgentUser(), "billing.manage")).resolves.toBe(true);
   });
 });

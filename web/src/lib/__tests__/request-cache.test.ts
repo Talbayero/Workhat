@@ -17,6 +17,10 @@ import {
 } from "../request-cache";
 
 describe("Request Cache", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   describe("Basic Operations", () => {
     it("should store and retrieve values", () => {
       const cache = createRequestCache();
@@ -67,64 +71,57 @@ describe("Request Cache", () => {
       expect(cache.has("missing")).toBe(false);
     });
 
-    it("should return false for stale keys", (done) => {
+    it("should return false for stale keys", () => {
+      jest.useFakeTimers();
       const cache = createRequestCache();
 
       cache.set("key", "value", 50); // 50ms TTL
       expect(cache.has("key")).toBe(true);
 
-      setTimeout(() => {
-        expect(cache.has("key")).toBe(false);
-      }, 100);
-
-      done();
+      jest.advanceTimersByTime(100);
+      expect(cache.has("key")).toBe(false);
     });
   });
 
   describe("TTL and Staleness", () => {
-    it("should return fresh values within TTL", (done) => {
+    it("should return fresh values within TTL", () => {
+      jest.useFakeTimers();
       const cache = createRequestCache();
 
       cache.set("fresh", "value", 100); // 100ms TTL
       expect(cache.get("fresh")).toBe("value");
 
-      setTimeout(() => {
-        expect(cache.get("fresh")).toBe("value");
-      }, 50);
-
-      done();
+      jest.advanceTimersByTime(50);
+      expect(cache.get("fresh")).toBe("value");
     });
 
-    it("should return undefined for stale values", (done) => {
+    it("should return undefined for stale values", () => {
+      jest.useFakeTimers();
       const cache = createRequestCache();
 
       cache.set("stale", "value", 50); // 50ms TTL
       expect(cache.get("stale")).toBe("value");
 
-      setTimeout(() => {
-        expect(cache.get("stale")).toBeUndefined();
-      }, 100);
-
-      done();
+      jest.advanceTimersByTime(100);
+      expect(cache.get("stale")).toBeUndefined();
     });
 
-    it("should auto-delete stale entries on access", (done) => {
+    it("should auto-delete stale entries on access", () => {
+      jest.useFakeTimers();
       const cache = createRequestCache();
 
       cache.set("key", "value", 50);
       const { size: sizeBeforeStale } = cache.stats();
 
-      setTimeout(() => {
-        cache.get("key"); // Triggers deletion of stale entry
-        const { size: sizeAfterStale } = cache.stats();
+      jest.advanceTimersByTime(100);
+      cache.get("key"); // Triggers deletion of stale entry
+      const { size: sizeAfterStale } = cache.stats();
 
-        expect(sizeAfterStale).toBeLessThan(sizeBeforeStale);
-      }, 100);
-
-      done();
+      expect(sizeAfterStale).toBeLessThan(sizeBeforeStale);
     });
 
     it("should support entries without TTL (never stale)", () => {
+      jest.useFakeTimers();
       const cache = createRequestCache();
 
       cache.set("permanent", "value"); // No TTL
@@ -191,7 +188,8 @@ describe("Request Cache", () => {
       expect(keys).toContain("role:admin");
     });
 
-    it("should exclude stale entries from stats", (done) => {
+    it("should exclude stale entries from stats", () => {
+      jest.useFakeTimers();
       const cache = createRequestCache();
 
       cache.set("fresh", "value", 100);
@@ -200,18 +198,15 @@ describe("Request Cache", () => {
       const { size: sizeInitial } = cache.stats();
       expect(sizeInitial).toBe(2);
 
-      setTimeout(() => {
-        const { size: sizeAfter } = cache.stats();
-        // Stats should still count stale entries (not auto-cleaned)
-        expect(sizeAfter).toBe(2);
+      jest.advanceTimersByTime(100);
+      const { size: sizeAfter } = cache.stats();
+      // Stats should still count stale entries (not auto-cleaned)
+      expect(sizeAfter).toBe(2);
 
-        // But accessing stale entry removes it
-        cache.get("stale");
-        const { size: sizeFinal } = cache.stats();
-        expect(sizeFinal).toBe(1);
-      }, 100);
-
-      done();
+      // But accessing stale entry removes it
+      cache.get("stale");
+      const { size: sizeFinal } = cache.stats();
+      expect(sizeFinal).toBe(1);
     });
   });
 

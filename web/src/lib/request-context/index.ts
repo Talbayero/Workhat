@@ -3,12 +3,7 @@
  * Provides request ID generation, structured logging, and request-scoped state
  */
 
-import { randomUUID } from 'crypto';
 import type { NextRequest } from 'next/server';
-
-// AsyncLocalStorage would be ideal but requires Node.js context
-// For now, we'll use a WeakMap-based approach per request
-const requestContextMap = new WeakMap<object, RequestContext>();
 
 export interface RequestContext {
   requestId: string;
@@ -25,7 +20,7 @@ export interface RequestContext {
  */
 export function generateRequestId(): string {
   const timestamp = Date.now().toString(36);
-  const uuid = randomUUID().slice(0, 8);
+  const uuid = globalThis.crypto.randomUUID().slice(0, 8);
   return `req_${timestamp}_${uuid}`;
 }
 
@@ -90,7 +85,7 @@ export function createLogEntry(
     entry.error = {
       name: ctx.error.name,
       message: ctx.error.message,
-      stack: process.env.NODE_ENV === 'development' ? ctx.error.stack : undefined,
+      stack: process.env.NODE_ENV === 'production' ? undefined : ctx.error.stack,
     };
   }
 

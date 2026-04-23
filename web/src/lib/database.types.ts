@@ -8,4 +8,5 @@
  * This will be replaced with actual generated types.
  */
 
-export type Database = Record<string, any>;
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export type Database = any;

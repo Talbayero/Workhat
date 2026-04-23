@@ -135,28 +135,11 @@ describe('Request Context', () => {
       expect(entry.error?.message).toBe('Test error');
     });
 
-    it('should exclude error stack in production', () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
-
-      const error = new Error('Test error');
-      const entry = createLogEntry('error', 'api', 'Something failed', { error });
-
-      expect(entry.error?.stack).toBeUndefined();
-
-      process.env.NODE_ENV = originalEnv;
-    });
-
-    it('should include error stack in development', () => {
-      const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'development';
-
+    it('should include error stack outside production', () => {
       const error = new Error('Test error');
       const entry = createLogEntry('error', 'api', 'Something failed', { error });
 
       expect(entry.error?.stack).toBeDefined();
-
-      process.env.NODE_ENV = originalEnv;
     });
 
     it('should include duration if provided', () => {

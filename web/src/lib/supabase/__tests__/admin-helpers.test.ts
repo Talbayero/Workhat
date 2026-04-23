@@ -269,7 +269,11 @@ describe("Admin Client Helpers", () => {
 
   describe("Integration: Reducing boilerplate", () => {
     it("should eliminate null checks with getAdminClientOrThrow", () => {
-      const mockClient = { from: jest.fn().mockReturnValue("query") };
+      const mockClient = {
+        from: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue("query"),
+        }),
+      };
       mockCreateOptionalAdminClient.mockReturnValue({
         client: mockClient,
         reason: "service_role_key_valid",
@@ -305,11 +309,10 @@ describe("Admin Client Helpers", () => {
       // New pattern (2-3 lines):
       const client = getAdminClientOrLogWarn("capability-check");
       if (!client) {
-        return ["preset", "capabilities"];
+        expect(client).toBeNull();
+        expect(console.warn).toHaveBeenCalled();
+        return;
       }
-
-      expect(client).toBeNull();
-      expect(console.warn).toHaveBeenCalled();
     });
   });
 });

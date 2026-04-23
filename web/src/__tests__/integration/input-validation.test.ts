@@ -251,7 +251,7 @@ describe("Input Validation", () => {
       const maxLength = 2000;
       const maxString = "A".repeat(maxLength);
       expect(normalizeOptionalString(maxString)).toBeTruthy();
-      expect(normalizeOptionalString(maxString).length).toBe(maxLength);
+      expect(normalizeOptionalString(maxString)?.length).toBe(maxLength);
     });
   });
 });

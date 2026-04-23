@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getAdminClientOrLogWarn } from "@/lib/supabase/admin-helpers";
-import { logAudit, logSecurityEvent } from "@/lib/security/audit-logger";
+import { logAudit } from "@/lib/security/audit-logger";
 import type { CurrentAppUser } from "@/lib/auth/app-user";
 
 export const CAPABILITIES = [

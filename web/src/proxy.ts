@@ -4,7 +4,7 @@ import { applyApiGatewayHeaders, guardApiRequest } from "@/lib/security/api-gate
 import { createRequestContext, logger } from "@/lib/request-context";
 
 /**
- * Next.js middleware — runs on every non-static request.
+ * Next.js proxy — runs on every non-static request.
  *
  * Responsibilities (in order):
  *   1. API gateway preflight — IP blacklisting, method checks, body-size caps,
@@ -50,9 +50,9 @@ function isPublic(pathname: string): boolean {
   return false;
 }
 
-// ── Middleware ───────────────────────────────────────────────────────────────
+// ── Proxy ────────────────────────────────────────────────────────────────────
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // ── 0. Request context (ID generation, logging) ─────────────────────────────

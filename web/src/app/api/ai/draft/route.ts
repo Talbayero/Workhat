@@ -521,7 +521,7 @@ export async function POST(req: NextRequest) {
   );
 
   await linkPromptAssignmentToDraft({
-    db: supabase,
+    orgId: appUser.org_id,
     assignmentId: promptAssignment.assignmentId,
     draftId,
   });

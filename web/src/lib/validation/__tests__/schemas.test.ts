@@ -262,7 +262,7 @@ describe("Validation Schemas", () => {
         json: async () => {
           throw new SyntaxError("Unexpected token");
         },
-      } as Request;
+      } as unknown as Request;
 
       const result = await validateRequest(mockRequest, CreateCompanySchema);
 
@@ -285,7 +285,7 @@ describe("Validation Schemas", () => {
       const updateSchema = CreateCompanySchema.partial();
       const result = updateSchema.parse({ name: "Test" });
 
-      expect(result.tier).toBeUndefined(); // Partial doesn't apply defaults
+      expect(result.tier).toBe("standard"); // Zod defaults still apply after partial composition
     });
   });
 });
