@@ -277,6 +277,35 @@ User cannot create org during onboarding
 
 ---
 
+### Decision Tree 3B: Custom Inbound Channel Creation Fails
+
+```
+Onboarding Step 2 or Settings -> Channels cannot create custom inbound
+│
+├─ Does the API response mention EMAIL_TOKEN_ENCRYPTION_KEY?
+│  └─ YES → Set EMAIL_TOKEN_ENCRYPTION_KEY and redeploy
+│
+├─ Does the API response mention migration incomplete?
+│  └─ YES → Apply 0036_custom_inbound_email.sql completely
+│
+├─ Is the user allowed to manage integrations?
+│  └─ Check integrations.manage capability
+│
+└─ Check /api/email/custom-inbound logs for database or admin-client errors
+```
+
+**Resolution Steps:**
+
+1. In Vercel, confirm `EMAIL_TOKEN_ENCRYPTION_KEY` is set. Generate one with `openssl rand -base64 32`.
+2. Confirm the app has been redeployed after adding the variable.
+3. Confirm migration `0036_custom_inbound_email.sql` was applied completely, not only the `inbound_email_events` table.
+4. Verify the signed-in user has `integrations.manage`.
+5. Retry channel creation and copy the endpoint/token for the relay.
+
+**Expected outcome:** The channel is created, the webhook endpoint and token are visible, and the channel can ingest a test message.
+
+---
+
 ### Decision Tree 4: Audit Log Corruption / Missing Entries
 
 ```

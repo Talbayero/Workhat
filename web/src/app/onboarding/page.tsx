@@ -236,9 +236,13 @@ function StepInbox({
       const data = await response.json().catch(() => ({})) as {
         channel?: CustomInboundChannel;
         error?: string;
+        hint?: string;
       };
 
-      if (!response.ok) throw new Error(data.error ?? "Unable to create custom inbound channel.");
+      if (!response.ok) {
+        const detail = [data.error, data.hint].filter(Boolean).join(" ");
+        throw new Error(detail || "Unable to create custom inbound channel.");
+      }
 
       setCustomChannel(data.channel ?? null);
       setSyncResult("Custom inbound channel is ready. Use the endpoint and token with your relay or demo sender.");

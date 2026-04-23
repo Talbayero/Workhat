@@ -34,6 +34,38 @@ function normalizeText(value: unknown, max = 120) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+function isMissingEncryptionKey(error: unknown) {
+  return error instanceof Error && error.message.includes("EMAIL_TOKEN_ENCRYPTION_KEY");
+}
+
+function setupErrorResponse(error: unknown) {
+  if (isMissingEncryptionKey(error)) {
+    console.error("[custom-inbound] encryption key missing for webhook secret storage");
+    return NextResponse.json({
+      error: "Custom inbound setup is missing EMAIL_TOKEN_ENCRYPTION_KEY.",
+      hint: "Set EMAIL_TOKEN_ENCRYPTION_KEY in Vercel to a high-entropy value, for example output from: openssl rand -base64 32",
+    }, { status: 503 });
+  }
+
+  const message = error instanceof Error ? error.message : "Unknown setup error.";
+  console.error("[custom-inbound] setup failed:", message);
+  return NextResponse.json({ error: "Custom inbound channel setup failed." }, { status: 500 });
+}
+
+function databaseErrorResponse(error: { message?: string; code?: string; details?: string | null } | null | undefined) {
+  const message = error?.message ?? "Unknown database error.";
+  console.error("[custom-inbound] database write failed:", message, error?.code, error?.details ?? "");
+
+  if (message.toLowerCase().includes("custom_inbound") && message.toLowerCase().includes("check")) {
+    return NextResponse.json({
+      error: "Custom inbound schema migration is incomplete.",
+      hint: "Apply supabase/migrations/0036_custom_inbound_email.sql completely, including provider compatibility changes.",
+    }, { status: 500 });
+  }
+
+  return NextResponse.json({ error: "Unable to create custom inbound channel." }, { status: 500 });
+}
+
 function serializeChannel(req: NextRequest, row: {
   id: string;
   status: string;
@@ -170,11 +202,16 @@ export async function POST(req: NextRequest) {
     if (lookupError) return NextResponse.json({ error: "Unable to load channel." }, { status: 500 });
     if (!existing) return NextResponse.json({ error: "Custom inbound channel not found." }, { status: 404 });
 
-    const config = {
-      ...((existing as { config_json: ChannelConfig }).config_json ?? {}),
-      webhook_secret_ciphertext: encryptSecret(secret),
-      webhook_secret_hint: secretHint(secret),
-    };
+    let config: ChannelConfig;
+    try {
+      config = {
+        ...((existing as { config_json: ChannelConfig }).config_json ?? {}),
+        webhook_secret_ciphertext: encryptSecret(secret),
+        webhook_secret_hint: secretHint(secret),
+      };
+    } catch (error) {
+      return setupErrorResponse(error);
+    }
     const { data, error } = await db
       .from("channels")
       .update({ config_json: config })
@@ -216,16 +253,21 @@ export async function POST(req: NextRequest) {
   }
 
   const secret = generateSecret();
-  const config: ChannelConfig = {
-    display_name: name,
-    from_name: fromName,
-    reply_identity: replyIdentity,
-    webhook_secret_ciphertext: encryptSecret(secret),
-    webhook_secret_hint: secretHint(secret),
-    last_inbound_at: null,
-    last_error_at: null,
-    last_error_message: null,
-  };
+  let config: ChannelConfig;
+  try {
+    config = {
+      display_name: name,
+      from_name: fromName,
+      reply_identity: replyIdentity,
+      webhook_secret_ciphertext: encryptSecret(secret),
+      webhook_secret_hint: secretHint(secret),
+      last_inbound_at: null,
+      last_error_at: null,
+      last_error_message: null,
+    };
+  } catch (error) {
+    return setupErrorResponse(error);
+  }
 
   const { data, error } = await db
     .from("channels")
@@ -241,8 +283,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error || !data) {
-    console.error("[custom-inbound] create failed:", error?.message);
-    return NextResponse.json({ error: "Unable to create custom inbound channel." }, { status: 500 });
+    return databaseErrorResponse(error);
   }
 
   return NextResponse.json({

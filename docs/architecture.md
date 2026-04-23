@@ -444,6 +444,7 @@ GMAIL_PUSH_TOKEN=
 # Custom inbound email channels
 # Per-channel webhook secrets are generated in Settings -> Channels and stored encrypted.
 # POSTMARK_INBOUND_TOKEN remains as a legacy fallback only for old webhook setups without per-channel secrets.
+# Requires EMAIL_TOKEN_ENCRYPTION_KEY because webhook tokens are encrypted before being stored.
 
 # Security
 SECURITY_IP_BLACKLIST=              # Comma-separated IP list
