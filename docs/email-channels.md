@@ -1,11 +1,13 @@
 # Email Channels
 
-Work Hat supports two inbound email paths:
+Work Hat presents mailbox setup as four buyer-friendly connection types:
 
-- Gmail: OAuth, Pub/Sub push, and Gmail API import.
-- Custom inbound: provider-neutral webhook for internal relays, SMTP parsing services, and future Postmark-style inbound providers.
+- OAuth / xOAuth: Gmail today; Outlook / Microsoft 365 maps to the same category as its adapter is enabled.
+- Mailbox login and password: direct mailbox authentication where a provider still permits it.
+- App password: Gmail with 2FA, Outlook, iCloud, and similar provider-issued app-password flows.
+- IMAP / SMTP: custom corporate mailboxes, hosted providers, cPanel, Zoho, and private servers.
 
-Outbound replies still use Gmail in this phase. Custom inbound is inbound-only so dogfooding and demos can ingest real operational messages without Google Workspace.
+Advanced/developer setup also supports custom inbound webhook/API channels for internal relays, SMTP parsing services, and future Postmark-style inbound providers. Outbound replies still use Gmail in this phase. Custom inbound is inbound-only so dogfooding and demos can ingest real operational messages without Google Workspace.
 
 ## Architecture
 
@@ -21,9 +23,19 @@ Provider-specific adapters normalize email into `NormalizedInboundEmail` in `web
 8. Refresh SLA state.
 9. Emit workflow events exactly once for non-duplicate deliveries.
 
+## Mailbox Setup UX
+
+Onboarding Step 2 and Settings -> Channels start with the four mailbox connection choices above. The intent is that a prospect immediately sees:
+
+- I can connect Gmail.
+- I can connect Outlook / Microsoft 365.
+- I can connect my company mailbox with app-password or IMAP/SMTP settings.
+
+Credential-based methods are normalized into `email_connections` with encrypted secrets and non-secret connection metadata. They require `EMAIL_TOKEN_ENCRYPTION_KEY` because Work Hat must decrypt mailbox credentials later when the relevant mailbox adapter runs. Custom inbound webhook token storage does not require this key because webhook tokens are stored as one-way hashes in `channels.config_json`.
+
 ## Custom Inbound Setup
 
-Settings -> Channels includes a non-Gmail webhook channel card. Users with `integrations.manage` can:
+Settings -> Channels and onboarding keep custom inbound under Advanced developer setup. Users with `integrations.manage` can:
 
 - Create a custom inbound channel.
 - Set a channel name and reply identity metadata.
@@ -31,9 +43,7 @@ Settings -> Channels includes a non-Gmail webhook channel card. Users with `inte
 - Copy the shared token after creation or regeneration.
 - View status, last successful inbound event, last event status, and last error.
 
-The onboarding flow also offers custom inbound as the recommended Step 2 path for internal dogfooding and demos. Gmail remains available as an optional connected mailbox when a team wants OAuth-based import and Gmail-backed sending, but onboarding should not imply Google Workspace is required before Work Hat can receive operational messages.
-
-Custom inbound token storage does not require `EMAIL_TOKEN_ENCRYPTION_KEY`. Work Hat stores a one-way hash of the generated webhook token, so the full token is shown only immediately after creation or regeneration. Gmail OAuth still requires `EMAIL_TOKEN_ENCRYPTION_KEY` because Gmail access and refresh tokens must be decrypted later for API calls.
+Custom inbound token storage does not require `EMAIL_TOKEN_ENCRYPTION_KEY`. Work Hat stores a one-way hash of the generated webhook token, so the full token is shown only immediately after creation or regeneration. Gmail OAuth and saved mailbox/app-password/IMAP credentials require `EMAIL_TOKEN_ENCRYPTION_KEY` because those secrets must be decrypted later for provider API or mailbox calls.
 
 The endpoint format is:
 
@@ -106,20 +116,22 @@ Operators should check:
 
 ## Manual Demo Verification
 
-1. Apply migration `0036_custom_inbound_email.sql`.
+1. Apply migrations through `0037_email_connection_methods.sql`.
 2. Sign in as an admin or manager with `integrations.manage`.
-3. Open onboarding Step 2 or Settings -> Channels and create a custom inbound channel.
-4. Copy the endpoint and token before leaving the page.
-5. Send a test request with a unique `externalMessageId`.
-6. Confirm the conversation appears in Inbox and Queue.
-7. Confirm the sender contact was created and company was associated for a business domain.
-8. Confirm SLA status populated on the conversation.
-9. Confirm workflow events exist for the delivery.
-10. Repeat the same request and confirm no duplicate message appears.
+3. Open onboarding Step 2 or Settings -> Channels and confirm the four mailbox connection types appear first.
+4. Connect Gmail through OAuth, or save a credential-based setup record when `EMAIL_TOKEN_ENCRYPTION_KEY` is configured.
+5. Open Advanced developer setup and create a custom inbound channel when testing webhook ingestion.
+6. Copy the endpoint and token before leaving the page.
+7. Send a test request with a unique `externalMessageId`.
+8. Confirm the conversation appears in Inbox and Queue.
+9. Confirm the sender contact was created and company was associated for a business domain.
+10. Confirm SLA status populated on the conversation.
+11. Confirm workflow events exist for the delivery.
+12. Repeat the same request and confirm no duplicate message appears.
 
 ## Backward Compatibility
 
-Gmail support remains active. Gmail import now calls the shared inbound processor after fetching and normalizing Gmail payloads.
+Gmail support remains active. Gmail import now calls the shared inbound processor after fetching and normalizing Gmail payloads. The custom inbound API endpoint, token model, and normalized payload contract remain backward-compatible; they are now presented as advanced setup instead of the primary buyer path.
 
 `POSTMARK_INBOUND_TOKEN` remains a legacy fallback only for channels without per-channel tokens. New custom inbound channels should use Settings-generated tokens.
 

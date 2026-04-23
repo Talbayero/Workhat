@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { EmailConnectionSetup } from "@/components/email/email-connection-setup";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ type EmailConnection = {
   watch_expires_at: string | null;
   last_sync_at: string | null;
   error_message: string | null;
+  provider_metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };
@@ -849,7 +851,6 @@ function CopyButton({ value }: { value: string }) {
 
 function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | null; canEdit: boolean; onDirty: () => void }) {
   const [fromName, setFromName] = useState(channel?.fromName ?? "");
-  const [setupPath, setSetupPath] = useState<"gmail" | "direct" | null>(null);
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [connections, setConnections] = useState<EmailConnection[]>([]);
@@ -884,7 +885,6 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
 
     if (connected === "gmail") {
       setConnectionNotice("Gmail connected. Work Hat can now import conversations and send replies from that mailbox.");
-      setSetupPath(null);
       void refreshConnections();
     } else if (emailError) {
       setConnectionError(friendlyEmailConnectorMessage(emailError));
@@ -1012,13 +1012,13 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
       const res = await fetch(`/api/email/connections?connectionId=${primaryConnection.id}`, { method: "DELETE" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(payload.error ?? "Could not disconnect Gmail.");
+        throw new Error(payload.error ?? "Could not disconnect this mailbox.");
       }
-      setConnectionNotice("Gmail has been disconnected. You can reconnect whenever you are ready.");
+      setConnectionNotice("Mailbox connection has been disconnected. You can reconnect whenever you are ready.");
       await refreshConnections();
     } catch (error) {
       setConnectionError(
-        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Could not disconnect Gmail.")
+        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Could not disconnect this mailbox.")
       );
     } finally {
       setConnectionAction(null);
@@ -1060,25 +1060,13 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
       <SectionCard>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended</p>
-            <p className="mt-1 text-base font-semibold">Work Hat Gmail connector</p>
+            <p className="eyebrow text-[9px] text-[var(--muted)]">Mailbox connection</p>
+            <p className="mt-1 text-base font-semibold">Choose how your team receives email</p>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
-              The simplest setup for non-technical teams: sign in with Google, approve access, and Work Hat handles importing and replies.
+              Connect Gmail, Microsoft 365, app-password mailboxes, or IMAP/SMTP servers without starting from webhook infrastructure.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {canEdit ? (
-              <Link
-                href={`/api/email/gmail/connect?returnTo=${encodeURIComponent("/settings?tab=channels")}`}
-                className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
-              >
-                {isConnected ? "Reconnect with Google" : "Sign in with Google"}
-              </Link>
-            ) : (
-              <span className="rounded-full border border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
-                Admin access required
-              </span>
-            )}
             <button
               onClick={refreshConnections}
               disabled={connectionsLoading}
@@ -1089,15 +1077,25 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           </div>
         </div>
 
+        <div className="mt-5">
+          <EmailConnectionSetup
+            canEdit={canEdit}
+            returnTo="/settings?tab=channels"
+            onSaved={refreshConnections}
+            onNotice={setConnectionNotice}
+            onError={(message) => setConnectionError(message || null)}
+          />
+        </div>
+
         <div className="mt-5 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4">
-          {connectionsLoading && <p className="text-sm text-[var(--muted)]">Checking Gmail connector status...</p>}
+          {connectionsLoading && <p className="text-sm text-[var(--muted)]">Checking mailbox connection status...</p>}
 
           {!connectionsLoading && !primaryConnection && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-semibold">No Gmail account connected yet</p>
+                <p className="text-sm font-semibold">No mailbox connected yet</p>
               <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                Choose Sign in with Google. Your client only approves access — no forwarding rules or technical setup needed.
+                Choose the connection type above. Gmail is available now through OAuth; credential-based methods are saved for mailbox adapter rollout.
               </p>
               </div>
               <span className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(144,50,61,0.45)] px-3 py-1.5 text-xs text-[var(--muted)]">
@@ -1146,7 +1144,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                   </button>
                   <button
                     onClick={disconnectConnection}
-                    disabled={!canEdit || !isConnected || connectionAction !== null}
+                    disabled={!canEdit || connectionAction !== null}
                     className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[rgba(255,190,190,0.9)] transition-colors hover:border-[rgba(144,50,61,0.75)] disabled:opacity-45"
                   >
                     {connectionAction === "disconnect" ? "Disconnecting..." : "Disconnect"}
@@ -1158,7 +1156,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                 <ConnectorMetric label="Last sync" value={formatTimestamp(primaryConnection.last_sync_at)} />
                 <ConnectorMetric label="Live watch expires" value={formatTimestamp(primaryConnection.watch_expires_at)} />
                 <ConnectorMetric label="Token expires" value={formatTimestamp(primaryConnection.token_expires_at)} />
-                <ConnectorMetric label="Gmail history" value={primaryConnection.last_history_id ?? "Not started"} />
+                <ConnectorMetric label="Provider history" value={primaryConnection.last_history_id ?? "Not started"} />
               </div>
 
               {primaryConnection.error_message && (
@@ -1182,8 +1180,14 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
         </div>
       </SectionCard>
 
-      <SectionCard>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <details className="rounded-[24px] border border-[var(--line)] bg-[var(--panel)] p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground)]">
+          Advanced developer setup
+        </summary>
+        <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+          Webhook/API inbound channels are still available for relays and custom parsers, but ordinary mailbox setup should start with the connection choices above.
+        </p>
+        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="eyebrow text-[9px] text-[var(--muted)]">Custom inbound</p>
             <p className="mt-1 text-base font-semibold">Non-Gmail webhook channel</p>
@@ -1294,7 +1298,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
             </div>
           </div>
         )}
-      </SectionCard>
+      </details>
 
       <SectionCard>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1388,144 +1392,24 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
       {hasAddress && (
         <SectionCard>
           <p className="eyebrow text-[9px] text-[var(--muted)]">Setup guide</p>
-          <p className="mt-1 text-base font-semibold">Connect your support email</p>
+          <p className="mt-1 text-base font-semibold">Mailbox setup map</p>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-            Start with Google sign-in. Forwarding is only a fallback for teams that cannot approve OAuth yet.
+            Use the connection type that matches the mailbox your team already has. Webhook/API setup is reserved for developer relays and parsers.
           </p>
 
-          {/* Path selector */}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <button
-              onClick={() => setSetupPath(setupPath === "gmail" ? null : "gmail")}
-              className={`rounded-[18px] border p-4 text-left transition-colors ${
-                setupPath === "gmail"
-                  ? "border-[var(--moss)] bg-[rgba(144,50,61,0.06)]"
-                  : "border-[var(--line)] hover:border-[var(--line-strong)]"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[var(--line)] bg-[var(--sage)] text-sm">G</div>
-                <p className="text-sm font-semibold">Gmail / Google Workspace</p>
+            {[
+              ["OAuth / xOAuth", "Gmail now; Outlook / Microsoft 365 as the OAuth adapter is enabled."],
+              ["Mailbox login and password", "Direct mailbox authentication for providers that still allow it."],
+              ["App password", "Provider-issued app passwords for Gmail with 2FA, Outlook, iCloud, and similar setups."],
+              ["IMAP / SMTP", "Host, port, and TLS settings for company mailboxes, Zoho, cPanel, and private servers."],
+            ].map(([title, body]) => (
+              <div key={title} className="rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4">
+                <p className="text-sm font-semibold">{title}</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{body}</p>
               </div>
-              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-                Recommended. The user signs in with Google and Work Hat handles sync and sending.
-              </p>
-            </button>
-
-            <button
-              onClick={() => setSetupPath(setupPath === "direct" ? null : "direct")}
-              className={`rounded-[18px] border p-4 text-left transition-colors ${
-                setupPath === "direct"
-                  ? "border-[var(--moss)] bg-[rgba(144,50,61,0.06)]"
-                  : "border-[var(--line)] hover:border-[var(--line-strong)]"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[var(--line)] bg-[var(--sage)] text-sm">✉</div>
-                <p className="text-sm font-semibold">Use address directly</p>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-                Fallback option. Share or forward to the Work Hat inbound address manually.
-              </p>
-            </button>
+            ))}
           </div>
-
-          {/* Gmail instructions */}
-          {setupPath === "gmail" && (
-            <div className="mt-4 rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold">Connect Gmail with one approval</p>
-                  <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                    This is the Work Hat Email Connector path: no routing rules, no copy/paste setup, no admin console unless Google requires approval.
-                  </p>
-                </div>
-                {canEdit ? (
-                  <Link
-                    href={`/api/email/gmail/connect?returnTo=${encodeURIComponent("/settings?tab=channels")}`}
-                    className="w-fit rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
-                  >
-                    Sign in with Google
-                  </Link>
-                ) : (
-                  <span className="w-fit rounded-full border border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
-                    Admin access required
-                  </span>
-                )}
-              </div>
-
-              <ol className="mt-5 space-y-4">
-                {[
-                  {
-                    step: "1",
-                    title: "Click Sign in with Google",
-                    body: "The user chooses the support mailbox they want Work Hat to manage.",
-                  },
-                  {
-                    step: "2",
-                    title: "Approve Work Hat access",
-                    body: "Google asks for permission to read recent mail and send replies from the connected mailbox.",
-                  },
-                  {
-                    step: "3",
-                    title: "Return to Work Hat",
-                    body: "The mailbox is saved, tokens are encrypted, and the channel is linked to your workspace automatically.",
-                  },
-                  {
-                    step: "4",
-                    title: "Import and reply",
-                    body: "Use Import latest email to bring in recent conversations, then reply from the Work Hat inbox.",
-                  },
-                ].map((s) => (
-                  <li key={s.step} className="flex gap-3">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--moss)] text-[10px] font-semibold text-white">
-                      {s.step}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{s.title}</p>
-                      <p className="mt-0.5 text-xs leading-5 text-[var(--muted)]">{s.body}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-
-              <div className="mt-5 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
-                <p className="text-[10px] font-medium text-[var(--muted)] uppercase tracking-widest">Google Workspace note</p>
-                <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">
-                  Some Workspace domains require an admin to approve the app once. After approval, future users can connect with the same simple Google sign-in flow.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Direct use instructions */}
-          {setupPath === "direct" && (
-            <div className="mt-4 rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-5">
-              <p className="text-sm font-semibold">Use your Work Hat address directly</p>
-              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-                Share this address anywhere customers can reach you — email signature, website, helpdesk widget, auto-replies.
-              </p>
-              <div className="mt-4 flex items-center gap-2">
-                <code className="flex-1 overflow-x-auto rounded-[10px] border border-[var(--line)] bg-[var(--sage)] px-3 py-2 text-xs font-mono">
-                  {inboundAddress}
-                </code>
-                <CopyButton value={inboundAddress} />
-              </div>
-              <div className="mt-4 space-y-2">
-                {[
-                  "Add it to your email signature as your support address",
-                  "Replace support@yourcompany.com in your website contact form",
-                  "Use it as the reply-to in your product's notification emails",
-                  "Add it to your Calendly or onboarding flows",
-                ].map((tip) => (
-                  <div key={tip} className="flex items-start gap-2 text-xs">
-                    <div className="mt-1 h-1 w-1 shrink-0 rounded-full bg-[var(--moss)]" />
-                    <span className="text-[var(--muted)]">{tip}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </SectionCard>
       )}
 

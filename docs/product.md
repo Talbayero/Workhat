@@ -26,7 +26,7 @@ This file is the active product summary. Historical source planning documents li
 | Workflow Engine | Event/rules system for deterministic operational actions |
 | AI Improvement | Prompt-version analytics, edit pattern clustering, and knowledge gap candidate surfacing |
 | Prompt Experiments | Controlled, deterministic prompt-version traffic allocation and rollback |
-| Channels | Gmail plus first-class custom inbound email channels for demos, dogfooding, and non-Google mail flows |
+| Channels | Buyer-friendly mailbox setup for OAuth/xOAuth, mailbox password, app password, and IMAP/SMTP, with custom inbound webhook/API kept as an advanced path |
 | Audit / Security | Audit logs, capabilities, rate limiting, and incident evidence |
 
 ## Current Product Shape
@@ -34,8 +34,9 @@ This file is the active product summary. Historical source planning documents li
 The current platform includes:
 
 - Authenticated org-scoped CRM workspace.
-- Email conversations from Gmail or custom inbound webhook channels, with Gmail-backed outbound replies.
-- Onboarding supports custom inbound first for internal demos and dogfooding, with Gmail available as an optional connected mailbox.
+- Email conversations from Gmail or advanced custom inbound webhook channels, with Gmail-backed outbound replies in this phase.
+- Onboarding and Settings present four mailbox connection choices first: OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP.
+- Custom inbound webhook/API setup remains available under advanced/developer setup for relays and custom parsers.
 - AI draft generation with non-null prompt versions.
 - Capability-based authorization over role presets.
 - SLA snapshots and queue health views.

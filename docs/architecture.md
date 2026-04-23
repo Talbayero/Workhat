@@ -14,7 +14,7 @@ Work Hat CRM is an AI-first operations CRM for customer support and BPO teams. T
 | Auth | Supabase Auth | Email/password + Google OAuth (Gmail scope) |
 | Storage | Supabase Storage | Not yet heavily used in V1 |
 | AI | OpenAI Chat Completions (GPT-4o) | Provider-abstracted via `lib/ai/` |
-| Email | Provider-neutral inbound pipeline + Gmail API | Custom inbound webhook for non-Gmail sources; Gmail OAuth/Pub/Sub for Gmail; Gmail outbound replies |
+| Email | Provider-neutral inbound pipeline + mailbox connection model | OAuth/xOAuth, mailbox password, app password, and IMAP/SMTP setup in UI; custom inbound webhook is advanced; Gmail OAuth/Pub/Sub remains the active Gmail adapter |
 | Billing | Stripe | Checkout Sessions + Webhooks, no SDK |
 | Hosting | Vercel (assumed) | Edge proxy, cron jobs |
 | i18n | Custom dictionary loader | English + Spanish (`en`, `es`) |
@@ -92,9 +92,9 @@ All business tables carry `org_id` for multi-tenant isolation. Every row is scop
 
 **contacts** — Individual people. Each contact can link to a company. Email stored as `citext` for case-insensitive matching.
 
-**channels** — Configured email/communication channels for an org. Gmail channels link to `email_connections`; custom inbound channels store one-way webhook token hashes and diagnostics in `config_json`.
+**channels** — Configured email/communication channels for an org. Custom inbound channels store one-way webhook token hashes and diagnostics in `config_json`.
 
-**email_connections** — Stores provider connection records. Gmail rows hold OAuth tokens (AES-256-GCM encrypted), watch state, and sync history. Custom inbound rows use the `custom_inbound` provider shape when a separate provider connection record is needed.
+**email_connections** — Stores mailbox provider or connection-method records. Gmail rows hold OAuth tokens (AES-256-GCM encrypted), watch state, and sync history. Credential-based setup rows use `mailbox_password`, `app_password`, or `imap_smtp` providers with encrypted credentials plus non-secret adapter metadata such as hostnames, ports, TLS flags, sender name, and setup audit fields.
 
 **inbound_email_events** — Org-scoped webhook/import delivery log used for non-Gmail and normalized Gmail inbound processing. Stores provider identifiers, dedupe key, processing status, conversation/message links, and error diagnostics.
 
@@ -308,7 +308,7 @@ The public custom webhook route is `POST /api/inbound/email`. It verifies a per-
 
 Supported V1 payloads are intentionally generic and Postmark-compatible enough for internal relays, SMTP parsing services, and future Postmark-style providers. The route is not a visual marketplace or arbitrary integration runtime.
 
-Onboarding presents custom inbound as the first setup path so an org can dogfood or demo Work Hat without Google Workspace. Gmail is still available from onboarding and Settings as an optional mailbox adapter.
+Onboarding and Settings present mailbox setup in four buyer-friendly choices: OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP. Custom inbound remains available under Advanced developer setup for relays, webhook parsers, and internal demo senders.
 
 Downstream effects after successful inbound processing:
 
@@ -321,7 +321,7 @@ Downstream effects after successful inbound processing:
 
 Work Hat connects to Gmail via OAuth 2.0. Each org can connect one or more Gmail accounts via `/api/email/gmail/connect` → `/api/email/gmail/callback`.
 
-Token storage: access and refresh tokens are encrypted with AES-256-GCM (`lib/email-connector/encryption.ts`) before being written to `email_connections`. The encryption key is `EMAIL_TOKEN_ENCRYPTION_KEY` (32-byte base64).
+Token and credential storage: Gmail access/refresh tokens and saved mailbox/app-password/IMAP credentials are encrypted with AES-256-GCM (`lib/email-connector/encryption.ts`) before being written to `email_connections`. The encryption key is `EMAIL_TOKEN_ENCRYPTION_KEY` (32-byte base64). Custom inbound webhook tokens do not use this key because only one-way token hashes are stored.
 
 Real-time sync: Google Cloud Pub/Sub pushes new message notifications to `/api/email/gmail/push`. The watch is set up via `/api/email/gmail/watch` and renewed by a cron job at `/api/email/gmail/renew-watches` (requires `CRON_SECRET` header for Vercel Cron authorization).
 
@@ -412,7 +412,7 @@ SUPABASE_SERVICE_ROLE_KEY=          # Must begin with sb_secret_... (new format)
 # Gmail OAuth
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-EMAIL_TOKEN_ENCRYPTION_KEY=         # openssl rand -base64 32
+EMAIL_TOKEN_ENCRYPTION_KEY=         # openssl rand -base64 32; required for Gmail OAuth tokens and saved mailbox credentials
 GOOGLE_PUBSUB_TOPIC=                # projects/{id}/topics/{name}
 
 # OpenAI
@@ -444,6 +444,7 @@ GMAIL_PUSH_TOKEN=
 # Custom inbound email channels
 # Per-channel webhook tokens are generated in Settings -> Channels and stored as one-way hashes.
 # POSTMARK_INBOUND_TOKEN remains as a legacy fallback only for old webhook setups without per-channel secrets.
+
 
 # Security
 SECURITY_IP_BLACKLIST=              # Comma-separated IP list

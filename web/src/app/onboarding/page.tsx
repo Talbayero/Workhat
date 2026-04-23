@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { EmailConnectionSetup } from "@/components/email/email-connection-setup";
 
 // ── Shared form state (lifted to parent) ──────────────────────────────────────
 
@@ -18,7 +19,7 @@ type InviteFields = {
 
 type EmailConnection = {
   id: string;
-  provider: "gmail" | "outlook";
+  provider: string;
   provider_account_email: string;
   status: "connected" | "needs_reconnect" | "disabled" | "error";
   sync_status: "idle" | "syncing" | "watching" | "error";
@@ -314,57 +315,19 @@ function StepInbox({
   return (
     <div className="space-y-4 mt-5">
       <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Recommended for demos · no Google required</p>
-        <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-base font-semibold">Create a custom inbound channel</h3>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Receive real inbound messages from an internal relay, SMTP parser, or demo sender without mounting a Gmail inbox.
-            </p>
-          </div>
-          {customChannel ? (
-            <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-300">
-              Ready
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={createCustomInbound}
-              disabled={creatingCustom}
-              className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-center text-xs font-medium text-white transition-opacity hover:opacity-90"
-            >
-              {creatingCustom ? "Creating..." : "Create channel"}
-            </button>
-          )}
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Choose an inbound channel</p>
+        <h3 className="mt-1 text-base font-semibold">Connect the mailbox your team already uses</h3>
+        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+          Pick the setup style that matches your provider. Gmail works now with OAuth; the other mailbox methods are saved in the same connection model for adapter rollout.
+        </p>
+        <div className="mt-4">
+          <EmailConnectionSetup
+            returnTo="/onboarding?step=inbox"
+            onSaved={loadConnections}
+            onNotice={setSyncResult}
+            onError={(message) => setConnectionError(message || null)}
+          />
         </div>
-
-        {customChannel && (
-          <div className="mt-4 space-y-3">
-            <div
-              className="cursor-pointer rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs"
-              onClick={() => navigator.clipboard?.writeText(customChannel.webhookEndpoint)}
-              title="Click to copy endpoint"
-            >
-              <p className="eyebrow text-[9px] text-[var(--muted)]">Webhook endpoint</p>
-              <p className="mt-1 break-all font-mono text-[var(--foreground)]">{customChannel.webhookEndpoint}</p>
-            </div>
-            <div
-              className="cursor-pointer rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs"
-              onClick={() => customChannel.webhookSecret && navigator.clipboard?.writeText(customChannel.webhookSecret)}
-              title="Click to copy token"
-            >
-              <p className="eyebrow text-[9px] text-[var(--muted)]">Shared token</p>
-              <p className="mt-1 break-all font-mono text-[var(--foreground)]">
-                {customChannel.webhookSecret ?? customChannel.webhookSecretHint ?? "Regenerate in Settings to copy a new token"}
-              </p>
-            </div>
-            <p className="text-xs leading-5 text-[var(--muted)]">
-              Send test JSON to this endpoint with the token as `Authorization: Bearer`. Full tokens are shown only immediately after creation or regeneration.
-              {customChannel.lastInboundAt ? ` Last inbound: ${new Date(customChannel.lastInboundAt).toLocaleString()}.` : ""}
-              {customChannel.lastErrorMessage ? ` Last error: ${customChannel.lastErrorMessage}` : ""}
-            </p>
-          </div>
-        )}
 
         {loadingConnections && (
           <p className="mt-3 text-xs text-[var(--muted)]">Checking existing channels...</p>
@@ -391,12 +354,12 @@ function StepInbox({
       </div>
 
       <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Optional connected mailbox</p>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Mailbox status</p>
         <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-base font-semibold">Connect your Gmail inbox</h3>
+            <h3 className="text-base font-semibold">Connected mailbox health</h3>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Use Google OAuth when you want Work Hat to import recent Gmail conversations and send approved replies from that mailbox.
+              OAuth mailboxes can import recent conversations and repair live updates from here.
             </p>
           </div>
           {gmailConnection?.status === "connected" ? (
@@ -419,12 +382,9 @@ function StepInbox({
               </button>
             </div>
           ) : (
-            <a
-              href={`/api/email/gmail/connect?returnTo=${encodeURIComponent("/onboarding?step=inbox")}`}
-              className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-center text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)]"
-            >
-              Sign in with Google
-            </a>
+            <span className="rounded-full border border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
+              No OAuth mailbox connected
+            </span>
           )}
         </div>
         {gmailConnection && (
@@ -441,6 +401,65 @@ function StepInbox({
           </div>
         )}
       </div>
+
+      <details className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+        <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
+          Advanced developer setup
+        </summary>
+        <p className="mt-3 text-xs leading-6 text-[var(--muted)]">
+          Use the custom inbound API only for internal relays, webhook parsers, or demo senders that can POST normalized email events.
+        </p>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold">Custom inbound webhook</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              This keeps the non-Gmail webhook path available without making it the default mailbox setup.
+            </p>
+          </div>
+          {customChannel ? (
+            <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-300">
+              Ready
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={createCustomInbound}
+              disabled={creatingCustom}
+              className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-center text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {creatingCustom ? "Creating..." : "Create webhook channel"}
+            </button>
+          )}
+        </div>
+
+        {customChannel && (
+          <div className="mt-4 space-y-3">
+            <div
+              className="cursor-pointer rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs"
+              onClick={() => navigator.clipboard?.writeText(customChannel.webhookEndpoint)}
+              title="Click to copy endpoint"
+            >
+              <p className="eyebrow text-[9px] text-[var(--muted)]">Webhook endpoint</p>
+              <p className="mt-1 break-all font-mono text-[var(--foreground)]">{customChannel.webhookEndpoint}</p>
+            </div>
+            <div
+              className="cursor-pointer rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs"
+              onClick={() => customChannel.webhookSecret && navigator.clipboard?.writeText(customChannel.webhookSecret)}
+              title="Click to copy token"
+            >
+              <p className="eyebrow text-[9px] text-[var(--muted)]">Shared token</p>
+              <p className="mt-1 break-all font-mono text-[var(--foreground)]">
+                {customChannel.webhookSecret ?? customChannel.webhookSecretHint ?? "Regenerate in Settings to copy a new token"}
+              </p>
+            </div>
+            <p className="text-xs leading-5 text-[var(--muted)]">
+              Send test JSON to this endpoint with the token as Authorization: Bearer. Full tokens are shown only immediately after creation or regeneration.
+              {customChannel.lastInboundAt ? ` Last inbound: ${new Date(customChannel.lastInboundAt).toLocaleString()}.` : ""}
+              {customChannel.lastErrorMessage ? ` Last error: ${customChannel.lastErrorMessage}` : ""}
+            </p>
+          </div>
+        )}
+      </details>
 
       <details className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
         <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">

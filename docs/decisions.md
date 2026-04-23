@@ -592,4 +592,31 @@ A small normalized inbound contract keeps domain logic deterministic and explain
 - Outbound replies still use Gmail in this phase; adding non-Gmail outbound requires a separate decision.
 - Deployments must apply migration `0036_custom_inbound_email.sql` before relying on the new inbound processor in production.
 
+---
+
+## ADR-023 — Buyer-Friendly Mailbox Connection Setup
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat presents email setup as four mailbox connection types: OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP. Custom inbound webhook/API setup remains supported, but it moves to Advanced developer setup instead of being the default first-screen choice.
+
+### Context
+
+The custom inbound webhook path made internal demos possible without Google Workspace, but it also made ordinary mailbox setup feel like developer infrastructure. Buyers expect to recognize Gmail, Outlook/Microsoft 365, app-password mailboxes, and IMAP/SMTP company mailbox setup immediately.
+
+### Rationale
+
+The four connection types map cleanly to current and future adapters while keeping the backend lean. Gmail remains the active OAuth adapter. Outlook/Microsoft 365 maps to the same OAuth/xOAuth category. Mailbox password, app password, and IMAP/SMTP setup records normalize into `email_connections` with encrypted credentials and non-secret metadata so future sync adapters can attach without another product-facing redesign.
+
+### Consequences
+
+- `email_connections.provider` now accepts `mailbox_password`, `app_password`, and `imap_smtp` in addition to existing providers.
+- Saved mailbox credentials require `EMAIL_TOKEN_ENCRYPTION_KEY`; custom inbound webhook tokens still do not because only one-way hashes are stored.
+- Onboarding and Settings share the same four-choice setup component.
+- Custom inbound remains backward-compatible and visible under Advanced developer setup for relays, parsers, and internal demo senders.
+- Credential-based setup records are saved with adapter status metadata; they must not be presented as live sync until the corresponding mailbox adapter exists.
+
 *Last updated: April 2026*
