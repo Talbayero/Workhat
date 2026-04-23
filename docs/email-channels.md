@@ -7,7 +7,7 @@ Work Hat presents mailbox setup as four buyer-friendly connection types:
 - App password: Gmail with 2FA, Outlook, iCloud, and similar provider-issued app-password flows.
 - IMAP / SMTP: custom corporate mailboxes, hosted providers, cPanel, Zoho, and private servers.
 
-Advanced/developer setup also supports custom inbound webhook/API channels for internal relays, SMTP parsing services, and future Postmark-style inbound providers. Outbound replies still use Gmail in this phase. Custom inbound is inbound-only so dogfooding and demos can ingest real operational messages without Google Workspace.
+Advanced/developer setup also supports custom inbound webhook/API channels for internal relays, SMTP parsing services, and future Postmark-style inbound providers. The four mailbox choices are live runtime paths, not saved placeholders: Gmail OAuth uses the Gmail adapter, and mailbox password, app password, and IMAP/SMTP use the IMAP/SMTP adapter for inbound polling and approved outbound replies.
 
 ## Architecture
 
@@ -23,6 +23,17 @@ Provider-specific adapters normalize email into `NormalizedInboundEmail` in `web
 8. Refresh SLA state.
 9. Emit workflow events exactly once for non-duplicate deliveries.
 
+Runtime mailbox adapters live under `web/src/lib/email-connector/adapters/` and implement a shared interface:
+
+- `validateConnection`
+- `activateConnection`
+- `fetchInbound`
+- `sendOutbound`
+- `refreshCredentials`
+- `getDiagnostics`
+
+`gmail` is the OAuth adapter. `mailbox_password`, `app_password`, and `imap_smtp` all use the IMAP/SMTP adapter after provider-specific host, port, TLS, and app-password guidance has been normalized.
+
 ## Mailbox Setup UX
 
 Onboarding Step 2 and Settings -> Channels start with the four mailbox connection choices above. The intent is that a prospect immediately sees:
@@ -31,7 +42,7 @@ Onboarding Step 2 and Settings -> Channels start with the four mailbox connectio
 - I can connect Outlook / Microsoft 365.
 - I can connect my company mailbox with app-password or IMAP/SMTP settings.
 
-Credential-based methods are normalized into `email_connections` with encrypted secrets and non-secret connection metadata. They require `EMAIL_TOKEN_ENCRYPTION_KEY` because Work Hat must decrypt mailbox credentials later when the relevant mailbox adapter runs. Custom inbound webhook token storage does not require this key because webhook tokens are stored as one-way hashes in `channels.config_json`.
+Credential-based methods are normalized into `email_connections` with encrypted secrets and non-secret connection metadata. They require `EMAIL_TOKEN_ENCRYPTION_KEY` because Work Hat decrypts mailbox credentials during validation, polling, and SMTP send. Custom inbound webhook token storage does not require this key because webhook tokens are stored as one-way hashes in `channels.config_json`.
 
 `email_connections` separates the two concepts that the UI exposes:
 
@@ -39,6 +50,30 @@ Credential-based methods are normalized into `email_connections` with encrypted 
 - `provider`: `gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, `custom`, or `custom_inbound`.
 
 For example, a Zoho IMAP/SMTP setup is stored as `connection_type = 'imap_smtp'` and `provider = 'zoho'`, not as provider `imap_smtp`.
+
+## Mailbox Status Model
+
+Saving a mailbox record is not enough for readiness. A connection moves through explicit states:
+
+- `configured`: saved but not yet validated.
+- `validating`: validation is in progress.
+- `active`: credentials and transport were validated; the mailbox can be used for enabled inbound/outbound paths.
+- `error`: validation, sync, or send failed; diagnostics contain the operator-facing reason.
+- `disconnected`: intentionally disabled.
+
+Onboarding, Settings, and inbox readiness use `status = 'active'` plus `inbound_enabled` or `outbound_enabled`, depending on the operation. Legacy Gmail rows with `status = 'connected'` are accepted by application code during migration, but migration `0039_mailbox_adapter_runtime.sql` backfills them to `active`.
+
+Runtime fields on `email_connections`:
+
+- `inbound_enabled`, `outbound_enabled`
+- `last_validated_at`
+- `last_inbound_sync_at`
+- `last_outbound_send_at`
+- `last_error_code`, `last_error_message`
+- `diagnostics_json`
+- `credential_metadata`
+
+The IMAP adapter stores its UID cursor in `provider_metadata.imap_state.last_uid`. First sync imports a small recent window, then subsequent syncs fetch messages after the stored UID.
 
 ## Custom Inbound Setup
 
@@ -115,7 +150,10 @@ Duplicate webhook deliveries return a duplicate result and do not emit workflow 
 
 Operators should check:
 
-- Settings -> Channels for last success/error status.
+- Settings -> Channels for mailbox status, last validation, last poll, last sync/send, and next-action diagnostics.
+- `GET /api/email/mailbox/diagnostics` for adapter/env/connection health.
+- `POST /api/email/mailbox/sync` for a manual active mailbox poll.
+- `GET /api/email/mailbox/poll` from a scheduler with `Authorization: Bearer <CRON_SECRET>` for recurring IMAP polling.
 - `inbound_email_events` for recent delivery status and error messages.
 - `messages.channel_message_id` for provider message ids.
 - `workflow_events` for `conversation.created`, `conversation.updated`, `message.received`, and `risk.changed`.
@@ -123,22 +161,26 @@ Operators should check:
 
 ## Manual Demo Verification
 
-1. Apply migrations through `0038_email_connection_type_provider_split.sql`.
+1. Apply migrations through `0039_mailbox_adapter_runtime.sql`.
 2. Sign in as an admin or manager with `integrations.manage`.
 3. Open onboarding Step 2 or Settings -> Channels and confirm the four mailbox connection types appear first.
-4. Connect Gmail through OAuth, or save a credential-based setup record when `EMAIL_TOKEN_ENCRYPTION_KEY` is configured.
-5. Open Advanced developer setup and create a custom inbound channel when testing webhook ingestion.
-6. Copy the endpoint and token before leaving the page.
-7. Send a test request with a unique `externalMessageId`.
+4. Set `EMAIL_TOKEN_ENCRYPTION_KEY` before using Gmail OAuth or credential-based mailbox setup.
+5. Connect Gmail through OAuth, or configure an app-password/IMAP mailbox such as Zoho.
+6. Confirm the saved connection becomes `active`; if it becomes `error`, use the displayed provider/auth/TLS diagnostic to correct the setup.
+7. Send a real email to the mailbox and run Settings -> Channels sync or the scheduler-backed `/api/email/mailbox/poll`.
 8. Confirm the conversation appears in Inbox and Queue.
-9. Confirm the sender contact was created and company was associated for a business domain.
-10. Confirm SLA status populated on the conversation.
-11. Confirm workflow events exist for the delivery.
-12. Repeat the same request and confirm no duplicate message appears.
+9. Send an approved reply from the thread and confirm `sent_replies`, outbound `messages`, and `last_outbound_send_at` are updated.
+10. Open Advanced developer setup and create a custom inbound channel when testing webhook ingestion.
+11. Copy the endpoint and token before leaving the page.
+12. Send a test webhook request with a unique `externalMessageId`.
+13. Confirm the sender contact was created and company was associated for a business domain.
+14. Confirm SLA status populated on the conversation.
+15. Confirm workflow events exist for the delivery.
+16. Repeat the same webhook request and confirm no duplicate message appears.
 
 ## Backward Compatibility
 
-Gmail support remains active. Gmail import now calls the shared inbound processor after fetching and normalizing Gmail payloads. The custom inbound API endpoint, token model, and normalized payload contract remain backward-compatible; they are now presented as advanced setup instead of the primary buyer path.
+Gmail support remains active. Gmail import now calls the shared inbound processor after fetching and normalizing Gmail payloads, and Gmail outbound remains available through the Gmail adapter. Credential-based mailbox connections use the IMAP/SMTP adapter for live inbound polling and approved outbound replies. The custom inbound API endpoint, token model, and normalized payload contract remain backward-compatible; they are now presented as advanced setup instead of the primary buyer path.
 
 `POSTMARK_INBOUND_TOKEN` remains a legacy fallback only for channels without per-channel tokens. New custom inbound channels should use Settings-generated tokens.
 

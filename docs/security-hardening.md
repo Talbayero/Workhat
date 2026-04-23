@@ -14,8 +14,9 @@ This document details the security hardening infrastructure added to Work Hat CR
 5. [Admin Client & Fallback Strategy](#admin-client--fallback-strategy)
 6. [Input Validation Strategy](#input-validation-strategy)
 7. [Webhook Security](#webhook-security)
-8. [Error Handling & Logging](#error-handling--logging)
-9. [Incident Response](#incident-response)
+8. [Mailbox Credential Security](#mailbox-credential-security)
+9. [Error Handling & Logging](#error-handling--logging)
+10. [Incident Response](#incident-response)
 
 ---
 
@@ -513,6 +514,25 @@ Public webhook routes are unauthenticated by Supabase session, so each route mus
 - Delivery status, last success, and last error are stored on channel diagnostics and in `inbound_email_events`.
 
 Legacy `POSTMARK_INBOUND_TOKEN` is accepted only when a channel has no per-channel token, to preserve old webhook setups during migration.
+
+---
+
+## Mailbox Credential Security
+
+OAuth tokens, mailbox passwords, app passwords, and IMAP/SMTP passwords are encrypted before being written to `email_connections`. The shared encryption layer uses `EMAIL_TOKEN_ENCRYPTION_KEY`, and decrypted values must only exist in memory inside trusted server routes or `lib/email-connector/adapters/` runtime code.
+
+Security controls:
+
+- `provider` and `connection_type` are separate so setup methods are not mistaken for trusted provider identities.
+- Saving a credential record writes `status = configured`; activation requires adapter validation.
+- During validation the connection moves to `validating`, then either `active` or `error`.
+- `diagnostics_json`, `credential_metadata`, and `provider_metadata` may store hostnames, ports, TLS flags, timestamps, and error categories, but never plaintext secrets.
+- `last_error_code` and `last_error_message` use operator-safe messages such as `imap_auth_failed`, `smtp_auth_failed`, `tls_failed`, or `app_password_required`; raw provider stack traces must stay in server logs only.
+- Onboarding and Settings should only treat `active` inbound-enabled connections as mailbox-ready.
+- SMTP send remains behind the `conversations.reply` capability and the existing human approval route.
+- Scheduler polling uses `GET /api/email/mailbox/poll` with `Authorization: Bearer <CRON_SECRET>`.
+
+Credential rotation is explicit: the operator reconnects or updates the mailbox setup, causing Work Hat to encrypt the new secret and re-run validation. Existing custom inbound webhook tokens are rotated separately through token regeneration and are stored as one-way hashes.
 
 ---
 

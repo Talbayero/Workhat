@@ -94,7 +94,7 @@ async function getGmailConnection(db: SupabaseDb, orgId: string) {
     .eq("org_id", orgId)
     .eq("provider", "gmail")
     .eq("connection_type", "oauth")
-    .eq("status", "connected")
+    .in("status", ["active", "connected"])
     .limit(1)
     .maybeSingle();
 

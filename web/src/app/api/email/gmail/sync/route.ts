@@ -30,7 +30,7 @@ export async function POST() {
     .eq("org_id", appUser.org_id)
     .eq("provider", "gmail")
     .eq("connection_type", "oauth")
-    .eq("status", "connected")
+    .in("status", ["active", "connected"])
     .limit(1)
     .maybeSingle();
 

@@ -34,9 +34,10 @@ This file is the active product summary. Historical source planning documents li
 The current platform includes:
 
 - Authenticated org-scoped CRM workspace.
-- Email conversations from Gmail or advanced custom inbound webhook channels, with Gmail-backed outbound replies in this phase.
-- Onboarding and Settings present four mailbox connection choices first: OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP.
+- Email conversations from Gmail OAuth, mailbox password, app password, IMAP/SMTP, or advanced custom inbound webhook channels.
+- Onboarding and Settings present four mailbox connection choices first: OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP; successful setup must validate into an active runtime connection before the workspace is treated as inbound-ready.
 - Custom inbound webhook/API setup remains available under advanced/developer setup for relays and custom parsers.
+- Approved outbound replies use the active mailbox adapter when outbound is enabled, while human approval remains mandatory.
 - AI draft generation with non-null prompt versions.
 - Capability-based authorization over role presets.
 - SLA snapshots and queue health views.

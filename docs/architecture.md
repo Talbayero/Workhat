@@ -14,7 +14,7 @@ Work Hat CRM is an AI-first operations CRM for customer support and BPO teams. T
 | Auth | Supabase Auth | Email/password + Google OAuth (Gmail scope) |
 | Storage | Supabase Storage | Not yet heavily used in V1 |
 | AI | OpenAI Chat Completions (GPT-4o) | Provider-abstracted via `lib/ai/` |
-| Email | Provider-neutral inbound pipeline + mailbox connection model | OAuth/xOAuth, mailbox password, app password, and IMAP/SMTP setup in UI; custom inbound webhook is advanced; Gmail OAuth/Pub/Sub remains the active Gmail adapter |
+| Email | Provider-neutral inbound pipeline + mailbox adapter runtime | Gmail OAuth/Pub/Sub, credential-based IMAP/SMTP polling, SMTP send, and advanced custom inbound webhooks |
 | Billing | Stripe | Checkout Sessions + Webhooks, no SDK |
 | Hosting | Vercel (assumed) | Edge proxy, cron jobs |
 | i18n | Custom dictionary loader | English + Spanish (`en`, `es`) |
@@ -94,7 +94,7 @@ All business tables carry `org_id` for multi-tenant isolation. Every row is scop
 
 **channels** — Configured email/communication channels for an org. Custom inbound channels store one-way webhook token hashes and diagnostics in `config_json`.
 
-**email_connections** — Stores mailbox connection records. `provider` is the actual mailbox provider or adapter family (`gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, `custom`, `custom_inbound`). `connection_type` is the setup/authentication type (`oauth`, `mailbox_password`, `app_password`, `imap_smtp`, `custom_inbound`). Gmail rows hold OAuth tokens (AES-256-GCM encrypted), watch state, and sync history. Credential-based setup rows hold encrypted credentials plus non-secret adapter metadata such as provider hints, hostnames, ports, TLS flags, sender name, and setup audit fields.
+**email_connections** — Stores mailbox connection records. `provider` is the actual mailbox provider or adapter family (`gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, `custom`, `custom_inbound`). `connection_type` is the setup/authentication type (`oauth`, `mailbox_password`, `app_password`, `imap_smtp`, `custom_inbound`). Gmail rows hold OAuth tokens (AES-256-GCM encrypted), watch state, and sync history. Credential-based rows hold encrypted credentials plus non-secret adapter metadata such as provider hints, hostnames, ports, TLS flags, sender name, and setup audit fields. Runtime readiness is represented by `status` (`configured`, `validating`, `active`, `error`, `disconnected`), `inbound_enabled`, `outbound_enabled`, `last_validated_at`, `last_inbound_sync_at`, `last_outbound_send_at`, `last_error_code`, `last_error_message`, `diagnostics_json`, and `credential_metadata`.
 
 **inbound_email_events** — Org-scoped webhook/import delivery log used for non-Gmail and normalized Gmail inbound processing. Stores provider identifiers, dedupe key, processing status, conversation/message links, and error diagnostics.
 
@@ -310,6 +310,18 @@ Supported V1 payloads are intentionally generic and Postmark-compatible enough f
 
 Onboarding and Settings present mailbox setup in four buyer-friendly choices: OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP. Custom inbound remains available under Advanced developer setup for relays, webhook parsers, and internal demo senders.
 
+Credential-based mailbox setup is live. The shared mailbox adapter interface in `lib/email-connector/adapters/` exposes `validateConnection`, `activateConnection`, `fetchInbound`, `sendOutbound`, `refreshCredentials`, and `getDiagnostics`. Gmail OAuth uses the Gmail adapter. Mailbox password, app password, and IMAP/SMTP use the IMAP/SMTP adapter with `imapflow`, `mailparser`, and `nodemailer`.
+
+The IMAP/SMTP adapter:
+
+- Validates IMAP and SMTP credentials before marking a connection `active`.
+- Stores only encrypted credentials; non-secret host/port/TLS/sender metadata stays in `provider_metadata` and `credential_metadata`.
+- Polls the inbox from `/api/email/mailbox/sync` or scheduler-driven `/api/email/mailbox/poll`.
+- Dedupe-imports messages through the same `processInboundEmail()` path as Gmail and custom inbound.
+- Sends approved replies over SMTP and records outbound send timestamps and diagnostics.
+
+Onboarding readiness, Settings channel status, and inbox setup checks depend on an active inbound-capable mailbox or a configured custom inbound channel. A saved-but-unvalidated connection is not considered ready.
+
 Downstream effects after successful inbound processing:
 
 - `conversation.created` for a new thread, or `conversation.updated` when an existing thread receives a message.
@@ -317,9 +329,9 @@ Downstream effects after successful inbound processing:
 - `risk.changed` when an existing conversation escalates to red risk.
 - SLA refresh through `lib/sla/refresh` so queue health remains current.
 
-### Gmail
+### Mailbox Adapters
 
-Work Hat connects to Gmail via OAuth 2.0. Each org can connect one or more Gmail accounts via `/api/email/gmail/connect` → `/api/email/gmail/callback`.
+Work Hat connects to Gmail via OAuth 2.0. Each org can connect one or more Gmail accounts via `/api/email/gmail/connect` -> `/api/email/gmail/callback`.
 
 Token and credential storage: Gmail access/refresh tokens and saved mailbox/app-password/IMAP credentials are encrypted with AES-256-GCM (`lib/email-connector/encryption.ts`) before being written to `email_connections`. The encryption key is `EMAIL_TOKEN_ENCRYPTION_KEY` (32-byte base64). Custom inbound webhook tokens do not use this key because only one-way token hashes are stored.
 
@@ -327,7 +339,11 @@ Real-time sync: Google Cloud Pub/Sub pushes new message notifications to `/api/e
 
 Inbound processing: `lib/email-connector/gmail-importer.ts` is now a Gmail adapter. It fetches Gmail payloads, normalizes them into the same inbound message shape used by custom webhook sources, and calls the shared inbound processor. Threading still uses Gmail `threadId` plus standard `In-Reply-To` / `References` headers.
 
-Outbound: `lib/email-connector/gmail-sender.ts` sends replies via the Gmail API using the connected account's OAuth token.
+Credential-based inbound: `POST /api/email/mailbox/sync` manually polls one active connection or the next active inbound connection for the org. `GET /api/email/mailbox/poll` is a cron/external-scheduler endpoint protected by `CRON_SECRET` that polls active inbound-enabled connections. IMAP UIDs are stored in `provider_metadata.imap_state.last_uid` for explainable incremental fetches.
+
+Outbound: `lib/email-connector/outbound.ts` selects the active outbound-capable mailbox. Gmail OAuth sends through the Gmail API. Password/app-password/IMAP-SMTP connections send through SMTP. All customer replies still pass through `/api/conversations/[conversationId]/reply`, require `conversations.reply`, and preserve the human approval rule.
+
+Diagnostics: `GET /api/email/mailbox/diagnostics` reports environment readiness, adapter status, last validation/sync/send timestamps, provider/type, and next-action recommendations for each connection.
 
 ### OpenAI
 
@@ -435,7 +451,7 @@ NEXT_PUBLIC_APP_URL=https://work-hat.com
 ### Optional / Operational
 
 ```bash
-# Cron auth (Vercel Cron)
+# Cron auth for Gmail watch renewal and mailbox polling
 CRON_SECRET=
 
 # Gmail push webhook auth (shared secret)
@@ -444,7 +460,6 @@ GMAIL_PUSH_TOKEN=
 # Custom inbound email channels
 # Per-channel webhook tokens are generated in Settings -> Channels and stored as one-way hashes.
 # POSTMARK_INBOUND_TOKEN remains as a legacy fallback only for old webhook setups without per-channel secrets.
-
 
 # Security
 SECURITY_IP_BLACKLIST=              # Comma-separated IP list

@@ -186,7 +186,7 @@ Each factory has one job and one set of valid callers. `server.ts` is for server
 ## ADR-007 — Gmail API (not Postmark/Resend) as the Email Integration
 
 **Date:** 2026-02
-**Status:** Superseded for inbound by ADR-022; still accepted for Gmail OAuth/Pub/Sub and Gmail outbound
+**Status:** Superseded for inbound by ADR-022 and for mailbox runtime/outbound by ADR-024; still accepted for Gmail OAuth/Pub/Sub
 
 ### Decision
 
@@ -569,7 +569,7 @@ The database enum is the source of truth for persisted status. Keeping applicati
 ## ADR-022 — Provider-Neutral Inbound Email Pipeline
 
 **Date:** 2026-04
-**Status:** Accepted
+**Status:** Superseded for mailbox runtime/outbound by ADR-024; accepted for provider-neutral inbound
 
 ### Decision
 
@@ -589,7 +589,7 @@ A small normalized inbound contract keeps domain logic deterministic and explain
 - `inbound_email_events` is the operational delivery log and dedupe table for webhook/import processing.
 - The custom webhook route verifies a shared token and returns idempotent duplicate responses for replayed provider deliveries.
 - Gmail import now normalizes into the same processing layer, reducing divergent behavior between Gmail and non-Gmail inbound.
-- Outbound replies still use Gmail in this phase; adding non-Gmail outbound requires a separate decision.
+- Superseded by ADR-024 for mailbox runtime/outbound: non-Gmail credential connections can now send approved replies through SMTP when active.
 - Deployments must apply migration `0036_custom_inbound_email.sql` before relying on the new inbound processor in production.
 
 ---
@@ -597,7 +597,7 @@ A small normalized inbound contract keeps domain logic deterministic and explain
 ## ADR-023 — Buyer-Friendly Mailbox Connection Setup
 
 **Date:** 2026-04
-**Status:** Accepted
+**Status:** Superseded by ADR-024 for credential runtime; accepted for buyer-friendly setup model
 
 ### Decision
 
@@ -618,6 +618,35 @@ The four connection types map cleanly to current and future adapters while keepi
 - Saved mailbox credentials require `EMAIL_TOKEN_ENCRYPTION_KEY`; custom inbound webhook tokens still do not because only one-way hashes are stored.
 - Onboarding and Settings share the same four-choice setup component.
 - Custom inbound remains backward-compatible and visible under Advanced developer setup for relays, parsers, and internal demo senders.
-- Credential-based setup records are saved with adapter status metadata; they must not be presented as live sync until the corresponding mailbox adapter exists.
+- Superseded by ADR-024: credential-based setup records now validate into live IMAP/SMTP adapter status and must not be presented as ready until `active`.
+
+---
+
+## ADR-024 — Live Mailbox Adapter Runtime for All Onboarding Choices
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Every mailbox connection type presented in onboarding must map to a real backend capability, an explicit connection status, and a live operational path.
+
+### Context
+
+The buyer-friendly setup UI introduced OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP as primary choices. Initially, credential-based methods were persisted for rollout but were not live runtime adapters. That created product risk: onboarding could imply readiness while the inbox still depended on Gmail or advanced custom inbound.
+
+### Rationale
+
+Work Hat needs internal dogfooding and demos that work without Google Workspace, while preserving a simple operations-focused product. A small adapter interface is enough: validate the connection, activate it, fetch inbound messages, send approved outbound replies, refresh credentials when applicable, and expose diagnostics. Gmail remains one adapter. Credential-based methods share an IMAP/SMTP runtime because that is the common protocol surface behind mailbox password, app password, and custom mail-server setups.
+
+### Consequences
+
+- `email_connections.status` now represents runtime state: `configured`, `validating`, `active`, `error`, or `disconnected`; legacy `connected` is tolerated during migration and backfilled to `active`.
+- Onboarding, Settings, and inbox readiness check for active inbound-capable connections rather than saved records.
+- Credential-based mailbox secrets are encrypted with `EMAIL_TOKEN_ENCRYPTION_KEY`; host/port/TLS/provider hints remain non-secret metadata.
+- IMAP polling is deterministic and cursor-based, using provider message identifiers and the shared inbound processor for dedupe, threading, SLA refresh, workflow events, and auditability.
+- SMTP send is available for active outbound-enabled credential connections, but the human approval gate in the reply route remains unchanged.
+- Serverless deployments should use `/api/email/mailbox/poll` with `CRON_SECRET` or an external scheduler for recurring IMAP polling. The adapter does not use long-lived IMAP IDLE connections.
+- Provider-specific limitations, such as Gmail/iCloud/Outlook requiring app passwords for direct password flows, are surfaced as operator diagnostics rather than hidden setup failures.
 
 *Last updated: April 2026*

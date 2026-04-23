@@ -41,6 +41,15 @@ type EmailConnection = {
   last_history_id: string | null;
   watch_expires_at: string | null;
   last_sync_at: string | null;
+  inbound_enabled?: boolean | null;
+  outbound_enabled?: boolean | null;
+  last_validated_at?: string | null;
+  last_inbound_sync_at?: string | null;
+  last_outbound_send_at?: string | null;
+  last_error_code?: string | null;
+  last_error_message?: string | null;
+  diagnostics_json?: Record<string, unknown> | null;
+  credential_metadata?: Record<string, unknown> | null;
   error_message: string | null;
   provider_metadata?: Record<string, unknown> | null;
   created_at: string;
@@ -353,17 +362,20 @@ function SetupTab({
   org,
   channel,
   team,
+  mailboxReady,
   onOpenTab,
   baseDir = "",
 }: {
   org: OrgRecord | null;
   channel: ChannelRecord | null;
   team: TeamMember[];
+  mailboxReady: boolean;
   onOpenTab: (tab: SettingsTab) => void;
   baseDir?: string;
 }) {
   const hasOrg = Boolean(org);
   const hasInboundAddress = Boolean(channel?.inboundAddress);
+  const hasInboundMailbox = mailboxReady || hasInboundAddress;
   const hasKnowledgePath = true;
   const hasTeam = team.length > 0;
 
@@ -379,10 +391,12 @@ function SetupTab({
     },
     {
       label: "Connect email channel",
-      description: hasInboundAddress
-        ? `Inbound address active: ${channel?.inboundAddress}`
-        : "Generate the Work Hat forwarding address used to create inbox conversations.",
-      complete: hasInboundAddress,
+      description: mailboxReady
+        ? "Active mailbox ready for inbound polling and approved replies."
+        : hasInboundAddress
+        ? `Fallback inbound address active: ${channel?.inboundAddress}`
+        : "Connect and validate a mailbox or generate the fallback inbound address.",
+      complete: hasInboundMailbox,
       action: () => onOpenTab("channels"),
       actionLabel: "Review channels",
     },
@@ -405,7 +419,7 @@ function SetupTab({
   ];
 
   const completedCount = steps.filter((step) => step.complete).length;
-  const isBlocked = !hasOrg || !hasInboundAddress;
+  const isBlocked = !hasOrg || !hasInboundMailbox;
 
   return (
     <div className="space-y-5">
@@ -430,8 +444,8 @@ function SetupTab({
           <div className="mt-5 rounded-[18px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] p-4">
             <p className="text-sm font-semibold">Your setup is not complete yet</p>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              The email channel is missing, so Work Hat cannot create conversations from inbound mail yet.
-              Run the onboarding wizard to generate the forwarding address.
+              No active inbound mailbox or fallback inbound address is ready yet.
+              Connect and validate a mailbox, or run onboarding to generate the fallback inbound address.
             </p>
             <Link
               href={`${baseDir}/onboarding`}
@@ -870,8 +884,9 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
 
   const inboundAddress = channel?.inboundAddress || "";
   const hasAddress = Boolean(inboundAddress);
-  const primaryConnection = connections.find((connection) => connection.status === "connected") ?? connections[0] ?? null;
-  const isConnected = primaryConnection?.status === "connected";
+  const primaryConnection = connections.find((connection) => connection.status === "active" || connection.status === "connected") ?? connections[0] ?? null;
+  const isConnected = primaryConnection?.status === "active" || primaryConnection?.status === "connected";
+  const isGmailOauth = primaryConnection?.provider === "gmail" && primaryConnection.connection_type === "oauth";
   const customChannel = customChannels[0] ?? null;
 
   useEffect(() => {
@@ -970,14 +985,14 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
     setDiagnosticsLoading(true);
     setDiagnosticsError(null);
     try {
-      const res = await fetch("/api/email/gmail/diagnostics");
+      const res = await fetch("/api/email/mailbox/diagnostics");
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(payload.error ?? "Could not load Gmail diagnostics.");
+        throw new Error(payload.error ?? "Could not load mailbox diagnostics.");
       }
       setDiagnostics(payload as EmailDiagnostics);
     } catch (error) {
-      setDiagnosticsError(error instanceof Error ? error.message : "Could not load Gmail diagnostics.");
+      setDiagnosticsError(error instanceof Error ? error.message : "Could not load mailbox diagnostics.");
     } finally {
       setDiagnosticsLoading(false);
     }
@@ -988,12 +1003,16 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
     setConnectionError(null);
     setConnectionNotice(null);
     try {
-      const res = await fetch(action === "sync" ? "/api/email/gmail/sync" : "/api/email/gmail/watch", { method: "POST" });
+      const res = await fetch(action === "sync" ? "/api/email/mailbox/sync" : "/api/email/gmail/watch", {
+        method: "POST",
+        headers: action === "sync" ? { "Content-Type": "application/json" } : undefined,
+        body: action === "sync" && primaryConnection?.id ? JSON.stringify({ connectionId: primaryConnection.id }) : undefined,
+      });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(payload.error ?? `Could not ${action === "sync" ? "sync Gmail" : "start live watch"}.`);
+        throw new Error(payload.error ?? `Could not ${action === "sync" ? "sync mailbox" : "start Gmail live watch"}.`);
       }
-      setConnectionNotice(action === "sync" ? "Gmail sync finished. New mail should now appear in the inbox." : "Live Gmail watch is active.");
+      setConnectionNotice(action === "sync" ? "Mailbox sync finished. New mail should now appear in the inbox." : "Live Gmail watch is active.");
       await refreshConnections();
     } catch (error) {
       setConnectionError(
@@ -1096,7 +1115,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
               <div>
                 <p className="text-sm font-semibold">No mailbox connected yet</p>
               <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                Choose the connection type above. Gmail is available now through OAuth; credential-based methods are saved for mailbox adapter rollout.
+                Choose a connection type above. Active mailbox methods can poll inbound email and send approved replies.
               </p>
               </div>
               <span className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(144,50,61,0.45)] px-3 py-1.5 text-xs text-[var(--muted)]">
@@ -1138,10 +1157,10 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                   </button>
                   <button
                     onClick={() => runConnectionAction("watch")}
-                    disabled={!canEdit || !isConnected || connectionAction !== null}
+                    disabled={!canEdit || !isConnected || !isGmailOauth || connectionAction !== null}
                     className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-45"
                   >
-                    {connectionAction === "watch" ? "Repairing..." : "Repair live updates"}
+                    {connectionAction === "watch" ? "Repairing..." : "Repair Gmail live updates"}
                   </button>
                   <button
                     onClick={disconnectConnection}
@@ -1154,15 +1173,15 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <ConnectorMetric label="Last sync" value={formatTimestamp(primaryConnection.last_sync_at)} />
-                <ConnectorMetric label="Live watch expires" value={formatTimestamp(primaryConnection.watch_expires_at)} />
+                <ConnectorMetric label="Last inbound sync" value={formatTimestamp(primaryConnection.last_inbound_sync_at ?? primaryConnection.last_sync_at)} />
+                <ConnectorMetric label="Last outbound send" value={formatTimestamp(primaryConnection.last_outbound_send_at ?? null)} />
+                <ConnectorMetric label="Last validation" value={formatTimestamp(primaryConnection.last_validated_at ?? null)} />
                 <ConnectorMetric label="Token expires" value={formatTimestamp(primaryConnection.token_expires_at)} />
-                <ConnectorMetric label="Provider history" value={primaryConnection.last_history_id ?? "Not started"} />
               </div>
 
-              {primaryConnection.error_message && (
+              {(primaryConnection.last_error_message || primaryConnection.error_message) && (
                 <div className="rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs leading-5 text-[rgba(255,210,210,0.9)]">
-                  {primaryConnection.error_message}
+                  {primaryConnection.last_error_code ? `${primaryConnection.last_error_code}: ` : ""}{primaryConnection.last_error_message ?? primaryConnection.error_message}
                 </div>
               )}
             </div>
@@ -1305,10 +1324,10 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="eyebrow text-[9px] text-[var(--muted)]">System readiness</p>
-            <p className="mt-1 text-base font-semibold">Gmail connector diagnostics</p>
+            <p className="mt-1 text-base font-semibold">Mailbox connector diagnostics</p>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
-              These checks confirm the production environment has the server-only keys needed for OAuth, encrypted token storage,
-              live Gmail push, and watch renewal.
+              These checks confirm the production environment has the server-only keys needed for OAuth, encrypted credential storage,
+              IMAP polling, SMTP sending, and scheduled operations.
             </p>
           </div>
           <button
@@ -1400,7 +1419,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {[
-              ["OAuth / xOAuth", "Gmail now; Outlook / Microsoft 365 as the OAuth adapter is enabled."],
+              ["OAuth / xOAuth", "Gmail OAuth is live. Outlook / Microsoft 365 can use app password or IMAP/SMTP until Microsoft OAuth is enabled."],
               ["Mailbox login and password", "Direct mailbox authentication for providers that still allow it."],
               ["App password", "Provider-issued app passwords for Gmail with 2FA, Outlook, iCloud, and similar setups."],
               ["IMAP / SMTP", "Host, port, and TLS settings for company mailboxes, Zoho, cPanel, and private servers."],
@@ -2354,6 +2373,7 @@ export function SettingsShell({
   initialTab,
   isDemo = false,
   baseDir = "",
+  mailboxReady = false,
 }: {
   org: OrgRecord | null;
   channel: ChannelRecord | null;
@@ -2364,6 +2384,7 @@ export function SettingsShell({
   initialTab?: string;
   isDemo?: boolean;
   baseDir?: string;
+  mailboxReady?: boolean;
 }) {
   const resolvedInitialTab: SettingsTab =
     initialTab && VALID_TABS.has(initialTab as SettingsTab)
@@ -2414,6 +2435,7 @@ export function SettingsShell({
         org={org}
         channel={channel}
         team={team}
+        mailboxReady={mailboxReady}
         onOpenTab={setActiveTab}
         baseDir={baseDir}
       />

@@ -59,10 +59,12 @@ async function renewConnection({
       .from("email_connections")
       .update({
         sync_status: "watching",
-        status: "connected",
+        status: "active",
         watch_expires_at: expiration,
         last_history_id: watch.historyId,
         error_message: null,
+        last_error_code: null,
+        last_error_message: null,
         provider_metadata: {
           ...metadata,
           gmail_watch: {
@@ -93,6 +95,8 @@ async function renewConnection({
         sync_status: "error",
         status: "error",
         error_message: message,
+        last_error_code: "sync_failed",
+        last_error_message: message,
       })
       .eq("id", connection.id);
 
@@ -136,7 +140,7 @@ export async function GET(req: NextRequest) {
     .select("id, org_id, provider_account_email, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, last_history_id, watch_expires_at, provider_metadata")
     .eq("provider", "gmail")
     .eq("connection_type", "oauth")
-    .in("status", ["connected", "error"])
+    .in("status", ["active", "connected", "error"])
     .limit(25);
 
   if (error) {

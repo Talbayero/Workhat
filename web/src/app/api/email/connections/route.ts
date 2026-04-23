@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
+import { validateAndActivateMailboxConnection, type MailboxConnectionRecord } from "@/lib/email-connector/adapters";
 import { encryptSecret } from "@/lib/email-connector/encryption";
 import { logAudit } from "@/lib/security/audit-logger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -91,7 +92,7 @@ function connectionSchemaUnavailableResponse() {
   return NextResponse.json(
     {
       error: "Mailbox connection schema is out of date.",
-      hint: "Apply migrations through 0038_email_connection_type_provider_split.sql so Work Hat can store provider and connection type separately.",
+      hint: "Apply migrations through 0039_mailbox_adapter_runtime.sql so Work Hat can store provider, connection type, status, and diagnostics separately.",
     },
     { status: 503 }
   );
@@ -121,6 +122,7 @@ export async function GET() {
     .from("email_connections")
     .select(
       "id, provider, connection_type, provider_account_email, display_name, status, sync_status, token_expires_at, last_history_id, watch_expires_at, last_sync_at, error_message, provider_metadata, created_at, updated_at"
+      + ", inbound_enabled, outbound_enabled, last_validated_at, last_inbound_sync_at, last_outbound_send_at, last_error_code, last_error_message, diagnostics_json, credential_metadata"
     )
     .eq("org_id", appUser.org_id)
     .order("created_at", { ascending: false });
@@ -287,25 +289,36 @@ export async function POST(req: NextRequest) {
   const payload = {
     access_token_ciphertext: encryptedCredential,
     display_name: displayName,
-    error_message: "Mailbox settings are saved. The mailbox sync adapter for this connection type is not enabled yet.",
+    error_message: null,
     org_id: appUser.org_id,
     provider,
     connection_type: connectionType,
     provider_account_email: email,
     provider_metadata: metadata,
+    credential_metadata: {
+      username: connectionType === "imap_smtp" ? (metadata.username as string) : email,
+      credential_type: connectionType === "app_password" ? "app_password" : "mailbox_password",
+      stored_at: now,
+    },
     refresh_token_ciphertext: null,
-    status: "needs_reconnect",
+    status: "configured",
     sync_status: "idle",
+    inbound_enabled: true,
+    outbound_enabled: true,
+    last_validated_at: null,
+    last_error_code: null,
+    last_error_message: null,
+    diagnostics_json: {},
     token_expires_at: null,
     watch_expires_at: null,
   };
 
   const query = existing
     ? db.from("email_connections").update(payload).eq("id", existing.id).eq("org_id", appUser.org_id).select(
-        "id, provider, connection_type, provider_account_email, display_name, status, sync_status, error_message, provider_metadata, created_at, updated_at"
+        "id, org_id, provider, connection_type, provider_account_email, display_name, status, sync_status, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, scopes, last_history_id, watch_expires_at, last_sync_at, inbound_enabled, outbound_enabled, last_validated_at, last_inbound_sync_at, last_outbound_send_at, last_error_code, last_error_message, error_message, diagnostics_json, credential_metadata, provider_metadata, created_at, updated_at"
       )
     : db.from("email_connections").insert(payload).select(
-        "id, provider, connection_type, provider_account_email, display_name, status, sync_status, error_message, provider_metadata, created_at, updated_at"
+        "id, org_id, provider, connection_type, provider_account_email, display_name, status, sync_status, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, scopes, last_history_id, watch_expires_at, last_sync_at, inbound_enabled, outbound_enabled, last_validated_at, last_inbound_sync_at, last_outbound_send_at, last_error_code, last_error_message, error_message, diagnostics_json, credential_metadata, provider_metadata, created_at, updated_at"
       );
 
   const { data: saved, error } = await query.maybeSingle();
@@ -319,6 +332,9 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+  if (!saved) {
+    return NextResponse.json({ error: "Unable to save this mailbox connection." }, { status: 500 });
+  }
 
   await logAudit({
     action: "org.settings_updated",
@@ -331,13 +347,35 @@ export async function POST(req: NextRequest) {
     newValues: {
       provider,
       connectionType,
-      status: "needs_reconnect",
+      status: "configured",
       credentialStored: true,
     },
     req,
   });
 
-  return NextResponse.json({ connection: saved });
+  const activation = await validateAndActivateMailboxConnection({ db }, saved as MailboxConnectionRecord);
+  const { data: activated } = await db
+    .from("email_connections")
+    .select(
+      "id, provider, connection_type, provider_account_email, display_name, status, sync_status, error_message, provider_metadata, created_at, updated_at, inbound_enabled, outbound_enabled, last_validated_at, last_inbound_sync_at, last_outbound_send_at, last_error_code, last_error_message, diagnostics_json, credential_metadata"
+    )
+    .eq("id", saved.id)
+    .eq("org_id", appUser.org_id)
+    .maybeSingle();
+
+  if (!activation.ok) {
+    return NextResponse.json(
+      {
+        error: activation.message,
+        code: activation.code,
+        connection: activated ?? saved,
+        diagnostics: activation.diagnostics,
+      },
+      { status: 422 }
+    );
+  }
+
+  return NextResponse.json({ connection: activated ?? saved, diagnostics: activation.diagnostics });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -372,7 +410,7 @@ export async function DELETE(req: NextRequest) {
         disconnected_by: appUser.id,
       },
       refresh_token_ciphertext: null,
-      status: "disabled",
+      status: "disconnected",
       sync_status: "idle",
       token_expires_at: null,
       watch_expires_at: null,

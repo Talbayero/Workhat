@@ -10,7 +10,7 @@ Rule: if it describes how the platform works, how it is operated, how it is secu
 |---|---|
 | [product.md](./product.md) | Current product shape, module map, principles, and scope |
 | [architecture.md](./architecture.md) | Stack, runtime shape, data model, auth, Supabase, integrations, and env vars |
-| [TECHNICAL.md](./TECHNICAL.md) | Detailed technical reference and API/data model notes |
+| [TECHNICAL.md](./TECHNICAL.md) | Historical technical reference retained for context; active implementation details belong in architecture/conventions/domain docs |
 | [conventions.md](./conventions.md) | Engineering conventions for app structure, data access, auth, API routes, testing, and naming |
 | [decisions.md](./decisions.md) | Architecture Decision Records |
 | [security-hardening.md](./security-hardening.md) | Authorization, audit logging, rate limiting, validation, data protection, and incident response |
@@ -19,7 +19,7 @@ Rule: if it describes how the platform works, how it is operated, how it is secu
 | [sla-and-queue-health.md](./sla-and-queue-health.md) | SLA policies, snapshots, queue health, and refresh model |
 | [ai-improvement-engine.md](./ai-improvement-engine.md) | Prompt analytics, edit pattern clustering, and knowledge gap insights |
 | [prompt-experimentation.md](./prompt-experimentation.md) | Controlled prompt experiments, deterministic assignment, persistence, and rollback |
-| [email-channels.md](./email-channels.md) | Gmail and custom inbound email setup, payload contract, diagnostics, and demo verification |
+| [email-channels.md](./email-channels.md) | Mailbox adapters, Gmail, IMAP/SMTP, custom inbound setup, payload contract, diagnostics, and demo verification |
 
 ## Compliance And SOC 2 Readiness
 

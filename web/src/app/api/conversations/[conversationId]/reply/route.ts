@@ -21,7 +21,7 @@ import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { runEditAnalysis } from "@/lib/ai/analysis";
-import { sendConversationReplyWithGmail } from "@/lib/email-connector/gmail-sender";
+import { sendConversationReply } from "@/lib/email-connector/outbound";
 import { refreshConversationSla } from "@/lib/sla/refresh";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
@@ -31,7 +31,7 @@ type ReplyPayload = {
 };
 
 type OutboundResult = {
-  provider: "gmail" | "workhat_test";
+  provider: string;
   providerMessageId: string;
   providerThreadId: string;
   rfcMessageId: string;
@@ -262,16 +262,16 @@ export async function POST(
 
   let outbound: OutboundResult | null;
   try {
-    outbound = await sendConversationReplyWithGmail({
+    outbound = await sendConversationReply({
       db: admin,
       orgId,
       conversationId,
       body,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Gmail send failed.";
-    console.error("[reply] Gmail send failed:", message);
-    return NextResponse.json({ error: "Unable to send this reply through Gmail. Please try again." }, { status: 502 });
+    const message = error instanceof Error ? error.message : "Mailbox send failed.";
+    console.error("[reply] mailbox send failed:", message);
+    return NextResponse.json({ error: `Unable to send this reply through the connected mailbox. ${message}` }, { status: 502 });
   }
 
   if (!outbound) {
@@ -280,8 +280,8 @@ export async function POST(
 
   if (!outbound) {
     return NextResponse.json({
-      error: "Connect Gmail before sending customer replies.",
-      hint: "Use onboarding or settings to connect a Gmail mailbox. Internal notes are still available. Manually created test conversations can still be logged locally.",
+      error: "Connect and validate a mailbox before sending customer replies.",
+      hint: "Use onboarding or Settings -> Channels to activate Gmail OAuth, app-password, mailbox-password, or IMAP/SMTP sending. Internal notes are still available.",
     }, { status: 400 });
   }
 

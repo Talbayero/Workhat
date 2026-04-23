@@ -156,14 +156,17 @@ export function EmailConnectionSetup({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; hint?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; hint?: string; connection?: unknown };
 
       if (!response.ok) {
+        if (payload.connection) {
+          await onSaved?.();
+        }
         const detail = [payload.error, payload.hint].filter(Boolean).join(" ");
         throw new Error(detail || "Unable to save this mailbox connection.");
       }
 
-      const message = "Mailbox setup saved. Work Hat will use this connection method as the mailbox adapter comes online.";
+      const message = "Mailbox validated and activated. Work Hat can now use this connection for inbound polling and approved replies.";
       setLocalMessage({ type: "success", message });
       onNotice?.(message);
       await onSaved?.();
@@ -204,7 +207,7 @@ export function EmailConnectionSetup({
               <div>
                 <p className="text-sm font-semibold">Connect with provider approval</p>
                 <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                  Choose Gmail today. Microsoft 365 maps to this same OAuth/xOAuth path as the adapter is enabled.
+                  Choose Gmail today. Microsoft 365 maps to this same OAuth/xOAuth path when Microsoft OAuth is enabled.
                 </p>
               </div>
               {canEdit ? (
@@ -222,7 +225,7 @@ export function EmailConnectionSetup({
             </div>
             <div className="rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
               <p className="text-xs font-medium">Outlook / Microsoft 365</p>
-              <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Uses the same connection type. Adapter support is staged behind the current Gmail path.</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Uses the same connection type. Use app password or IMAP/SMTP for Microsoft mailboxes until Microsoft OAuth is enabled.</p>
             </div>
           </div>
         )}

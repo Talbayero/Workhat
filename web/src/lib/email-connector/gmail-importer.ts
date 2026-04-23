@@ -107,7 +107,7 @@ export async function getFreshGmailAccessToken(db: SupabaseDb, connection: Email
       access_token_ciphertext: encryptedAccessToken,
       token_expires_at: tokenExpiryDate(refreshed.expires_in).toISOString(),
       scopes: refreshed.scope?.split(" ") ?? [],
-      status: "connected",
+      status: "active",
       error_message: null,
     })
     .eq("id", connection.id);
@@ -305,9 +305,12 @@ export async function markGmailSyncSuccess({
 }) {
   const updates: Record<string, string | null> = {
     sync_status: "idle",
-    status: "connected",
+    status: "active",
     last_sync_at: new Date().toISOString(),
+    last_inbound_sync_at: new Date().toISOString(),
     error_message: null,
+    last_error_code: null,
+    last_error_message: null,
   };
 
   if (result.latestHistoryId) {
@@ -333,7 +336,7 @@ export async function markGmailSyncError({
 }) {
   const { error } = await db
     .from("email_connections")
-    .update({ sync_status: "error", status: "error", error_message: message })
+    .update({ sync_status: "error", status: "error", error_message: message, last_error_code: "sync_failed", last_error_message: message })
     .eq("id", connectionId);
 
   if (error) throw new Error(error.message);

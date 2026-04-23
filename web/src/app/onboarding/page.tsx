@@ -22,10 +22,11 @@ type EmailConnection = {
   provider: string;
   connection_type?: string | null;
   provider_account_email: string;
-  status: "connected" | "needs_reconnect" | "disabled" | "error";
+  status: "configured" | "validating" | "active" | "error" | "disconnected" | "connected";
   sync_status: "idle" | "syncing" | "watching" | "error";
   last_history_id: string | null;
   last_sync_at: string | null;
+  last_inbound_sync_at?: string | null;
   watch_expires_at: string | null;
   error_message: string | null;
 };
@@ -187,7 +188,8 @@ function StepInbox({
     void loadConnections();
   }, []);
 
-  const gmailConnection = connections.find((connection) => connection.provider === "gmail");
+  const activeConnection = connections.find((connection) => connection.status === "active" || connection.status === "connected");
+  const gmailConnection = connections.find((connection) => connection.provider === "gmail" && (connection.status === "active" || connection.status === "connected"));
 
   async function loadConnections() {
     setLoadingConnections(true);
@@ -263,7 +265,11 @@ function StepInbox({
     setConnectionError(null);
 
     try {
-      const response = await fetch("/api/email/gmail/sync", { method: "POST" });
+      const response = await fetch("/api/email/mailbox/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(activeConnection?.id ? { connectionId: activeConnection.id } : {}),
+      });
       const data = await response.json().catch(() => ({})) as {
         imported?: number;
         skipped?: number;
@@ -271,7 +277,7 @@ function StepInbox({
         error?: string;
       };
 
-      if (!response.ok) throw new Error(data.error ?? "Gmail sync failed.");
+      if (!response.ok) throw new Error(data.error ?? "Mailbox sync failed.");
 
       setSyncResult(
         `Synced ${data.imported ?? 0} new conversations from ${data.scanned ?? 0} recent inbox messages. ${data.skipped ?? 0} duplicates skipped.`
@@ -279,7 +285,7 @@ function StepInbox({
       await loadConnections();
     } catch (error) {
       setConnectionError(
-        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Gmail sync failed.")
+        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Mailbox sync failed.")
       );
     } finally {
       setSyncing(false);
@@ -319,7 +325,7 @@ function StepInbox({
         <p className="eyebrow text-[9px] text-[var(--muted)]">Choose an inbound channel</p>
         <h3 className="mt-1 text-base font-semibold">Connect the mailbox your team already uses</h3>
         <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-          Pick the setup style that matches your provider. Gmail works now with OAuth; the other mailbox methods are saved in the same connection model for adapter rollout.
+          Pick the setup style that matches your provider. Active mailboxes can poll inbound messages and send approved replies.
         </p>
         <div className="mt-4">
           <EmailConnectionSetup
@@ -363,7 +369,7 @@ function StepInbox({
               OAuth mailboxes can import recent conversations and repair live updates from here.
             </p>
           </div>
-          {gmailConnection?.status === "connected" ? (
+          {activeConnection ? (
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -373,29 +379,31 @@ function StepInbox({
               >
                 {syncing ? "Importing..." : "Import latest email"}
               </button>
-              <button
-                type="button"
-                onClick={enableGmailWatch}
-                disabled={watching}
-                className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] disabled:opacity-50"
-              >
-                {watching ? "Repairing..." : "Repair live updates"}
-              </button>
+              {gmailConnection && (
+                <button
+                  type="button"
+                  onClick={enableGmailWatch}
+                  disabled={watching}
+                  className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] disabled:opacity-50"
+                >
+                  {watching ? "Repairing..." : "Repair Gmail live updates"}
+                </button>
+              )}
             </div>
           ) : (
             <span className="rounded-full border border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
-              No OAuth mailbox connected
+              No active mailbox connected
             </span>
           )}
         </div>
-        {gmailConnection && (
+        {activeConnection && (
           <div className="mt-4 rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs">
-            <p className="font-medium">{gmailConnection.provider_account_email}</p>
+            <p className="font-medium">{activeConnection.provider_account_email}</p>
             <p className="mt-1 text-[var(--muted)]">
-              {gmailConnection.status === "connected" ? "Ready for shared inbox replies" : `Status: ${gmailConnection.status}`}
-              {gmailConnection.sync_status ? ` · Sync: ${gmailConnection.sync_status}` : ""}
-              {gmailConnection.last_sync_at ? ` · Last sync ${new Date(gmailConnection.last_sync_at).toLocaleString()}` : ""}
-              {gmailConnection.watch_expires_at
+              {activeConnection.status === "active" || activeConnection.status === "connected" ? "Ready for inbound polling and replies" : `Status: ${activeConnection.status}`}
+              {activeConnection.sync_status ? ` · Sync: ${activeConnection.sync_status}` : ""}
+              {(activeConnection.last_inbound_sync_at || activeConnection.last_sync_at) ? ` · Last sync ${new Date(activeConnection.last_inbound_sync_at || activeConnection.last_sync_at || "").toLocaleString()}` : ""}
+              {gmailConnection?.watch_expires_at
                 ? ` · Live updates active until ${new Date(gmailConnection.watch_expires_at).toLocaleDateString()}`
                 : ""}
             </p>

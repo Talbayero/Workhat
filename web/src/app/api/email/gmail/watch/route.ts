@@ -41,8 +41,10 @@ async function getFreshAccessToken(
       access_token_ciphertext: encryptedAccessToken,
       token_expires_at: tokenExpiryDate(refreshed.expires_in).toISOString(),
       scopes: refreshed.scope?.split(" ") ?? [],
-      status: "connected",
+      status: "active",
       error_message: null,
+      last_error_code: null,
+      last_error_message: null,
     })
     .eq("id", connection.id);
 
@@ -81,7 +83,7 @@ export async function POST() {
     .eq("org_id", appUser.org_id)
     .eq("provider", "gmail")
     .eq("connection_type", "oauth")
-    .eq("status", "connected")
+    .in("status", ["active", "connected"])
     .limit(1)
     .maybeSingle();
 
@@ -98,9 +100,12 @@ export async function POST() {
       .from("email_connections")
       .update({
         sync_status: "watching",
+        status: "active",
         watch_expires_at: expiration,
         last_history_id: watch.historyId,
         error_message: null,
+        last_error_code: null,
+        last_error_message: null,
         provider_metadata: {
           ...((connection as EmailConnection).provider_metadata ?? {}),
           gmail_watch: {
@@ -121,7 +126,7 @@ export async function POST() {
     const message = error instanceof Error ? error.message : "Failed to enable Gmail watch.";
     const { error: errorUpdateError } = await db
       .from("email_connections")
-      .update({ sync_status: "error", error_message: message })
+      .update({ sync_status: "error", status: "error", error_message: message, last_error_code: "sync_failed", last_error_message: message })
       .eq("id", (connection as EmailConnection).id);
     if (errorUpdateError) console.warn("[gmail/watch] failed to persist watch error:", errorUpdateError.message);
     console.error("[gmail/watch] watch setup failed:", message);

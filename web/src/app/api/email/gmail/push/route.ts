@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     .eq("provider", "gmail")
     .eq("connection_type", "oauth")
     .eq("provider_account_email", emailAddress)
-    .in("status", ["connected", "error"])
+    .in("status", ["active", "connected", "error"])
     .limit(1)
     .maybeSingle();
 
@@ -112,8 +112,10 @@ export async function POST(req: NextRequest) {
     .from("email_connections")
     .update({
       sync_status: "syncing",
-      status: "connected",
+      status: "active",
       error_message: null,
+      last_error_code: null,
+      last_error_message: null,
       provider_metadata: {
         ...metadata,
         gmail_pending_history: {

@@ -97,13 +97,14 @@ User sees "Insufficient permissions" on feature they should have access to
 
 ---
 
-### Decision Tree 2: Email Not Syncing
+### Decision Tree 2: Email Not Syncing Or Sending
 
 ```
-Inbound emails not appearing or send failures
+Inbound emails not appearing or approved replies fail to send
 │
-├─ Is the affected channel Gmail or custom inbound?
-│  ├─ Gmail → Check Gmail connectivity
+├─ Is the affected path Gmail OAuth, IMAP/SMTP mailbox, or custom inbound?
+│  ├─ Gmail OAuth → Check Gmail watch/API state
+│  ├─ IMAP/SMTP mailbox → Check mailbox adapter diagnostics
 │  └─ Custom inbound → Check webhook delivery diagnostics
 │
 ├─ For Gmail
@@ -113,6 +114,13 @@ Inbound emails not appearing or send failures
 │  │  └─ YES → User must re-authenticate via /api/email/gmail/connect
 │  └─ Is webhook delivery failing?
 │     └─ Check Pub/Sub delivery status
+│
+├─ For IMAP/SMTP mailbox
+│  ├─ Is email_connections.status active?
+│  ├─ Are inbound_enabled/outbound_enabled true for the failing direction?
+│  ├─ Does /api/email/mailbox/diagnostics show env, auth, TLS, or provider guidance errors?
+│  ├─ If inbound is stale, run /api/email/mailbox/sync for the connection
+│  └─ If outbound fails, check SMTP host/port/TLS, sender identity, and app-password requirements
 │
 ├─ For custom inbound
 │  ├─ Is the channel active in Settings → Channels?
@@ -129,36 +137,73 @@ Inbound emails not appearing or send failures
 
 **Resolution Steps:**
 
-1. **Check Gmail API status:**
+1. **Check mailbox adapter diagnostics in the app:**
+   - Go to Settings -> Channels.
+   - Confirm the connection is `active` for the needed direction.
+   - Open diagnostics and note `last_error_code`, `last_error_message`, `last_validated_at`, `last_inbound_sync_at`, and `last_outbound_send_at`.
+
+2. **Check mailbox connection state in SQL:**
+   ```sql
+   SELECT id, provider, connection_type, provider_account_email, status,
+          inbound_enabled, outbound_enabled, last_validated_at,
+          last_inbound_sync_at, last_outbound_send_at,
+          last_error_code, last_error_message, diagnostics_json
+   FROM email_connections
+   WHERE org_id = 'org-123'
+   ORDER BY updated_at DESC;
+   ```
+
+3. **For IMAP/SMTP inbound, run a manual poll through the app/API:**
+   ```bash
+   curl -X POST https://work-hat.com/api/email/mailbox/sync \
+     -H "Cookie: <admin-session-cookie>" \
+     -H "Content-Type: application/json" \
+     -d '{"connectionId":"connection-123"}'
+   ```
+
+4. **For scheduler issues, check `CRON_SECRET` and the polling endpoint:**
+   ```bash
+   curl https://work-hat.com/api/email/mailbox/poll \
+     -H "Authorization: Bearer $CRON_SECRET"
+   ```
+
+5. **For provider auth errors:**
+   - `app_password_required`: switch the setup to App password and create a provider-issued password.
+   - `imap_auth_failed` or `smtp_auth_failed`: verify username, password, provider security settings, and account lockouts.
+   - `tls_failed`: verify SSL/TLS flags and ports, commonly IMAP 993 and SMTP 465/587.
+   - `network_error`: verify provider hostname, firewall restrictions, and provider availability.
+
+6. **Check Gmail API status when Gmail OAuth is affected:**
    ```bash
    curl -s "https://www.googleapis.com/gmail/v1/users/me/profile" \
      -H "Authorization: Bearer $OAUTH_TOKEN"
    ```
 
-2. **Check rate limit status:**
+7. **Check rate limit status:**
    ```bash
    redis-cli GET "workhat:ratelimit:gmail_api"
    ```
 
-3. **If rate limited, wait 60+ seconds, then retry**
+8. **If rate limited, wait 60+ seconds, then retry**
 
-4. **Check for expired tokens in logs:**
+9. **Check for expired tokens in logs:**
    ```bash
    tail -f /var/log/workhat/api.log | grep "GMAIL_TOKEN_EXPIRED\|401\|Unauthorized"
    ```
 
-5. **If token expired, user must re-authenticate:**
-   - Direct user to `/account/email/reconnect`
+10. **If token expired, user must re-authenticate:**
+   - Direct user to Settings -> Channels or `/api/email/gmail/connect`
    - They'll see "Gmail is disconnected" message
    - Click "Reconnect Gmail"
 
-6. **Verify reconnection:**
+11. **Verify reconnection:**
    ```sql
-   SELECT gmail_access_token_expires_at FROM org_integrations
-   WHERE org_id = 'org-123' AND service = 'gmail';
+   SELECT provider_account_email, status, token_expires_at, last_validated_at
+   FROM email_connections
+   WHERE org_id = 'org-123' AND provider = 'gmail';
    ```
 
-7. **For custom inbound, inspect delivery status:**
+12. **For custom inbound, inspect delivery status:**
    ```sql
    SELECT id, status, external_message_id, error_message, processed_at, created_at
    FROM inbound_email_events
@@ -167,7 +212,7 @@ Inbound emails not appearing or send failures
    LIMIT 20;
    ```
 
-8. **Check channel diagnostics:**
+13. **Check channel diagnostics:**
    ```sql
    SELECT id, provider, status, inbound_address,
           config_json->>'last_inbound_at' AS last_inbound_at,
@@ -177,7 +222,7 @@ Inbound emails not appearing or send failures
    WHERE org_id = 'org-123' AND type = 'email';
    ```
 
-9. **If token errors are suspected:**
+14. **If custom inbound token errors are suspected:**
    - Regenerate the custom inbound token in Settings -> Channels.
    - Update the relay/provider secret.
    - Send a test delivery with a new `externalMessageId`.

@@ -29,7 +29,7 @@ web/src/
 ├── lib/            # Server-side business logic and utilities
 │   ├── ai/         # AI orchestration (provider, prompts, schemas)
 │   ├── auth/       # getCurrentAppUser() and auth helpers
-│   ├── email-connector/  # Provider-neutral inbound email, Gmail adapter/sender, encryption
+│   ├── email-connector/  # Mailbox adapters, provider-neutral inbound processing, encryption
 │   ├── security/   # Rate limiting, circuit breaker
 │   └── supabase/   # Client variants (server, client, admin, queries)
 └── proxy.ts        # Edge proxy — runs before every request
@@ -288,6 +288,25 @@ Custom inbound channels are configured through Settings -> Channels and managed 
 
 Mailbox setup records live in `email_connections`. Keep `connection_type` and `provider` separate: `connection_type` is the auth/setup mode (`oauth`, `mailbox_password`, `app_password`, `imap_smtp`, `custom_inbound`), while `provider` is the actual mailbox family (`gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, `custom`, `custom_inbound`). Do not store setup method names in `provider`.
 
+Runtime mailbox work belongs under `lib/email-connector/adapters/` and must implement the shared adapter interface (`validateConnection`, `activateConnection`, `fetchInbound`, `sendOutbound`, `refreshCredentials`, `getDiagnostics`). Route handlers such as `/api/email/connections`, `/api/email/mailbox/sync`, `/api/email/mailbox/poll`, and the conversation reply route should stay thin and call this layer.
+
+Readiness must mean runtime readiness:
+
+- `configured`: saved but not live.
+- `validating`: validation is in progress.
+- `active`: validated and usable for enabled inbound/outbound paths.
+- `error`: failed validation/sync/send and has diagnostics.
+- `disconnected`: intentionally disabled.
+
+Only `active` connections, plus legacy `connected` rows during migration, should be treated as ready. A saved credential record must not unlock onboarding or hide the channel setup checklist until validation succeeds.
+
+Credential handling rules:
+
+- Encrypt OAuth tokens, mailbox passwords, app passwords, and IMAP/SMTP passwords with `lib/email-connector/encryption.ts`.
+- Store only non-secret values in `provider_metadata`, `credential_metadata`, and `diagnostics_json`.
+- Never log decrypted credentials, provider passwords, OAuth tokens, or generated custom inbound webhook tokens.
+- Custom inbound channel tokens are one-way hashes in `channels.config_json`; do not require `EMAIL_TOKEN_ENCRYPTION_KEY` for that path.
+
 ### Gmail
 
 Never store raw OAuth tokens or mailbox credentials in the database. Always encrypt via `lib/email-connector/encryption.ts` before writing to `email_connections`. Decrypt immediately before use. The encryption key must never be logged.
@@ -307,7 +326,8 @@ Automated tests use Jest for focused `lib/` coverage. Add tests next to the help
 Manual testing uses:
 
 - **Demo routes** (`/demo/*`) — serve mock data from `lib/mock-data.ts`. These can be used to verify UI without any auth or real data.
-- **`/api/email/gmail/diagnostics`** — debug endpoint for Gmail connection state.
+- **`/api/email/mailbox/diagnostics`** — debug endpoint for mailbox adapter, environment, and connection state.
+- **`/api/email/mailbox/sync`** — manual active mailbox poll for IMAP/SMTP and Gmail-compatible adapter checks.
 - **Settings -> Channels** — custom inbound channel endpoint/secret/status diagnostics.
 - **Supabase local** (`supabase start`) — local Postgres instance for DB testing against migrations.
 

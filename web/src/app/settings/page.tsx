@@ -17,6 +17,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   let channelData = null;
   let slaPolicy = null;
   let teamData: unknown[] = [];
+  let mailboxReady = false;
   let callerRole = "admin";
   let callerId = "";
 
@@ -64,6 +65,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           }
         : null;
 
+      const { data: activeMailbox } = await supabase
+        .from("email_connections")
+        .select("id")
+        .eq("org_id", orgId)
+        .eq("inbound_enabled", true)
+        .in("status", ["active", "connected"])
+        .limit(1)
+        .maybeSingle();
+      mailboxReady = Boolean(activeMailbox);
+
       const { data: policy } = await supabase
         .from("org_sla_policies")
         .select("enabled, first_response_minutes, next_response_minutes, at_risk_threshold_minutes, business_hours_json")
@@ -89,6 +100,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       callerRole={callerRole}
       callerId={callerId}
       initialTab={tab}
+      mailboxReady={mailboxReady}
     />
   );
 }
