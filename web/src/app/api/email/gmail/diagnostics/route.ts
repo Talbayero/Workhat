@@ -53,6 +53,13 @@ type UserScopedReadDiagnostics = {
   };
 };
 
+type RlsRepairStatus = {
+  required: boolean;
+  reason: string | null;
+  migration: string;
+  sqlPath: string;
+};
+
 const SLA_COLUMNS = [
   "sla_status",
   "sla_target",
@@ -413,5 +420,30 @@ export async function GET() {
     console.warn("[gmail/diagnostics] user-scoped read diagnostics failed:", error);
   }
 
-  return NextResponse.json({ checks, summary, gmailImportDiagnostics, userScopedReadDiagnostics });
+  const rlsRepairRequired = Boolean(
+    userScopedReadDiagnostics &&
+      (
+        !userScopedReadDiagnostics.tables.users.ok ||
+        !userScopedReadDiagnostics.tables.organizations.ok ||
+        !userScopedReadDiagnostics.tables.conversations.ok ||
+        !userScopedReadDiagnostics.tables.messages.ok
+      )
+  );
+
+  const rlsRepairStatus: RlsRepairStatus = {
+    required: rlsRepairRequired,
+    reason: rlsRepairRequired
+      ? "Authenticated Supabase reads are still failing for one or more org-scoped tables. Production is still relying on tenant-scoped admin fallbacks."
+      : null,
+    migration: "0042_rls_inbox_read_repair.sql",
+    sqlPath: "supabase/migrations/0042_rls_inbox_read_repair.sql",
+  };
+
+  return NextResponse.json({
+    checks,
+    summary,
+    gmailImportDiagnostics,
+    userScopedReadDiagnostics,
+    rlsRepairStatus,
+  });
 }
