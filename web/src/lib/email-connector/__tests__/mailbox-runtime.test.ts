@@ -1,7 +1,7 @@
 import { getMailTransportSettings, providerNeedsAppPasswordHint } from "@/lib/email-connector/adapters/provider-config";
 import { getMailboxAdapter } from "@/lib/email-connector/adapters";
 import { classifyMailboxError } from "@/lib/email-connector/adapters/errors";
-import { assertGoogleOAuthConfig, buildGmailAuthUrl } from "@/lib/email-connector/google";
+import { assertGoogleOAuthConfig, buildGmailAuthUrl, getGoogleRedirectUri, GMAIL_SCOPES } from "@/lib/email-connector/google";
 import { buildStoredDiagnostics, isActiveMailboxStatus, normalizeMailboxStatus } from "@/lib/email-connector/mailbox-status";
 import type { MailboxConnectionRecord } from "@/lib/email-connector/adapters/types";
 
@@ -126,15 +126,18 @@ describe("mailbox error classification", () => {
 describe("gmail oauth setup", () => {
   const originalClientId = process.env.GOOGLE_CLIENT_ID;
   const originalClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const originalRedirectConfirmed = process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED;
+  const originalAppBaseUrl = process.env.APP_BASE_URL;
+  const originalPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL;
 
   afterEach(() => {
     if (originalClientId === undefined) delete process.env.GOOGLE_CLIENT_ID;
     else process.env.GOOGLE_CLIENT_ID = originalClientId;
     if (originalClientSecret === undefined) delete process.env.GOOGLE_CLIENT_SECRET;
     else process.env.GOOGLE_CLIENT_SECRET = originalClientSecret;
-    if (originalRedirectConfirmed === undefined) delete process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED;
-    else process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED = originalRedirectConfirmed;
+    if (originalAppBaseUrl === undefined) delete process.env.APP_BASE_URL;
+    else process.env.APP_BASE_URL = originalAppBaseUrl;
+    if (originalPublicAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = originalPublicAppUrl;
   });
 
   it("fails with an operator-facing setup message when OAuth env is missing", () => {
@@ -147,10 +150,9 @@ describe("gmail oauth setup", () => {
   it("builds a Gmail consent URL with offline access and state", () => {
     process.env.GOOGLE_CLIENT_ID = "client.apps.googleusercontent.com";
     process.env.GOOGLE_CLIENT_SECRET = "secret";
-    process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED = "true";
 
     const url = new URL(buildGmailAuthUrl({
-      redirectUri: "https://work-hat.com/api/email/gmail/callback",
+      redirectUri: "https://work-hat.com/api/oauth/google/callback",
       state: "state-123",
     }));
 
@@ -158,6 +160,18 @@ describe("gmail oauth setup", () => {
     expect(url.searchParams.get("access_type")).toBe("offline");
     expect(url.searchParams.get("prompt")).toBe("consent");
     expect(url.searchParams.get("state")).toBe("state-123");
-    expect(url.searchParams.get("redirect_uri")).toBe("https://work-hat.com/api/email/gmail/callback");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://work-hat.com/api/oauth/google/callback");
+    expect(url.searchParams.get("scope")).toBe(GMAIL_SCOPES.join(" "));
+  });
+
+  it("generates the canonical Google callback URL from APP_BASE_URL", () => {
+    process.env.APP_BASE_URL = "https://work-hat.com/";
+    delete process.env.NEXT_PUBLIC_APP_URL;
+
+    const req = {
+      nextUrl: new URL("https://preview.vercel.app/api/oauth/google/start"),
+    } as never;
+
+    expect(getGoogleRedirectUri(req)).toBe("https://work-hat.com/api/oauth/google/callback");
   });
 });

@@ -103,8 +103,9 @@ User-facing setup screens must ask the backend what is actually available before
 
 Rules:
 
-- Do not present Gmail OAuth as clickable unless Google OAuth and mailbox-token encryption are configured.
-- Do not present password, app-password, or IMAP/SMTP setup as live unless credential encryption and the server database key are configured.
+- Do not present Gmail OAuth unless Google OAuth env, the OAuth routes, and mailbox-token encryption are configured.
+- Do not present password, app-password, or IMAP/SMTP setup unless credential encryption and the server database key are configured.
+- If no email adapter is operational, hide mailbox connection methods and show test inbox / demo mode.
 - Do not count a saved mailbox record as connected. Readiness requires an active runtime connection for the needed direction.
 - Keep Work Hat login identity and connected mailbox identity separate in labels and copy.
 - Never expose raw environment variable names, database constraint names, stack traces, or provider exception strings to normal users. Admin-only diagnostics may include exact missing setup values.
@@ -325,7 +326,7 @@ Never store raw OAuth tokens or mailbox credentials in the database. Always encr
 
 Token refresh is handled automatically by the Gmail sender/importer — they detect expired access tokens and use the refresh token. Watch expiry (7-day Gmail limit) is handled by the cron renewal endpoint.
 
-Use `/api/email/gmail/connect` as the canonical start route. `/api/oauth/google/start` exists only as a compatibility alias for product links or older docs. The OAuth callback must keep route handling thin: exchange code, encrypt tokens, upsert `email_connections`, ensure the email channel, run the bounded initial sync, and leave provider-neutral contact/conversation/SLA/workflow behavior inside the shared inbound processor.
+Use `/api/oauth/google/start` as the canonical start route and `/api/oauth/google/callback` as the canonical callback route. Legacy `/api/email/gmail/connect` and `/api/email/gmail/callback` remain only for backward compatibility. The OAuth callback must keep route handling thin: exchange code, encrypt tokens, upsert `email_connections`, ensure the email channel, run the bounded initial sync, and leave provider-neutral contact/conversation/SLA/workflow behavior inside the shared inbound processor.
 
 ### Stripe
 

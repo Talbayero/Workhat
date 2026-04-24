@@ -5,10 +5,10 @@ import {
 
 const TRACKED_ENV = [
   "NEXT_PUBLIC_SUPABASE_URL",
+  "APP_BASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
-  "GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED",
   "EMAIL_TOKEN_ENCRYPTION_KEY",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
@@ -44,20 +44,22 @@ describe("email setup readiness", () => {
     expect(readiness.methods.oauth.status).toBe("unavailable");
     expect(readiness.methods.imap_smtp.status).toBe("unavailable");
     expect(readiness.summary.missingRequiredEnv).toEqual(
-      expect.arrayContaining(["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED", "EMAIL_TOKEN_ENCRYPTION_KEY", "SUPABASE_SERVICE_ROLE_KEY"])
+      expect.arrayContaining(["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "APP_BASE_URL", "EMAIL_TOKEN_ENCRYPTION_KEY", "SUPABASE_SERVICE_ROLE_KEY"])
     );
   });
 
   it("exposes Gmail OAuth only after OAuth and encryption settings are configured", () => {
     clearTrackedEnv();
+    process.env.APP_BASE_URL = "https://work-hat.com";
     process.env.GOOGLE_CLIENT_ID = "client-id";
     process.env.GOOGLE_CLIENT_SECRET = "client-secret";
-    process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED = "true";
     process.env.EMAIL_TOKEN_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef";
 
     const readiness = getEmailSetupReadiness();
 
     expect(readiness.summary.googleOAuthConfigured).toBe(true);
+    expect(readiness.summary.googleOAuthRoutesAvailable).toBe(true);
+    expect(readiness.summary.googleRedirectUri).toBe("https://work-hat.com/api/oauth/google/callback");
     expect(readiness.methods.oauth.status).toBe("available");
     expect(readiness.methods.mailbox_password.status).toBe("unavailable");
   });

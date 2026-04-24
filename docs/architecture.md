@@ -67,11 +67,12 @@ The application is a single Next.js deployment with three distinct execution con
 | Route | Purpose |
 |---|---|
 | `/api/inbound/email` | Public webhook for custom/non-Gmail inbound email sources |
-| `/api/oauth/google/start` | Compatibility alias that starts the Gmail OAuth connection flow |
+| `/api/oauth/google/start` | Canonical Gmail OAuth connection start route |
+| `/api/oauth/google/callback` | Canonical Gmail OAuth redirect handler |
 | `/api/email/setup/readiness` | Authenticated mailbox setup readiness used by onboarding/settings to gate unsupported methods |
 | `/api/system/setup-health` | Admin-only setup health for Google OAuth, credential encryption, Redis, and adapter availability |
 | `/api/email/gmail/push` | Google Cloud Pub/Sub push endpoint |
-| `/api/email/gmail/callback` | Gmail OAuth redirect handler |
+| `/api/email/gmail/connect`, `/api/email/gmail/callback` | Backward-compatible Gmail OAuth aliases |
 | `/api/stripe/webhook` | Stripe billing event handler |
 | `/auth/callback` | Supabase auth redirect handler |
 
@@ -237,6 +238,8 @@ Onboarding and Settings call `/api/email/setup/readiness` before rendering mailb
 
 UI code must gate connection methods from this model. A saved record in `email_connections` is not treated as connected unless the runtime status is `active` for the relevant direction.
 
+If no email adapter is operational, onboarding does not render mailbox connection choices. It renders test inbox / demo mode, which creates a manual inbound conversation through `/api/conversations` so the user can test the inbox, SLA, workflow, and AI draft loop without an email integration.
+
 Session validation in `proxy.ts` uses `supabase.auth.getUser()` — this validates the JWT against the Supabase server on every protected request, not just locally.
 
 ### Authorization (Compatibility RBAC + Capabilities)
@@ -355,7 +358,7 @@ Downstream effects after successful inbound processing:
 
 ### Mailbox Adapters
 
-Work Hat connects to Gmail via OAuth 2.0. Each org can connect one or more Gmail accounts via `/api/email/gmail/connect` -> `/api/email/gmail/callback`; `/api/oauth/google/start` is a compatibility alias that forwards into the same start route.
+Work Hat connects to Gmail via OAuth 2.0. Each org can connect one or more Gmail accounts via `/api/oauth/google/start` -> `/api/oauth/google/callback`. Legacy `/api/email/gmail/connect` and `/api/email/gmail/callback` routes remain as compatibility aliases, but new UI and Google Cloud configuration must use the canonical OAuth routes.
 
 Token and credential storage: Gmail access/refresh tokens and saved mailbox/app-password/IMAP credentials are encrypted with AES-256-GCM (`lib/email-connector/encryption.ts`) before being written to `email_connections`. The encryption key is `EMAIL_TOKEN_ENCRYPTION_KEY` (32-byte base64). Custom inbound webhook tokens do not use this key because only one-way token hashes are stored.
 
@@ -453,7 +456,6 @@ SUPABASE_SERVICE_ROLE_KEY=          # Must begin with sb_secret_... (new format)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 EMAIL_TOKEN_ENCRYPTION_KEY=         # openssl rand -base64 32; required for Gmail OAuth tokens and saved mailbox credentials
-GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=false # Set true only after https://<app-host>/api/email/gmail/callback is in Google authorized redirect URIs
 GOOGLE_PUBSUB_TOPIC=                # projects/{id}/topics/{name}
 
 # OpenAI
@@ -470,6 +472,7 @@ STRIPE_PRICE_SCALE_MONTHLY=
 STRIPE_PRICE_SCALE_ANNUAL=
 
 # App
+APP_BASE_URL=https://work-hat.com    # Canonical OAuth base URL; generates https://work-hat.com/api/oauth/google/callback
 NEXT_PUBLIC_APP_URL=https://work-hat.com
 ```
 

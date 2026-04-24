@@ -110,15 +110,15 @@ Inbound emails not appearing or approved replies fail to send
 ├─ If setup options are disabled or connection buttons do nothing
 │  ├─ Open Settings -> Channels -> Admin setup health
 │  ├─ Check /api/system/setup-health as an admin
-│  └─ Confirm normal users only see user-safe setup messages
+│  └─ Confirm normal users see test inbox / demo mode when no adapter is operational
 │
 ├─ For Gmail
-│  ├─ Are GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED set?
-│  ├─ Does the Google OAuth web client allow the exact https://<app-host>/api/email/gmail/callback shown in Admin setup health?
+│  ├─ Are GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and APP_BASE_URL set?
+│  ├─ Does the Google OAuth web client allow the exact https://work-hat.com/api/oauth/google/callback shown in Admin setup health?
 │  ├─ Is Gmail API responding?
 │  │  └─ Rate limited? → Back off, retry after 60s
 │  ├─ Is OAuth token expired?
-│  │  └─ YES → User must re-authenticate via /api/email/gmail/connect
+│  │  └─ YES → User must re-authenticate via /api/oauth/google/start
 │  └─ Is webhook delivery failing?
 │     └─ Check Pub/Sub delivery status
 │
@@ -169,10 +169,11 @@ Inbound emails not appearing or approved replies fail to send
 
    Expected checks:
    - `summary.googleOAuthConfigured = true` before offering Gmail OAuth.
-   - `summary.googleRedirectUriConfirmed = true`; otherwise Google may return `redirect_uri_mismatch`.
+   - `summary.googleRedirectUri = "https://work-hat.com/api/oauth/google/callback"`; add that exact value to Google Cloud or Google may return `redirect_uri_mismatch`.
    - `summary.encryptionConfigured = true` before saving OAuth tokens or mailbox credentials.
    - `summary.serverDatabaseConfigured = true` before custom inbound or credential validation.
    - `summary.activeInboundAdapterAvailable = true` before treating onboarding as inbound-ready.
+   - If no adapter is operational, verify onboarding can create a test inbox conversation instead of showing mailbox setup cards.
 
 3. **For IMAP/SMTP inbound, run a manual poll through the app/API:**
    ```bash
@@ -213,7 +214,7 @@ Inbound emails not appearing or approved replies fail to send
    ```
 
 10. **If token expired, user must re-authenticate:**
-   - Direct user to Settings -> Channels, `/api/email/gmail/connect`, or the compatibility alias `/api/oauth/google/start`
+   - Direct user to Settings -> Channels or `/api/oauth/google/start`
    - They'll see "Gmail is disconnected" message
    - Click "Reconnect Gmail"
 

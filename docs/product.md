@@ -37,7 +37,8 @@ The current platform includes:
 - Self-serve account creation, password login, forgot-password/reset flow, and post-signup organization creation or invite activation.
 - Work Hat user identity is separate from the managed mailbox identity. A user can sign in as `owner@example.com` and connect `support@example.com` as the mailbox Work Hat reads and replies from.
 - Email conversations from Gmail OAuth, mailbox password, app password, IMAP/SMTP, or advanced custom inbound webhook channels. Gmail OAuth now performs token persistence, active mailbox status, initial recent-message import, and optional Pub/Sub watch setup as part of the connection flow.
-- Onboarding and Settings present only mailbox connection choices the deployment can actually support. OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP are gated by setup readiness; successful setup must validate into an active runtime connection before the workspace is treated as inbound-ready.
+- Onboarding and Settings present only mailbox connection choices the deployment can actually support. OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP are gated by setup readiness; unsupported methods are hidden instead of shown as broken options.
+- If no email adapter is operational, onboarding shows test inbox / demo mode so users can create a manual inbound conversation and test inbox, workflow, SLA, and AI draft behavior without email integration.
 - Custom inbound webhook/API setup remains available under advanced/developer setup for relays and custom parsers.
 - Approved outbound replies use the active mailbox adapter when outbound is enabled, while human approval remains mandatory.
 - AI draft generation with non-null prompt versions.

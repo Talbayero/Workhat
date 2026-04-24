@@ -395,9 +395,10 @@ The admin UI for this data is `/audit`. The page and API both call `src/lib/audi
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/email/gmail/connect` | **Public** | Initiate Gmail OAuth flow |
-| `GET` | `/api/oauth/google/start` | **Public** | Compatibility alias for Gmail OAuth start |
-| `GET` | `/api/email/gmail/callback` | **Public** | OAuth callback — exchanges code for tokens |
+| `GET` | `/api/oauth/google/start` | **Public** | Initiate Gmail OAuth flow |
+| `GET` | `/api/oauth/google/callback` | **Public** | Canonical OAuth callback; exchanges code for tokens |
+| `GET` | `/api/email/gmail/connect` | **Public** | Backward-compatible OAuth start alias |
+| `GET` | `/api/email/gmail/callback` | **Public** | Backward-compatible OAuth callback alias |
 | `POST` | `/api/email/gmail/push` | **Public** (token-verified) | Pub/Sub push notification receiver |
 | `POST` | `/api/email/gmail/sync` | admin/manager | Manual inbox sync |
 | `POST` | `/api/email/gmail/watch` | admin/manager | Register a Gmail watch subscription |
@@ -489,13 +490,14 @@ After an agent edits and sends an AI draft, `src/lib/edit-analysis.ts` analyzes 
 ```
 User clicks "Connect Gmail"
         │
-GET /api/email/gmail/connect
-  (or GET /api/oauth/google/start compatibility alias)
+GET /api/oauth/google/start
+  (legacy /api/email/gmail/connect forwards here)
   → Generates state nonce → stores in cookie
   → Redirects to Google OAuth consent screen
         │
 Google redirects back to:
-GET /api/email/gmail/callback?code=...&state=...
+GET /api/oauth/google/callback?code=...&state=...
+  (legacy /api/email/gmail/callback remains as a compatibility alias)
   → Validates state cookie (CSRF protection)
   → Exchanges code for access + refresh tokens
   → Encrypts tokens with AES-256-GCM
@@ -692,8 +694,8 @@ This runs daily at 07:00 UTC. The route is protected by `Authorization: Bearer <
 1. Create a Google Cloud project.
 2. Enable the **Gmail API** and **Cloud Pub/Sub API**.
 3. Create an OAuth 2.0 Web Client ID. Add your production and development redirect URIs:
-   - `https://your-domain.com/api/email/gmail/callback`
-   - `http://localhost:3000/api/email/gmail/callback`
+   - `https://your-domain.com/api/oauth/google/callback`
+   - `http://localhost:3000/api/oauth/google/callback`
 4. Create a Pub/Sub topic (e.g. `projects/my-project/topics/gmail-push`).
 5. Create a Pub/Sub push subscription that delivers to `https://your-domain.com/api/email/gmail/push?token=<GMAIL_PUSH_TOKEN>`.
 6. Grant the Gmail API service account (`gmail-api-push@system.gserviceaccount.com`) the `pubsub.topics.publish` role on your topic.

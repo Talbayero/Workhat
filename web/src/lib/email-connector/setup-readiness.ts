@@ -25,7 +25,8 @@ export type SetupReadiness = {
   summary: {
     googleOAuthConfigured: boolean;
     googleRedirectUri: string | null;
-    googleRedirectUriConfirmed: boolean;
+    googleOAuthRoutesAvailable: boolean;
+    canonicalBaseUrlConfigured: boolean;
     encryptionConfigured: boolean;
     serverDatabaseConfigured: boolean;
     credentialMailboxConfigured: boolean;
@@ -59,13 +60,20 @@ export function getEmailSetupReadiness(): SetupReadiness {
   const encryptionConfigured = hasEnv("EMAIL_TOKEN_ENCRYPTION_KEY");
   const googleClientConfigured = hasEnv("GOOGLE_CLIENT_ID");
   const googleSecretConfigured = hasEnv("GOOGLE_CLIENT_SECRET");
-  const googleRedirectUriConfirmed = process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED === "true";
-  const googleRedirectUri = process.env.NEXT_PUBLIC_APP_URL
-    ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/email/gmail/callback`
+  const canonicalBaseUrl = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
+  const canonicalBaseUrlConfigured = Boolean(canonicalBaseUrl);
+  const googleRedirectUri = canonicalBaseUrl
+    ? `${canonicalBaseUrl.replace(/\/$/, "")}/api/oauth/google/callback`
     : null;
+  const googleOAuthRoutesAvailable = true;
   const redisConfigured = hasEnv("UPSTASH_REDIS_REST_URL") && hasEnv("UPSTASH_REDIS_REST_TOKEN");
 
-  const googleOAuthConfigured = googleClientConfigured && googleSecretConfigured && encryptionConfigured && googleRedirectUriConfirmed;
+  const googleOAuthConfigured =
+    googleClientConfigured &&
+    googleSecretConfigured &&
+    encryptionConfigured &&
+    canonicalBaseUrlConfigured &&
+    googleOAuthRoutesAvailable;
   const credentialMailboxConfigured = adminConfigured && encryptionConfigured;
   const customInboundConfigured = adminConfigured;
 
@@ -73,12 +81,10 @@ export function getEmailSetupReadiness(): SetupReadiness {
     check("GOOGLE_CLIENT_ID", "Google OAuth client ID", "Required before Gmail OAuth can be offered to users."),
     check("GOOGLE_CLIENT_SECRET", "Google OAuth client secret", "Required before Gmail OAuth can exchange authorization codes."),
     {
-      key: "GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED",
-      label: "Google OAuth redirect URI confirmed",
-      status: googleRedirectUriConfirmed ? "pass" : "fail",
-      message: googleRedirectUri
-        ? `Add ${googleRedirectUri} to the Google OAuth client's authorized redirect URIs, then set GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true.`
-        : "Set NEXT_PUBLIC_APP_URL, add its Gmail callback URL to Google OAuth authorized redirect URIs, then set GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true.",
+      key: "APP_BASE_URL",
+      label: "Canonical app base URL",
+      status: canonicalBaseUrlConfigured ? "pass" : "fail",
+      message: "Required to generate one stable Google OAuth redirect URI.",
       adminOnly: true,
     },
     check("EMAIL_TOKEN_ENCRYPTION_KEY", "Mailbox credential encryption", "Required to store Gmail tokens and mailbox credentials safely."),
@@ -113,8 +119,8 @@ export function getEmailSetupReadiness(): SetupReadiness {
           status: "unavailable",
           userMessage: "Gmail OAuth is not available for this workspace yet.",
           adminMessage: googleRedirectUri
-            ? `Set Google OAuth env vars, add ${googleRedirectUri} to Google authorized redirect URIs, and confirm with GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true.`
-            : "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, NEXT_PUBLIC_APP_URL, and GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true after registering the redirect URI.",
+            ? `Set Google OAuth env vars and add ${googleRedirectUri} to Google authorized redirect URIs.`
+            : "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and APP_BASE_URL.",
         },
     mailbox_password: credentialMailboxConfigured
       ? {
@@ -181,7 +187,8 @@ export function getEmailSetupReadiness(): SetupReadiness {
     summary: {
       googleOAuthConfigured,
       googleRedirectUri,
-      googleRedirectUriConfirmed,
+      googleOAuthRoutesAvailable,
+      canonicalBaseUrlConfigured,
       encryptionConfigured,
       serverDatabaseConfigured: adminConfigured,
       credentialMailboxConfigured,

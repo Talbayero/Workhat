@@ -9,20 +9,30 @@ Work Hat presents mailbox setup as four buyer-friendly connection types:
 
 Advanced/developer setup also supports custom inbound webhook/API channels for internal relays, SMTP parsing services, and future Postmark-style inbound providers. The four mailbox choices are live runtime paths, not saved placeholders: Gmail OAuth uses the Gmail adapter, and mailbox password, app password, and IMAP/SMTP use the IMAP/SMTP adapter for inbound polling and approved outbound replies.
 
-Gmail OAuth can be started through `/api/email/gmail/connect` or the compatibility alias `/api/oauth/google/start`. Both routes redirect to Google and return to `/api/email/gmail/callback`.
+Gmail OAuth starts through `/api/oauth/google/start` and returns to `/api/oauth/google/callback`. Legacy `/api/email/gmail/connect` and `/api/email/gmail/callback` remain as compatibility aliases, but new setup and Google Cloud configuration must use the canonical OAuth routes.
+
+Current Gmail OAuth scopes:
+
+- `openid`
+- `email`
+- `profile`
+- `https://www.googleapis.com/auth/gmail.readonly`
+- `https://www.googleapis.com/auth/gmail.send`
 
 ## Self-Serve Setup Readiness
 
-Mailbox setup is gated by `/api/email/setup/readiness`. The UI must disable unavailable methods instead of sending users into broken setup paths.
+Mailbox setup is gated by `/api/email/setup/readiness`. The UI must hide unavailable methods instead of sending users into broken setup paths or showing non-functional choices as primary options.
 
 Availability rules:
 
-- OAuth / xOAuth is available only when `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `EMAIL_TOKEN_ENCRYPTION_KEY` are configured and `GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true` confirms the app callback URL is registered in Google Cloud.
+- OAuth / xOAuth is available only when `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `EMAIL_TOKEN_ENCRYPTION_KEY`, and `APP_BASE_URL` are configured. Admin diagnostics expose the exact callback URL to register in Google Cloud.
 - Mailbox login and password, app password, and IMAP/SMTP are available only when credential encryption and the server database key are configured.
 - Advanced custom inbound is available when the server database key is configured because webhook tokens are stored as one-way hashes, not decryptable secrets.
 - A saved `email_connections` row is not a connected mailbox until validation marks it `active`.
 
-Non-admin users receive only user-safe messages, such as "Gmail OAuth is not available for this workspace yet." Admins can see exact missing setup values in Settings -> Channels and through `/api/system/setup-health`.
+When no adapter is operational, onboarding shows Test inbox / demo mode. That path creates a manual inbound conversation through `/api/conversations`, so users can test the inbox, SLA refresh, workflow events, and AI draft generation without pretending email is connected.
+
+Non-admin users receive only user-safe messages. Admins can see exact missing setup values in Settings -> Channels and through `/api/system/setup-health`.
 
 Work Hat login identity and mailbox identity are separate. A user signs in to Work Hat with their account email, then connects the mailbox Work Hat should manage. Those can be different addresses.
 
@@ -184,7 +194,7 @@ Operators should check:
 1. Apply migrations through `0039_mailbox_adapter_runtime.sql`.
 2. Sign in as an admin or manager with `integrations.manage`.
 3. Open onboarding Step 2 or Settings -> Channels and confirm the four mailbox connection types appear first.
-4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `EMAIL_TOKEN_ENCRYPTION_KEY` before using Gmail OAuth. Add `https://<app-host>/api/email/gmail/callback` to the Google OAuth web client redirect URIs, then set `GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true`.
+4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `EMAIL_TOKEN_ENCRYPTION_KEY`, and `APP_BASE_URL=https://work-hat.com` before using Gmail OAuth. Add `https://work-hat.com/api/oauth/google/callback` to the Google OAuth web client authorized redirect URIs.
 5. Set `GOOGLE_PUBSUB_TOPIC` and `GMAIL_PUSH_TOKEN` when Gmail live watch/Pub/Sub ingestion is required; otherwise manual sync and polling remain available.
 6. Connect Gmail through OAuth, or configure an app-password/IMAP mailbox such as Zoho.
 7. Confirm the saved connection becomes `active`; if it becomes `error`, use the displayed provider/auth/TLS diagnostic to correct the setup.

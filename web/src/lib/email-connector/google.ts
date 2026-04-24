@@ -4,6 +4,9 @@ import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
 export const GMAIL_PROVIDER = "gmail" as const;
 
 export const GMAIL_SCOPES = [
+  "openid",
+  "email",
+  "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
 ];
@@ -73,26 +76,18 @@ export type GmailHistoryResponse = {
 };
 
 export function getAppBaseUrl(req: NextRequest) {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ||
-    `${req.nextUrl.protocol}//${req.nextUrl.host}`
-  ).replace(/\/$/, "");
+  const configured = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
+  if (configured) return configured.replace(/\/$/, "");
+
+  if (process.env.NODE_ENV !== "production") {
+    return `${req.nextUrl.protocol}//${req.nextUrl.host}`.replace(/\/$/, "");
+  }
+
+  throw new Error("Canonical app URL is not configured by your workspace admin.");
 }
 
 export function getGoogleRedirectUri(req: NextRequest) {
-  return `${getAppBaseUrl(req)}/api/email/gmail/callback`;
-}
-
-export function isGoogleRedirectUriConfirmed() {
-  return process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED === "true";
-}
-
-export function assertGoogleRedirectUriConfirmed(redirectUri: string) {
-  if (!isGoogleRedirectUriConfirmed()) {
-    throw new Error(
-      `Google OAuth redirect URI is not confirmed. Add ${redirectUri} to the Google OAuth client's authorized redirect URIs, then set GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true.`
-    );
-  }
+  return `${getAppBaseUrl(req)}/api/oauth/google/callback`;
 }
 
 export function assertGoogleOAuthConfig() {
@@ -116,7 +111,6 @@ export function buildGmailAuthUrl({
   state: string;
 }) {
   const { clientId } = assertGoogleOAuthConfig();
-  assertGoogleRedirectUriConfirmed(redirectUri);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,

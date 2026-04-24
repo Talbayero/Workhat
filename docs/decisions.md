@@ -648,7 +648,7 @@ Work Hat needs internal dogfooding and demos that work without Google Workspace,
 - SMTP send is available for active outbound-enabled credential connections, but the human approval gate in the reply route remains unchanged.
 - Serverless deployments should use `/api/email/mailbox/poll` with `CRON_SECRET` or an external scheduler for recurring IMAP polling. The adapter does not use long-lived IMAP IDLE connections.
 - Provider-specific limitations, such as Gmail/iCloud/Outlook requiring app passwords for direct password flows, are surfaced as operator diagnostics rather than hidden setup failures.
-- Gmail OAuth remains the canonical OAuth/xOAuth path. `/api/email/gmail/connect` starts the flow, `/api/oauth/google/start` is a compatibility alias, and the callback persists encrypted tokens, marks the mailbox active, runs an initial recent-message import, and registers Pub/Sub watch when configured.
+- Gmail OAuth remains the canonical OAuth/xOAuth path. `/api/oauth/google/start` starts the flow, `/api/oauth/google/callback` is the canonical redirect URI, and the callback persists encrypted tokens, marks the mailbox active, runs an initial recent-message import, and registers Pub/Sub watch when configured. Legacy `/api/email/gmail/*` routes remain only as compatibility aliases.
 
 ---
 
@@ -673,8 +673,9 @@ Self-serve product behavior should be based on what the deployment can actually 
 
 - Work Hat login identity and managed mailbox identity are documented and labeled separately.
 - Signup, login, forgot-password, and reset-password use user-facing validation and Supabase Auth messages.
-- Gmail OAuth is unavailable in the UI until Google OAuth credentials, mailbox-token encryption, and authorized redirect URI confirmation are configured.
+- Gmail OAuth is unavailable in the UI until Google OAuth credentials, mailbox-token encryption, and a canonical app base URL are configured. Admin diagnostics expose the exact redirect URI to register in Google Cloud.
 - Password, app-password, and IMAP/SMTP methods are unavailable until secure credential storage and server database access are configured.
+- Non-operational email methods are hidden. When no adapter is operational, onboarding offers test inbox / demo mode for manual inbound conversations and AI testing.
 - A saved mailbox row never counts as connected unless runtime status is `active`.
 - Raw environment-variable names and database/provider internals are limited to admin diagnostics and logs.
 

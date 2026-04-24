@@ -97,7 +97,8 @@ type SetupHealth = {
   summary: {
     googleOAuthConfigured: boolean;
     googleRedirectUri: string | null;
-    googleRedirectUriConfirmed: boolean;
+    googleOAuthRoutesAvailable: boolean;
+    canonicalBaseUrlConfigured: boolean;
     encryptionConfigured: boolean;
     serverDatabaseConfigured: boolean;
     credentialMailboxConfigured: boolean;
@@ -1376,8 +1377,9 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
               {setupHealth && (
                 <div className="grid gap-3 md:grid-cols-3">
                   <ConnectorMetric label="Google OAuth configured" value={setupHealth.summary.googleOAuthConfigured ? "Yes" : "No"} />
-                  <ConnectorMetric label="Google redirect confirmed" value={setupHealth.summary.googleRedirectUriConfirmed ? "Yes" : "No"} />
-                  <ConnectorMetric label="Google redirect URI" value={setupHealth.summary.googleRedirectUri ?? "Set NEXT_PUBLIC_APP_URL"} />
+                  <ConnectorMetric label="Google OAuth routes available" value={setupHealth.summary.googleOAuthRoutesAvailable ? "Yes" : "No"} />
+                  <ConnectorMetric label="Canonical base URL configured" value={setupHealth.summary.canonicalBaseUrlConfigured ? "Yes" : "No"} />
+                  <ConnectorMetric label="Google redirect URI" value={setupHealth.summary.googleRedirectUri ?? "Set APP_BASE_URL"} />
                   <ConnectorMetric label="Encryption key configured" value={setupHealth.summary.encryptionConfigured ? "Yes" : "No"} />
                   <ConnectorMetric label="Server database key configured" value={setupHealth.summary.serverDatabaseConfigured ? "Yes" : "No"} />
                   <ConnectorMetric label="Redis configured" value={setupHealth.summary.redisConfigured ? "Yes" : "No"} />

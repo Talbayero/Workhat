@@ -521,7 +521,7 @@ Legacy `POSTMARK_INBOUND_TOKEN` is accepted only when a channel has no per-chann
 
 OAuth tokens, mailbox passwords, app passwords, and IMAP/SMTP passwords are encrypted before being written to `email_connections`. The shared encryption layer uses `EMAIL_TOKEN_ENCRYPTION_KEY`, and decrypted values must only exist in memory inside trusted server routes or `lib/email-connector/adapters/` runtime code.
 
-Gmail OAuth starts at `/api/email/gmail/connect` or compatibility alias `/api/oauth/google/start`, then returns to `/api/email/gmail/callback`. The start route sets a short-lived HTTP-only state cookie and the callback rejects missing or mismatched state before exchanging a code. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `EMAIL_TOKEN_ENCRYPTION_KEY`, and `GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true` are required before Gmail can be offered in the UI.
+Gmail OAuth starts at `/api/oauth/google/start`, then returns to `/api/oauth/google/callback`. Legacy `/api/email/gmail/*` routes remain only as compatibility aliases. The start route sets a short-lived HTTP-only state cookie and the callback rejects missing or mismatched state before exchanging a code. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `EMAIL_TOKEN_ENCRYPTION_KEY`, and `APP_BASE_URL` are required before Gmail can be offered in the UI. Admin diagnostics expose the exact redirect URI that must be registered in Google Cloud.
 
 Security controls:
 

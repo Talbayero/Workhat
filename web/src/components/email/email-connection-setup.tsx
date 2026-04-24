@@ -64,6 +64,13 @@ type ImapSmtpForm = {
   smtpSsl: boolean;
 };
 
+type TestInboxForm = {
+  contactEmail: string;
+  contactName: string;
+  subject: string;
+  firstMessage: string;
+};
+
 const PROVIDER_LABELS: Record<string, string> = {
   gmail: "Gmail",
   microsoft365: "Microsoft 365",
@@ -169,6 +176,15 @@ function emptyImapSmtpForm(): ImapSmtpForm {
   };
 }
 
+function emptyTestInboxForm(): TestInboxForm {
+  return {
+    contactEmail: "customer@example.com",
+    contactName: "Demo Customer",
+    subject: "Question about my account",
+    firstMessage: "Hi team, I need help understanding the next step for my account. Can you point me in the right direction?",
+  };
+}
+
 export function EmailConnectionSetup({
   canEdit = true,
   returnTo,
@@ -181,7 +197,9 @@ export function EmailConnectionSetup({
   const [mailbox, setMailbox] = useState<MailboxForm>(emptyMailboxForm);
   const [appPassword, setAppPassword] = useState<AppPasswordForm>(emptyAppPasswordForm);
   const [imapSmtp, setImapSmtp] = useState<ImapSmtpForm>(emptyImapSmtpForm);
+  const [testInbox, setTestInbox] = useState<TestInboxForm>(emptyTestInboxForm);
   const [oauthStarting, setOauthStarting] = useState(false);
+  const [creatingDemo, setCreatingDemo] = useState(false);
   const [localMessage, setLocalMessage] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [readiness, setReadiness] = useState<SetupReadinessResponse | null>(null);
   const [readinessLoading, setReadinessLoading] = useState(true);
@@ -207,12 +225,47 @@ export function EmailConnectionSetup({
     return readiness?.readiness?.methods?.[method] ?? {
       key: method,
       status: "unavailable" as const,
-      userMessage: readinessLoading ? "Checking availability..." : "This connection method is not available yet.",
+      userMessage: readinessLoading ? "Checking availability..." : "This method is disabled because the required adapter is not configured.",
     };
   }
 
   function isMethodAvailable(method: EmailConnectionMethod) {
     return methodReadiness(method).status === "available";
+  }
+
+  const availableMethods = METHODS.filter((method) => isMethodAvailable(method.key));
+  const hasOperationalAdapter = availableMethods.length > 0;
+  const selectedMethodAvailable = isMethodAvailable(selected);
+  const selectedForRender = selectedMethodAvailable ? selected : availableMethods[0]?.key;
+
+  async function createTestConversation() {
+    setCreatingDemo(true);
+    setLocalMessage(null);
+    onError?.("");
+
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(testInbox),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; conversationId?: string };
+      if (!response.ok || !payload.conversationId) {
+        throw new Error(payload.error ?? "Unable to create a test inbox conversation.");
+      }
+
+      const message = "Test inbox conversation created. You can now open it, generate an AI draft, and test the workflow without email integration.";
+      setLocalMessage({ type: "success", message });
+      onNotice?.(message);
+      await onSaved?.();
+      window.location.assign(`/inbox/${payload.conversationId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to create a test inbox conversation.";
+      setLocalMessage({ type: "error", message });
+      onError?.(message);
+    } finally {
+      setCreatingDemo(false);
+    }
   }
 
   async function saveConnection(method: Exclude<EmailConnectionMethod, "oauth">) {
@@ -312,46 +365,51 @@ export function EmailConnectionSetup({
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {METHODS.map((method) => (
-          (() => {
-            const status = methodReadiness(method.key);
-            const available = status.status === "available";
-            return (
-          <button
-            key={method.key}
-            type="button"
-            disabled={!available && selected !== method.key}
-            onClick={() => setSelected(method.key)}
-            className={`rounded-[18px] border p-4 text-left transition-colors ${
-              selected === method.key
-                ? "border-[var(--moss)] bg-[rgba(144,50,61,0.06)]"
-                : "border-[var(--line)] bg-[rgba(255,255,255,0.02)] hover:border-[var(--line-strong)]"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="eyebrow text-[8px] text-[var(--muted)]">{method.eyebrow}</p>
-              <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
-                available ? "bg-emerald-400/10 text-emerald-300" : "bg-[rgba(144,50,61,0.14)] text-[rgba(255,190,190,0.9)]"
-              }`}>
-                {readinessLoading ? "Checking" : available ? "Available" : "Unavailable"}
-              </span>
-            </div>
-            <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{method.title}</p>
-            <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{method.body}</p>
-            {!available && (
-              <p className="mt-2 text-xs leading-5 text-[rgba(255,190,190,0.9)]">
-                {status.adminMessage ?? status.userMessage}
-              </p>
-            )}
-          </button>
-            );
-          })()
-        ))}
-      </div>
+      {readinessLoading && (
+        <div className="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4 text-xs text-[var(--muted)]">
+          Checking mailbox adapter availability...
+        </div>
+      )}
 
-      <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-        {selected === "oauth" && (
+      {!readinessLoading && !hasOperationalAdapter && (
+        <DemoInboxPanel
+          canEdit={canEdit}
+          form={testInbox}
+          creating={creatingDemo}
+          onChange={(patch) => setTestInbox((prev) => ({ ...prev, ...patch }))}
+          onSubmit={createTestConversation}
+          setupMessage={readiness?.readiness?.summary?.nextAction}
+        />
+      )}
+
+      {!readinessLoading && hasOperationalAdapter && (
+        <>
+          <div className="grid gap-3 md:grid-cols-2">
+            {availableMethods.map((method) => (
+              <button
+                key={method.key}
+                type="button"
+                onClick={() => setSelected(method.key)}
+                className={`rounded-[18px] border p-4 text-left transition-colors ${
+                  selectedForRender === method.key
+                    ? "border-[var(--moss)] bg-[rgba(144,50,61,0.06)]"
+                    : "border-[var(--line)] bg-[rgba(255,255,255,0.02)] hover:border-[var(--line-strong)]"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="eyebrow text-[8px] text-[var(--muted)]">{method.eyebrow}</p>
+                  <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[9px] font-medium text-emerald-300">
+                    Available
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-semibold text-[var(--foreground)]">{method.title}</p>
+                <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{method.body}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+        {selectedForRender === "oauth" && (
           <div className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -361,19 +419,13 @@ export function EmailConnectionSetup({
                 </p>
               </div>
               {canEdit ? (
-                isMethodAvailable("oauth") ? (
                   <Link
-                    href={`/api/email/gmail/connect?returnTo=${encodeURIComponent(returnTo)}`}
+                    href={`/api/oauth/google/start?returnTo=${encodeURIComponent(returnTo)}`}
                     onClick={() => setOauthStarting(true)}
                     className="w-fit rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
                   >
                     {oauthStarting ? "Opening Google..." : "Connect Gmail"}
                   </Link>
-                ) : (
-                  <span className="w-fit rounded-full border border-[rgba(144,50,61,0.35)] px-4 py-2 text-xs text-[rgba(255,190,190,0.9)]">
-                    Gmail unavailable
-                  </span>
-                )
               ) : (
                 <span className="w-fit rounded-full border border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
                   Admin access required
@@ -384,15 +436,10 @@ export function EmailConnectionSetup({
               <p className="text-xs font-medium">Outlook / Microsoft 365</p>
               <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Microsoft OAuth is not enabled yet. Use app password or IMAP/SMTP for Microsoft mailboxes when those methods are available.</p>
             </div>
-            {!isMethodAvailable("oauth") && (
-              <div className="rounded-[14px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs leading-5 text-[rgba(255,210,210,0.9)]">
-                {methodReadiness("oauth").adminMessage ?? methodReadiness("oauth").userMessage}
-              </div>
-            )}
           </div>
         )}
 
-        {selected === "mailbox_password" && (
+        {selectedForRender === "mailbox_password" && (
           <form
             className="space-y-3"
             onSubmit={(event) => {
@@ -417,7 +464,7 @@ export function EmailConnectionSetup({
           </form>
         )}
 
-        {selected === "app_password" && (
+        {selectedForRender === "app_password" && (
           <form
             className="space-y-3"
             onSubmit={(event) => {
@@ -445,7 +492,7 @@ export function EmailConnectionSetup({
           </form>
         )}
 
-        {selected === "imap_smtp" && (
+        {selectedForRender === "imap_smtp" && (
           <form
             className="space-y-3"
             onSubmit={(event) => {
@@ -498,7 +545,79 @@ export function EmailConnectionSetup({
             {localMessage.message}
           </div>
         )}
+          </div>
+        </>
+      )}
+
+      {localMessage && !hasOperationalAdapter && (
+        <div
+          className={`rounded-[14px] border px-4 py-3 text-xs leading-5 ${
+            localMessage.type === "success"
+              ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+              : "border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] text-[rgba(255,210,210,0.9)]"
+          }`}
+        >
+          {localMessage.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DemoInboxPanel({
+  canEdit,
+  form,
+  creating,
+  setupMessage,
+  onChange,
+  onSubmit,
+}: {
+  canEdit: boolean;
+  form: TestInboxForm;
+  creating: boolean;
+  setupMessage?: string;
+  onChange: (patch: Partial<TestInboxForm>) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="eyebrow text-[8px] text-[var(--muted)]">Test inbox / demo mode</p>
+          <p className="mt-1 text-sm font-semibold">Create a manual inbound conversation</p>
+          <p className="mt-2 max-w-xl text-xs leading-5 text-[var(--muted)]">
+            No live email adapter is currently active. Use a test conversation to exercise the inbox, SLA, workflow events, and AI draft generation without connecting a mailbox.
+          </p>
+          {setupMessage && <p className="mt-2 text-xs leading-5 text-[rgba(255,210,210,0.9)]">{setupMessage}</p>}
+        </div>
+        <span className="w-fit rounded-full border border-[var(--line)] px-3 py-1 text-[10px] text-[var(--muted)]">
+          Email setup skipped
+        </span>
       </div>
+
+      <form
+        className="mt-4 space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <TextField label="Customer email" type="email" value={form.contactEmail} onChange={(contactEmail) => onChange({ contactEmail })} />
+          <TextField label="Customer name" value={form.contactName} onChange={(contactName) => onChange({ contactName })} />
+          <TextField label="Subject" value={form.subject} onChange={(subject) => onChange({ subject })} />
+        </div>
+        <label className="flex flex-col gap-1 text-xs font-medium text-[var(--muted)]">
+          First message
+          <textarea
+            value={form.firstMessage}
+            onChange={(event) => onChange({ firstMessage: event.target.value })}
+            rows={5}
+            className="rounded-lg border border-[var(--line)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)]"
+          />
+        </label>
+        <SubmitButton disabled={!canEdit || creating}>{creating ? "Creating..." : "Use test inbox / demo mode"}</SubmitButton>
+      </form>
     </div>
   );
 }

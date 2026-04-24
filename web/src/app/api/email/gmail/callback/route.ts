@@ -25,6 +25,13 @@ const CONNECTOR_NOT_READY_MESSAGE =
   "Google OAuth is not configured by your workspace admin.";
 
 type ProviderMetadata = Record<string, unknown>;
+type GoogleOAuthState = {
+  nonce?: string;
+  orgId?: string;
+  userId?: string;
+  returnTo?: string;
+  iat?: number;
+};
 
 function getSafeReturnTo(req: NextRequest) {
   const returnTo = req.cookies.get(RETURN_TO_COOKIE)?.value;
@@ -57,18 +64,37 @@ function toOperatorError(error: unknown) {
   if (message.includes("Google token exchange failed")) {
     return "Google token exchange failed. Verify the OAuth client secret and authorized redirect URI.";
   }
+  if (message.includes("redirect_uri_mismatch")) {
+    return "Google rejected the OAuth redirect URI. Add the exact callback URL from Admin setup health to Google Cloud.";
+  }
+  if (message.includes("access_denied")) {
+    return "Google sign-in was cancelled or access was not approved.";
+  }
+  if (message.includes("not allowed") || message.includes("unauthorized_client")) {
+    return "This Google account is not allowed to use the OAuth app. Add it as a test user or publish the app in Google Cloud.";
+  }
   if (message.includes("Gmail profile fetch failed")) {
     return "Gmail connected to Google but Work Hat could not read the mailbox profile. Verify Gmail API access and requested scopes.";
   }
   return message;
 }
 
+function decodeState(value: string): GoogleOAuthState | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as GoogleOAuthState;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const providerError = params.get("error");
   if (providerError) {
+    const description = params.get("error_description");
     return connectorRedirect(req, {
-      emailError: "Google sign-in was cancelled or access was not approved. Please try again when you are ready.",
+      emailError: toOperatorError(new Error([providerError, description].filter(Boolean).join(": "))),
     });
   }
 
@@ -76,6 +102,10 @@ export async function GET(req: NextRequest) {
   const expectedState = req.cookies.get(STATE_COOKIE)?.value;
   if (!state || !expectedState || state !== expectedState) {
     return connectorRedirect(req, { emailError: "Gmail connection expired. Try again." });
+  }
+  const decodedState = decodeState(state);
+  if (!decodedState?.orgId || !decodedState.userId || !decodedState.nonce) {
+    return connectorRedirect(req, { emailError: "Gmail connection state is invalid. Try again." });
   }
 
   const code = params.get("code");
@@ -109,11 +139,16 @@ export async function GET(req: NextRequest) {
       emailError: "Only admins and managers can connect shared inboxes.",
     });
   }
+  if (decodedState.orgId !== appUser.org_id || decodedState.userId !== appUser.id) {
+    return connectorRedirect(req, { emailError: "Gmail connection state does not match your signed-in workspace." });
+  }
 
   try {
+    const redirectUri = getGoogleRedirectUri(req);
+    console.info("[oauth/google/callback] redirect_uri:", redirectUri);
     const token = await exchangeGmailCode({
       code,
-      redirectUri: getGoogleRedirectUri(req),
+      redirectUri,
     });
     const profile = await fetchGmailProfile(token.access_token);
     const email = profile.emailAddress.toLowerCase();
