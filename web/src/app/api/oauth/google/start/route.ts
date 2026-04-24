@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 const STATE_COOKIE = "workhat_gmail_oauth_state";
 const RETURN_TO_COOKIE = "workhat_gmail_oauth_return_to";
 const CONNECTOR_NOT_READY_MESSAGE =
-  "Google OAuth is not configured by your workspace admin.";
+  "Admin setup required: Gmail OAuth is not configured";
 
 function getSafeReturnTo(req: NextRequest) {
   const returnTo = req.nextUrl.searchParams.get("returnTo") ?? req.nextUrl.searchParams.get("next");
@@ -34,13 +34,17 @@ function encodeState(input: { nonce: string; orgId: string; userId: string; retu
 
 function toUserSetupError(error: unknown) {
   if (!(error instanceof Error)) return CONNECTOR_NOT_READY_MESSAGE;
+  const message = error.message.toLowerCase();
   if (error.message.includes("GOOGLE_CLIENT_ID") || error.message.includes("GOOGLE_CLIENT_SECRET")) {
-    return "Google OAuth is missing its client ID or client secret.";
+    return CONNECTOR_NOT_READY_MESSAGE;
   }
-  if (error.message.includes("Canonical app URL")) {
-    return "Google OAuth needs a canonical app URL before it can start.";
+  if (message.includes("canonical app url")) {
+    return CONNECTOR_NOT_READY_MESSAGE;
   }
   if (error.message.includes("Google OAuth is not configured")) {
+    return CONNECTOR_NOT_READY_MESSAGE;
+  }
+  if (error.message.includes("Work Hat platform Google OAuth is not configured")) {
     return CONNECTOR_NOT_READY_MESSAGE;
   }
   return error.message;

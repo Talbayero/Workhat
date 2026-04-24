@@ -1,7 +1,7 @@
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 
-export type SetupMethodKey = "oauth" | "mailbox_password" | "app_password" | "imap_smtp" | "custom_inbound";
-export type SetupAvailability = "available" | "unavailable";
+export type SetupMethodKey = "oauth";
+export type SetupAvailability = "ready" | "not_configured";
 export type SetupCheckStatus = "pass" | "warn" | "fail";
 
 export type SetupReadinessMethod = {
@@ -32,9 +32,11 @@ export type SetupReadiness = {
     credentialMailboxConfigured: boolean;
     customInboundConfigured: boolean;
     redisConfigured: boolean;
+    gmailApiEnabledExpectation: string;
     activeInboundAdapterAvailable: boolean;
     activeOutboundAdapterAvailable: boolean;
     missingRequiredEnv: string[];
+    gmailOAuthState: SetupAvailability;
     nextAction: string;
   };
 };
@@ -72,6 +74,7 @@ export function getEmailSetupReadiness(): SetupReadiness {
     googleClientConfigured &&
     googleSecretConfigured &&
     encryptionConfigured &&
+    adminConfigured &&
     canonicalBaseUrlConfigured &&
     googleOAuthRoutesAvailable;
   const credentialMailboxConfigured = false;
@@ -99,6 +102,15 @@ export function getEmailSetupReadiness(): SetupReadiness {
     },
     check("UPSTASH_REDIS_REST_URL", "Redis URL", "Recommended for production request protection.", false),
     check("UPSTASH_REDIS_REST_TOKEN", "Redis token", "Recommended for production request protection.", false),
+    {
+      key: "GMAIL_API_ENABLED",
+      label: "Gmail API enabled",
+      status: googleClientConfigured && googleSecretConfigured ? "warn" : "fail",
+      message: googleClientConfigured && googleSecretConfigured
+        ? "Platform owner must verify Gmail API is enabled in the Work Hat Google Cloud project."
+        : "Platform Google OAuth must be configured before Gmail API readiness can be verified.",
+      adminOnly: true,
+    },
     check("GOOGLE_PUBSUB_TOPIC", "Gmail live update topic", "Optional. Without it, Gmail still supports manual import but not live watch.", false),
     check("GMAIL_PUSH_TOKEN", "Gmail push token", "Optional unless Gmail live watch is enabled.", false),
   ];
@@ -107,45 +119,22 @@ export function getEmailSetupReadiness(): SetupReadiness {
     .filter((item) => item.status === "fail")
     .map((item) => item.key);
 
+  const gmailOAuthState: SetupAvailability = googleOAuthConfigured ? "ready" : "not_configured";
   const methods: SetupReadiness["methods"] = {
     oauth: googleOAuthConfigured
       ? {
           key: "oauth",
-          status: "available",
-          userMessage: "Gmail OAuth is available.",
+          status: "ready",
+          userMessage: "Ready",
         }
       : {
           key: "oauth",
-          status: "unavailable",
-          userMessage: "Gmail OAuth is not available for this workspace yet.",
+          status: "not_configured",
+          userMessage: "Admin setup required: Gmail OAuth is not configured",
           adminMessage: googleRedirectUri
-            ? `Set Google OAuth env vars and add ${googleRedirectUri} to Google authorized redirect URIs.`
-            : "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and APP_BASE_URL.",
+            ? `Work Hat platform setup must use ${googleRedirectUri} as the authorized callback URI.`
+            : "Set platform Google OAuth, token encryption, and canonical app URL configuration.",
         },
-    mailbox_password: {
-      key: "mailbox_password",
-      status: "unavailable",
-      userMessage: "Mailbox password setup is disabled for the MVP.",
-      adminMessage: "Use Gmail OAuth only. Re-enable credential mailbox setup after the Gmail MVP path is verified end to end.",
-    },
-    app_password: {
-      key: "app_password",
-      status: "unavailable",
-      userMessage: "App-password setup is disabled for the MVP.",
-      adminMessage: "Use Gmail OAuth only. Re-enable app-password setup after the Gmail MVP path is verified end to end.",
-    },
-    imap_smtp: {
-      key: "imap_smtp",
-      status: "unavailable",
-      userMessage: "IMAP/SMTP setup is disabled for the MVP.",
-      adminMessage: "Use Gmail OAuth only. Re-enable IMAP/SMTP after the Gmail MVP path is verified end to end.",
-    },
-    custom_inbound: {
-      key: "custom_inbound",
-      status: "unavailable",
-      userMessage: "Custom inbound setup is disabled for the MVP.",
-      adminMessage: "Use Gmail OAuth only. Keep custom inbound out of self-serve onboarding until the Gmail MVP path is verified.",
-    },
   };
 
   const activeInboundAdapterAvailable = googleOAuthConfigured;
@@ -169,9 +158,11 @@ export function getEmailSetupReadiness(): SetupReadiness {
       credentialMailboxConfigured,
       customInboundConfigured,
       redisConfigured,
+      gmailApiEnabledExpectation: "The Work Hat-owned Google Cloud project must have Gmail API enabled.",
       activeInboundAdapterAvailable,
       activeOutboundAdapterAvailable,
       missingRequiredEnv,
+      gmailOAuthState,
       nextAction,
     },
   };
@@ -201,7 +192,7 @@ export function publicEmailSetupReadiness(readiness: SetupReadiness, includeAdmi
       ...readiness.summary,
       missingRequiredEnv: [],
       nextAction: !readiness.summary.activeInboundAdapterAvailable
-        ? "Ask a workspace administrator to finish mailbox setup."
+        ? "Ask a Work Hat administrator to finish Gmail setup."
         : readiness.summary.nextAction,
     },
   };

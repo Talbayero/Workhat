@@ -56,26 +56,6 @@ type EmailConnection = {
   updated_at: string;
 };
 
-type CustomInboundChannel = {
-  id: string;
-  status: string;
-  name: string;
-  fromName: string;
-  replyIdentity: string;
-  inboundAddress: string | null;
-  webhookEndpoint: string;
-  webhookSecret: string | null;
-  webhookSecretHint: string | null;
-  lastInboundAt: string | null;
-  lastErrorAt: string | null;
-  lastErrorMessage: string | null;
-  lastEvent: {
-    status: string;
-    received_at: string;
-    error_message: string | null;
-  } | null;
-};
-
 type EmailDiagnosticCheck = {
   key: string;
   label: string;
@@ -104,6 +84,7 @@ type SetupHealth = {
     credentialMailboxConfigured: boolean;
     customInboundConfigured: boolean;
     redisConfigured: boolean;
+    gmailApiEnabledExpectation: string;
     activeInboundAdapterAvailable: boolean;
     activeOutboundAdapterAvailable: boolean;
     missingRequiredEnv: string[];
@@ -151,11 +132,11 @@ function friendlyEmailConnectorMessage(message: string) {
     normalized.includes("server key") ||
     normalized.includes("admin database")
   ) {
-    return "Google OAuth is not configured by your workspace admin.";
+    return "Admin setup required: Gmail OAuth is not configured";
   }
 
   if (normalized.includes("email_token_encryption_key") || normalized.includes("mailbox token encryption")) {
-    return "Mailbox token encryption is not configured by your workspace admin.";
+    return "Admin setup required: Gmail OAuth is not configured";
   }
 
   if (normalized.includes("denied") || normalized.includes("not approved") || normalized.includes("cancelled")) {
@@ -381,21 +362,18 @@ function SkillEditor({
 
 function SetupTab({
   org,
-  channel,
   team,
   mailboxReady,
   onOpenTab,
   baseDir = "",
 }: {
   org: OrgRecord | null;
-  channel: ChannelRecord | null;
   team: TeamMember[];
   mailboxReady: boolean;
   onOpenTab: (tab: SettingsTab) => void;
   baseDir?: string;
 }) {
   const hasOrg = Boolean(org);
-  const hasInboundAddress = Boolean(channel?.inboundAddress);
   const hasInboundMailbox = mailboxReady;
   const hasKnowledgePath = true;
   const hasTeam = team.length > 0;
@@ -414,8 +392,6 @@ function SetupTab({
       label: "Connect email channel",
       description: mailboxReady
         ? "Active Gmail OAuth mailbox ready for import and approved replies."
-        : hasInboundAddress
-        ? "Legacy forwarding address exists, but Gmail OAuth is still required for MVP readiness."
         : "Connect Gmail OAuth before marking this workspace ready.",
       complete: hasInboundMailbox,
       action: () => onOpenTab("channels"),
@@ -866,47 +842,25 @@ function TeamTab({
 
 // ── Channels tab ──────────────────────────────────────────────────────────────
 
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  function copy() {
-    navigator.clipboard.writeText(value).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
-  return (
-    <button
-      onClick={copy}
-      className="shrink-0 rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-[10px] font-medium transition-colors hover:border-[var(--moss)]"
-    >
-      {copied ? "Copied!" : "Copy"}
-    </button>
-  );
-}
-
 function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | null; canEdit: boolean; onDirty: () => void }) {
   const [fromName, setFromName] = useState(channel?.fromName ?? "");
   const [connections, setConnections] = useState<EmailConnection[]>([]);
-  const [customChannels, setCustomChannels] = useState<CustomInboundChannel[]>([]);
-  const [customName, setCustomName] = useState("Work Hat internal inbound");
-  const [customFromName, setCustomFromName] = useState("");
-  const [customReplyIdentity, setCustomReplyIdentity] = useState("");
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [connectionAction, setConnectionAction] = useState<"sync" | "watch" | "disconnect" | null>(null);
-  const [customAction, setCustomAction] = useState<"create" | "update" | "regenerate" | null>(null);
   const [diagnostics, setDiagnostics] = useState<EmailDiagnostics | null>(null);
   const [setupHealth, setSetupHealth] = useState<SetupHealth | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
 
-  const inboundAddress = channel?.inboundAddress || "";
-  const hasAddress = Boolean(inboundAddress);
-  const primaryConnection = connections.find((connection) => connection.status === "active" || connection.status === "connected") ?? connections[0] ?? null;
-  const isConnected = primaryConnection?.status === "active" || primaryConnection?.status === "connected";
-  const isGmailOauth = primaryConnection?.provider === "gmail" && primaryConnection.connection_type === "oauth";
-  const customChannel = customChannels[0] ?? null;
+  const primaryConnection =
+    connections.find((connection) =>
+      connection.provider === "gmail" &&
+      connection.connection_type === "oauth" &&
+      (connection.status === "active" || connection.status === "connected")
+    ) ?? null;
+  const isConnected = Boolean(primaryConnection);
 
   useEffect(() => {
     void refreshConnections();
@@ -930,73 +884,19 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
     setConnectionsLoading(true);
     setConnectionError(null);
     try {
-      const [connectionsRes, customRes] = await Promise.all([
-        fetch("/api/email/connections"),
-        fetch("/api/email/custom-inbound"),
-      ]);
+      const connectionsRes = await fetch("/api/email/connections");
       const connectionsPayload = await connectionsRes.json().catch(() => ({}));
-      const customPayload = await customRes.json().catch(() => ({}));
       if (!connectionsRes.ok) {
         throw new Error(connectionsPayload.error ?? "Could not load email connections.");
       }
-      if (!customRes.ok) {
-        throw new Error(customPayload.error ?? "Could not load custom inbound channels.");
-      }
       const nextConnections = Array.isArray(connectionsPayload.connections) ? connectionsPayload.connections : [];
-      const nextCustom = Array.isArray(customPayload.channels) ? customPayload.channels : [];
       setConnections(nextConnections);
-      setCustomChannels(nextCustom);
-      const firstCustom = nextCustom[0] as CustomInboundChannel | undefined;
-      if (firstCustom) {
-        setCustomName(firstCustom.name || "Custom inbound");
-        setCustomFromName(firstCustom.fromName || "");
-        setCustomReplyIdentity(firstCustom.replyIdentity || "");
-      }
     } catch (error) {
       setConnectionError(
         friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Could not load email connections.")
       );
     } finally {
       setConnectionsLoading(false);
-    }
-  }
-
-  async function saveCustomInbound(action: "create" | "update" | "regenerate") {
-    if (action !== "create" && !customChannel) return;
-    setCustomAction(action);
-    setConnectionError(null);
-    setConnectionNotice(null);
-    try {
-      const res = await fetch("/api/email/custom-inbound", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          channelId: customChannel?.id,
-          name: customName,
-          fromName: customFromName,
-          replyIdentity: customReplyIdentity,
-        }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(payload.error ?? "Could not save custom inbound channel.");
-      }
-      if (payload.channel) {
-        setCustomChannels([payload.channel]);
-        setCustomName(payload.channel.name || customName);
-        setCustomFromName(payload.channel.fromName || "");
-        setCustomReplyIdentity(payload.channel.replyIdentity || "");
-      }
-      setConnectionNotice(
-        action === "regenerate"
-          ? "Custom inbound token regenerated. Update your relay with the new token before sending more mail."
-          : "Custom inbound channel saved."
-      );
-    } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : "Could not save custom inbound channel.");
-    } finally {
-      setCustomAction(null);
     }
   }
 
@@ -1158,7 +1058,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                   </button>
                   <button
                     onClick={() => runConnectionAction("watch")}
-                    disabled={!canEdit || !isConnected || !isGmailOauth || connectionAction !== null}
+                    disabled={!canEdit || !isConnected || connectionAction !== null}
                     className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-45"
                   >
                     {connectionAction === "watch" ? "Repairing..." : "Repair Gmail live updates"}
@@ -1201,126 +1101,6 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
         </div>
       </SectionCard>
 
-      <details className="rounded-[24px] border border-[var(--line)] bg-[var(--panel)] p-5">
-        <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground)]">
-          Advanced developer setup
-        </summary>
-        <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-          Custom inbound setup is disabled for the MVP. Complete and verify the Gmail OAuth path before re-enabling developer channels.
-        </p>
-        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="eyebrow text-[9px] text-[var(--muted)]">Custom inbound</p>
-            <p className="mt-1 text-base font-semibold">Non-Gmail webhook channel</p>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
-              Hidden from self-serve setup until the Gmail MVP path is functional end to end.
-            </p>
-          </div>
-          <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
-            customChannel?.status === "active"
-              ? "border-emerald-400/25 text-emerald-200"
-              : "border-[var(--line)] text-[var(--muted)]"
-          }`}>
-            <span className={`h-2 w-2 rounded-full ${customChannel?.status === "active" ? "bg-emerald-400" : "bg-[var(--muted)]"}`} />
-            {customChannel ? customChannel.status : "not configured"}
-          </span>
-        </div>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <label className="flex flex-col gap-1 text-xs font-medium text-[var(--muted)]">
-            Channel name
-            <input
-              value={customName}
-              onChange={(event) => setCustomName(event.target.value)}
-              disabled
-              className="rounded-lg border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-[var(--muted)]">
-            From / reply name
-            <input
-              value={customFromName}
-              onChange={(event) => setCustomFromName(event.target.value)}
-              disabled
-              placeholder="Work Hat Support"
-              className="rounded-lg border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-[var(--muted)]">
-            Reply identity
-            <input
-              value={customReplyIdentity}
-              onChange={(event) => setCustomReplyIdentity(event.target.value)}
-              disabled
-              placeholder="support@yourdomain.com"
-              className="rounded-lg border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
-            />
-          </label>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {!customChannel ? (
-            <button
-              onClick={() => saveCustomInbound("create")}
-              disabled
-              className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-45"
-            >
-              Disabled for MVP
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={() => saveCustomInbound("update")}
-                disabled
-                className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-45"
-              >
-                {customAction === "update" ? "Saving..." : "Save channel"}
-              </button>
-              <button
-                onClick={() => saveCustomInbound("regenerate")}
-                disabled
-                className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[rgba(255,190,190,0.9)] transition-colors hover:border-[rgba(144,50,61,0.75)] disabled:opacity-45"
-              >
-                {customAction === "regenerate" ? "Regenerating..." : "Regenerate token"}
-              </button>
-            </>
-          )}
-        </div>
-
-        {customChannel && (
-          <div className="mt-5 space-y-3">
-            <div>
-              <p className="text-xs font-medium text-[var(--muted)]">Webhook endpoint</p>
-              <div className="mt-1 flex items-center gap-2">
-                <code className="flex-1 overflow-x-auto rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-2.5 text-xs font-mono text-[var(--foreground)]">
-                  {customChannel.webhookEndpoint}
-                </code>
-                <CopyButton value={customChannel.webhookEndpoint} />
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-medium text-[var(--muted)]">Shared token</p>
-              <div className="mt-1 flex items-center gap-2">
-                <code className="flex-1 overflow-x-auto rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-2.5 text-xs font-mono text-[var(--foreground)]">
-                  {customChannel.webhookSecret ?? customChannel.webhookSecretHint ?? "Token hidden; regenerate to copy a new token"}
-                </code>
-                {customChannel.webhookSecret && <CopyButton value={customChannel.webhookSecret} />}
-              </div>
-              <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">
-                Full tokens are shown only immediately after creation or regeneration.
-              </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <ConnectorMetric label="Last inbound" value={formatTimestamp(customChannel.lastInboundAt)} />
-              <ConnectorMetric label="Last event" value={customChannel.lastEvent ? `${customChannel.lastEvent.status} at ${formatTimestamp(customChannel.lastEvent.received_at)}` : "Not received"} />
-              <ConnectorMetric label="Last error" value={customChannel.lastErrorMessage ?? "None"} />
-            </div>
-          </div>
-        )}
-      </details>
-
       <SectionCard>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -1350,15 +1130,14 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
             <div className="space-y-4">
               {setupHealth && (
                 <div className="grid gap-3 md:grid-cols-3">
-                  <ConnectorMetric label="Google OAuth configured" value={setupHealth.summary.googleOAuthConfigured ? "Yes" : "No"} />
+                  <ConnectorMetric label="Gmail OAuth state" value={setupHealth.summary.googleOAuthConfigured ? "Ready" : "Not configured"} />
                   <ConnectorMetric label="Google OAuth routes available" value={setupHealth.summary.googleOAuthRoutesAvailable ? "Yes" : "No"} />
                   <ConnectorMetric label="Canonical base URL configured" value={setupHealth.summary.canonicalBaseUrlConfigured ? "Yes" : "No"} />
                   <ConnectorMetric label="Google redirect URI" value={setupHealth.summary.googleRedirectUri ?? "Set APP_BASE_URL"} />
+                  <ConnectorMetric label="Gmail API expectation" value={setupHealth.summary.gmailApiEnabledExpectation ?? "Enable Gmail API in the Work Hat Google Cloud project"} />
                   <ConnectorMetric label="Encryption key configured" value={setupHealth.summary.encryptionConfigured ? "Yes" : "No"} />
                   <ConnectorMetric label="Server database key configured" value={setupHealth.summary.serverDatabaseConfigured ? "Yes" : "No"} />
                   <ConnectorMetric label="Redis configured" value={setupHealth.summary.redisConfigured ? "Yes" : "No"} />
-                  <ConnectorMetric label="Inbound adapter available" value={setupHealth.summary.activeInboundAdapterAvailable ? "Yes" : "No"} />
-                  <ConnectorMetric label="Outbound adapter available" value={setupHealth.summary.activeOutboundAdapterAvailable ? "Yes" : "No"} />
                   <ConnectorMetric label="Next action" value={setupHealth.summary.nextAction} />
                 </div>
               )}
@@ -1383,62 +1162,6 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
         </div>
       </SectionCard>
 
-      {/* Your inbound address */}
-      <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Email channel</p>
-        <p className="mt-1 text-base font-semibold">Legacy inbound address</p>
-        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-          The MVP path does not rely on this address. Use Gmail OAuth and Gmail sync for real onboarding verification.
-        </p>
-
-        <div className="mt-4 flex items-center gap-2">
-          <code className="flex-1 rounded-[12px] border border-[var(--line)] bg-[var(--sage)] px-4 py-2.5 text-sm font-mono text-[var(--foreground)] overflow-x-auto">
-            {hasAddress ? inboundAddress : "Complete onboarding to get your address"}
-          </code>
-          {hasAddress && <CopyButton value={inboundAddress} />}
-        </div>
-
-        {!hasAddress && (
-          <div className="mt-4 rounded-[16px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] p-4">
-            <p className="text-sm font-semibold">No setup wizard has been completed yet</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Run onboarding to create or repair the email channel and generate your inbound forwarding address.
-            </p>
-            <Link
-              href="/onboarding"
-              className="mt-3 inline-flex rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--moss-strong)]"
-            >
-              Open setup wizard
-            </Link>
-          </div>
-        )}
-
-        {hasAddress && (
-          <div className="mt-3 flex items-center gap-2 text-[10px] text-[var(--muted)]">
-            <span className="status-dot status-dot-green" />
-            Legacy address exists, but Gmail OAuth is the supported MVP path
-          </div>
-        )}
-      </SectionCard>
-
-      {/* Setup guide */}
-      {hasAddress && (
-        <SectionCard>
-          <p className="eyebrow text-[9px] text-[var(--muted)]">Setup guide</p>
-          <p className="mt-1 text-base font-semibold">Mailbox setup map</p>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-            The only supported MVP setup path is Gmail OAuth. Other mailbox methods remain disabled until this path is verified end to end.
-          </p>
-
-          <div className="mt-4 rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4">
-            <p className="text-sm font-semibold">Gmail OAuth</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Connect Gmail, persist an active OAuth mailbox, import latest email, generate an AI draft, and send an approved reply.
-            </p>
-          </div>
-        </SectionCard>
-      )}
-
       {/* From name */}
       <SectionCard>
         <p className="eyebrow text-[9px] text-[var(--muted)]">Outbound</p>
@@ -1449,19 +1172,6 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
         </div>
       </SectionCard>
 
-      {/* Roadmap */}
-      <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Roadmap</p>
-        <p className="mt-1 text-sm font-semibold">More channels coming</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {["SMS / Twilio", "Live chat widget", "Outlook / Microsoft 365", "Slack Connect"].map((ch) => (
-            <div key={ch} className="rounded-[14px] border border-[var(--line)] px-4 py-3 opacity-50">
-              <p className="text-sm font-medium">{ch}</p>
-              <p className="mt-0.5 text-xs text-[var(--muted)]">On the roadmap</p>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
     </div>
   );
 }
@@ -2366,9 +2076,7 @@ export function SettingsShell({
   const resolvedInitialTab: SettingsTab =
     initialTab && VALID_TABS.has(initialTab as SettingsTab)
       ? (initialTab as SettingsTab)
-      : org && channel?.inboundAddress
-        ? "organization"
-        : "setup";
+      : "setup";
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(resolvedInitialTab);
   const [isDirty, setIsDirty] = useState(false);
@@ -2410,7 +2118,6 @@ export function SettingsShell({
     setup: (
       <SetupTab
         org={org}
-        channel={channel}
         team={team}
         mailboxReady={mailboxReady}
         onOpenTab={setActiveTab}

@@ -133,11 +133,9 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
   const [urlMessage, setUrlMessage] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [watching, setWatching] = useState(false);
-  const [resettingConnectionId, setResettingConnectionId] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
   const gmailConnection = connections.find((connection) => connection.provider === "gmail" && (connection.status === "active" || connection.status === "connected"));
-  const inactiveConnections = connections.filter((connection) => !(connection.provider === "gmail" && (connection.status === "active" || connection.status === "connected")));
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -237,28 +235,6 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
     }
   }
 
-  async function resetConnection(connectionId: string) {
-    setResettingConnectionId(connectionId);
-    setConnectionError(null);
-    setSyncResult(null);
-
-    try {
-      const response = await fetch(`/api/email/connections?connectionId=${encodeURIComponent(connectionId)}`, {
-        method: "DELETE",
-      });
-      const data = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Unable to reset this mailbox connection.");
-      setSyncResult("Mailbox connection reset. Connect Gmail OAuth again to continue.");
-      await loadConnections();
-    } catch (error) {
-      setConnectionError(
-        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Unable to reset this mailbox connection.")
-      );
-    } finally {
-      setResettingConnectionId(null);
-    }
-  }
-
   return (
     <div className="space-y-4 mt-5">
       <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
@@ -342,29 +318,6 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
           </div>
         )}
 
-        {inactiveConnections.length > 0 && (
-          <div className="mt-4 rounded-[14px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.12)] p-4">
-            <p className="text-sm font-semibold">Reset broken or unsupported mailbox records</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              These records do not count toward MVP readiness. Reset them, then connect Gmail OAuth.
-            </p>
-            <div className="mt-3 space-y-2">
-              {inactiveConnections.map((connection) => (
-                <div key={connection.id} className="flex flex-col gap-2 rounded-[12px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
-                  <span>{connection.provider_account_email} · {connection.provider}/{connection.connection_type ?? "unknown"} · {connection.status}</span>
-                  <button
-                    type="button"
-                    onClick={() => resetConnection(connection.id)}
-                    disabled={resettingConnectionId === connection.id}
-                    className="w-fit rounded-full border border-[rgba(144,50,61,0.45)] px-3 py-1.5 text-[11px] font-medium text-[rgba(255,190,190,0.9)] disabled:opacity-50"
-                  >
-                    {resettingConnectionId === connection.id ? "Resetting..." : "Reset"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

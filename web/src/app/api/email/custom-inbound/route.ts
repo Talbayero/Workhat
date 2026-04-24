@@ -8,6 +8,10 @@ import {
 } from "@/lib/email-connector/webhook-secret";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+function customInboundSetupEnabled() {
+  return false;
+}
+
 type ChannelConfig = {
   display_name?: string;
   from_name?: string;
@@ -132,6 +136,16 @@ export async function POST(req: NextRequest) {
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const denied = await requireCapability(appUser, "integrations.manage", "email/custom-inbound", req);
   if (denied) return denied;
+
+  if (!customInboundSetupEnabled()) {
+    return NextResponse.json(
+      {
+        error: "Custom inbound setup is disabled for the MVP.",
+        hint: "Only Gmail OAuth is allowed for the MVP path.",
+      },
+      { status: 410 }
+    );
+  }
 
   let body: Record<string, unknown>;
   try {

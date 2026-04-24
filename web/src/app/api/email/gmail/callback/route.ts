@@ -22,7 +22,7 @@ import { createClient } from "@/lib/supabase/server";
 const STATE_COOKIE = "workhat_gmail_oauth_state";
 const RETURN_TO_COOKIE = "workhat_gmail_oauth_return_to";
 const CONNECTOR_NOT_READY_MESSAGE =
-  "Google OAuth is not configured by your workspace admin.";
+  "Admin setup required: Gmail OAuth is not configured";
 
 type ProviderMetadata = Record<string, unknown>;
 type GoogleOAuthState = {
@@ -56,22 +56,30 @@ function toOperatorError(error: unknown) {
   if (!(error instanceof Error)) return CONNECTOR_NOT_READY_MESSAGE;
   const message = error.message;
   if (message.includes("EMAIL_TOKEN_ENCRYPTION_KEY")) {
-    return "Mailbox token encryption is not configured by your workspace admin.";
+    return CONNECTOR_NOT_READY_MESSAGE;
   }
-  if (message.includes("GOOGLE_CLIENT_ID") || message.includes("GOOGLE_CLIENT_SECRET") || message.includes("Google OAuth is not configured")) {
-    return "Google OAuth is not configured by your workspace admin.";
+  if (message.toLowerCase().includes("canonical app url")) {
+    return CONNECTOR_NOT_READY_MESSAGE;
+  }
+  if (
+    message.includes("GOOGLE_CLIENT_ID") ||
+    message.includes("GOOGLE_CLIENT_SECRET") ||
+    message.includes("Google OAuth is not configured") ||
+    message.includes("Work Hat platform Google OAuth is not configured")
+  ) {
+    return CONNECTOR_NOT_READY_MESSAGE;
   }
   if (message.includes("Google token exchange failed")) {
-    return "Google token exchange failed. Verify the OAuth client secret and authorized redirect URI.";
+    return "Gmail connection failed during Google approval. Contact your Work Hat administrator.";
   }
   if (message.includes("redirect_uri_mismatch")) {
-    return "Google rejected the OAuth redirect URI. Add the exact callback URL from Admin setup health to Google Cloud.";
+    return "Gmail connection failed because Work Hat's Google callback is not approved. Contact your Work Hat administrator.";
   }
   if (message.includes("access_denied")) {
     return "Google sign-in was cancelled or access was not approved.";
   }
   if (message.includes("not allowed") || message.includes("unauthorized_client")) {
-    return "This Google account is not allowed to use the OAuth app. Add it as a test user or publish the app in Google Cloud.";
+    return "This Google account is not allowed for the Work Hat OAuth app. Contact your Work Hat administrator.";
   }
   if (message.includes("Gmail profile fetch failed")) {
     return "Gmail connected to Google but Work Hat could not read the mailbox profile. Verify Gmail API access and requested scopes.";

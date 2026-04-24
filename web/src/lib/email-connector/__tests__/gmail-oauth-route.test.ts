@@ -107,6 +107,6 @@ describe("GET /api/oauth/google/start", () => {
 
     expect(response.status).toBe(307);
     expect(redirect.pathname).toBe("/onboarding");
-    expect(redirect.searchParams.get("emailError")).toBe("Google OAuth is not configured by your workspace admin.");
+    expect(redirect.searchParams.get("emailError")).toBe("Admin setup required: Gmail OAuth is not configured");
   });
 });

@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-type SetupAvailability = "available" | "unavailable";
+type SetupAvailability = "ready" | "not_configured";
 type SetupCheckStatus = "pass" | "warn" | "fail";
 
 type SetupMethodReadiness = {
-  key: "oauth" | "mailbox_password" | "app_password" | "imap_smtp" | "custom_inbound";
+  key: "oauth";
   status: SetupAvailability;
   userMessage: string;
   adminMessage?: string;
@@ -23,10 +23,11 @@ type SetupReadinessResponse = {
       status: SetupCheckStatus;
       message: string;
     }>;
-    methods: Record<SetupMethodReadiness["key"], SetupMethodReadiness>;
+    methods: Record<"oauth", SetupMethodReadiness>;
     summary: {
       googleOAuthConfigured: boolean;
       googleRedirectUri: string | null;
+      gmailApiEnabledExpectation?: string;
       missingRequiredEnv: string[];
       nextAction: string;
     };
@@ -78,8 +79,7 @@ export function EmailConnectionSetup({
   }, [onError]);
 
   const oauth = readiness?.readiness?.methods.oauth;
-  const oauthAvailable = oauth?.status === "available";
-  const redirectUri = readiness?.readiness?.summary.googleRedirectUri;
+  const oauthReady = oauth?.status === "ready";
 
   return (
     <div className="space-y-4">
@@ -107,14 +107,9 @@ export function EmailConnectionSetup({
               <p className="mt-2 max-w-xl text-xs leading-5 text-[var(--muted)]">
                 Gmail OAuth imports recent mail, creates conversations, and sends approved replies through the connected mailbox.
               </p>
-              {redirectUri && (
-                <p className="mt-2 break-all font-mono text-[11px] text-[var(--muted)]">
-                  Redirect URI: {redirectUri}
-                </p>
-              )}
             </div>
 
-            {oauthAvailable && canEdit ? (
+            {oauthReady && canEdit ? (
               <Link
                 href={`/api/oauth/google/start?returnTo=${encodeURIComponent(returnTo)}`}
                 onClick={() => {
@@ -126,15 +121,19 @@ export function EmailConnectionSetup({
                 {oauthStarting ? "Opening Google..." : "Connect Gmail"}
               </Link>
             ) : (
-              <span className="w-fit rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs text-[rgba(255,210,210,0.9)]">
-                Admin setup required
-              </span>
+              <button
+                type="button"
+                disabled
+                className="w-fit rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs text-[rgba(255,210,210,0.9)] opacity-80"
+              >
+                Connect Gmail
+              </button>
             )}
           </div>
 
-          {!oauthAvailable && (
+          {!oauthReady && (
             <div className="mt-4 rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs leading-5 text-[rgba(255,210,210,0.9)]">
-              {oauth?.adminMessage ?? oauth?.userMessage ?? "Gmail OAuth is not configured for this workspace yet."}
+              Admin setup required: Gmail OAuth is not configured
             </div>
           )}
 

@@ -83,7 +83,7 @@ export function getAppBaseUrl(req: NextRequest) {
     return `${req.nextUrl.protocol}//${req.nextUrl.host}`.replace(/\/$/, "");
   }
 
-  throw new Error("Canonical app URL is not configured by your workspace admin.");
+  throw new Error("Work Hat platform canonical app URL is not configured.");
 }
 
 export function getGoogleRedirectUri(req: NextRequest) {
@@ -96,7 +96,7 @@ export function assertGoogleOAuthConfig() {
 
   if (!clientId || !clientSecret) {
     throw new Error(
-      "Google OAuth is not configured by your workspace admin."
+      "Work Hat platform Google OAuth is not configured."
     );
   }
 

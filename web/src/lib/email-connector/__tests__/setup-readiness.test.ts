@@ -33,7 +33,7 @@ function clearTrackedEnv() {
 describe("email setup readiness", () => {
   afterEach(restoreEnv);
 
-  it("marks mailbox methods unavailable when required server setup is missing", () => {
+  it("marks Gmail OAuth not configured when required server setup is missing", () => {
     clearTrackedEnv();
 
     const readiness = getEmailSetupReadiness();
@@ -41,8 +41,9 @@ describe("email setup readiness", () => {
     expect(readiness.summary.googleOAuthConfigured).toBe(false);
     expect(readiness.summary.encryptionConfigured).toBe(false);
     expect(readiness.summary.serverDatabaseConfigured).toBe(false);
-    expect(readiness.methods.oauth.status).toBe("unavailable");
-    expect(readiness.methods.imap_smtp.status).toBe("unavailable");
+    expect(readiness.summary.gmailOAuthState).toBe("not_configured");
+    expect(readiness.methods.oauth.status).toBe("not_configured");
+    expect(Object.keys(readiness.methods)).toEqual(["oauth"]);
     expect(readiness.summary.missingRequiredEnv).toEqual(
       expect.arrayContaining(["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "APP_BASE_URL", "EMAIL_TOKEN_ENCRYPTION_KEY", "SUPABASE_SERVICE_ROLE_KEY"])
     );
@@ -54,17 +55,21 @@ describe("email setup readiness", () => {
     process.env.GOOGLE_CLIENT_ID = "client-id";
     process.env.GOOGLE_CLIENT_SECRET = "client-secret";
     process.env.EMAIL_TOKEN_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_test";
 
     const readiness = getEmailSetupReadiness();
 
     expect(readiness.summary.googleOAuthConfigured).toBe(true);
     expect(readiness.summary.googleOAuthRoutesAvailable).toBe(true);
     expect(readiness.summary.googleRedirectUri).toBe("https://work-hat.com/api/oauth/google/callback");
-    expect(readiness.methods.oauth.status).toBe("available");
-    expect(readiness.methods.mailbox_password.status).toBe("unavailable");
+    expect(readiness.summary.gmailApiEnabledExpectation).toBe("The Work Hat-owned Google Cloud project must have Gmail API enabled.");
+    expect(readiness.summary.gmailOAuthState).toBe("ready");
+    expect(readiness.methods.oauth.status).toBe("ready");
+    expect(Object.keys(readiness.methods)).toEqual(["oauth"]);
   });
 
-  it("keeps credential mailbox methods unavailable during the Gmail-only MVP", () => {
+  it("keeps credential mailbox methods out of the readiness contract during the Gmail-only MVP", () => {
     clearTrackedEnv();
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_test";
@@ -74,10 +79,8 @@ describe("email setup readiness", () => {
 
     expect(readiness.summary.googleOAuthConfigured).toBe(false);
     expect(readiness.summary.credentialMailboxConfigured).toBe(false);
-    expect(readiness.methods.oauth.status).toBe("unavailable");
-    expect(readiness.methods.mailbox_password.status).toBe("unavailable");
-    expect(readiness.methods.app_password.status).toBe("unavailable");
-    expect(readiness.methods.imap_smtp.status).toBe("unavailable");
+    expect(readiness.methods.oauth.status).toBe("not_configured");
+    expect(Object.keys(readiness.methods)).toEqual(["oauth"]);
     expect(readiness.summary.nextAction).toBe("Finish system setup before inviting non-admin users to connect mailboxes.");
   });
 
@@ -88,6 +91,6 @@ describe("email setup readiness", () => {
 
     expect(publicReadiness.summary.missingRequiredEnv).toEqual([]);
     expect(publicReadiness.methods.oauth).not.toHaveProperty("adminMessage");
-    expect(publicReadiness.summary.nextAction).toBe("Ask a workspace administrator to finish mailbox setup.");
+    expect(publicReadiness.summary.nextAction).toBe("Ask a Work Hat administrator to finish Gmail setup.");
   });
 });

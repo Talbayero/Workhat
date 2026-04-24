@@ -144,7 +144,7 @@ describe("gmail oauth setup", () => {
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
 
-    expect(() => assertGoogleOAuthConfig()).toThrow("Google OAuth is not configured");
+    expect(() => assertGoogleOAuthConfig()).toThrow("Work Hat platform Google OAuth is not configured");
   });
 
   it("builds a Gmail consent URL with offline access and state", () => {

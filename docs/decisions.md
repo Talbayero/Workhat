@@ -202,7 +202,7 @@ A direct Gmail OAuth integration lets customers connect their existing support i
 
 ### Consequences
 
-- Each connected Gmail account requires an OAuth 2.0 grant with `gmail.readonly` and `gmail.send` scopes. This requires a Google Cloud project and OAuth app approval for production.
+- Each connected Gmail account requires an OAuth 2.0 grant with `gmail.readonly` and `gmail.send` scopes. Superseded by ADR-028: the Google Cloud project and OAuth app are owned by Work Hat, not configured by customers.
 - Gmail push watches expire every 7 days. A cron job at `/api/email/gmail/renew-watches` must run to renew them.
 - Gmail API rate limits apply. High-volume orgs may hit limits — this will require quota increases from Google.
 - Postmark and Resend outbound env vars remain compatibility/debt unless a future outbound provider decision supersedes Gmail sending.
@@ -673,7 +673,7 @@ Self-serve product behavior should be based on what the deployment can actually 
 
 - Work Hat login identity and managed mailbox identity are documented and labeled separately.
 - Signup, login, forgot-password, and reset-password use user-facing validation and Supabase Auth messages.
-- Gmail OAuth is unavailable in the UI until Google OAuth credentials, mailbox-token encryption, and a canonical app base URL are configured. Admin diagnostics expose the exact redirect URI to register in Google Cloud.
+- Gmail OAuth is unavailable in the UI until platform OAuth credentials, mailbox-token encryption, service-role persistence, and a canonical app base URL are configured. Admin diagnostics expose the exact redirect URI for Work Hat platform operators.
 - Password, app-password, and IMAP/SMTP methods are unavailable until secure credential storage and server database access are configured.
 - Non-operational email methods are hidden. Superseded by ADR-026: manual demo/test inbox does not complete MVP onboarding.
 - A saved mailbox row never counts as connected unless runtime status is `active`.
@@ -696,7 +696,7 @@ Earlier decisions introduced multiple setup methods and adapter scaffolding. In 
 
 ### Rationale
 
-A narrow, working path is more valuable than several partially exposed paths. Gmail OAuth has a clear external configuration model, deterministic callback URI, token persistence, Gmail import, and Gmail send. The self-serve experience should only expose paths that complete the operational loop and produce audit evidence.
+A narrow, working path is more valuable than several partially exposed paths. Gmail OAuth has a platform-owned configuration model, deterministic callback URI, token persistence, Gmail import, and Gmail send. The self-serve experience should only expose paths that complete the operational loop and produce audit evidence.
 
 ### Consequences
 
@@ -707,5 +707,64 @@ A narrow, working path is more valuable than several partially exposed paths. Gm
 - Admin setup health exposes the exact Google callback URI and missing environment variables.
 - Non-Gmail adapter code can remain isolated for future work but must not be presented as live MVP functionality.
 - This decision supersedes ADR-023 and ADR-024 for the current MVP release.
+
+---
+
+## ADR-027 — Consolidated Compliance-Ready Documentation Set
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat documentation is consolidated into fewer than 20 active files under `docs/`, with SOC 2 Type 1/2, ISO 27001, and ISO 27701 readiness content integrated into a small authoritative set.
+
+### Context
+
+The docs folder had grown into active docs, archived planning files, engineering notes, generated DOCX policy drafts, and domain-specific feature docs. That made it harder to know what was authoritative and created risk for audit readiness because duplicated or stale claims are weak evidence.
+
+### Rationale
+
+Auditors and customers need a clear control narrative, evidence map, and operational model. A compact documentation set reduces contradiction risk and makes Type 2 operating evidence easier to maintain over time.
+
+### Consequences
+
+- `docs/README.md` is the active documentation index.
+- Product truth lives in `docs/product.md`.
+- System design lives in `docs/architecture.md`.
+- Engineering/change-control standards live in `docs/engineering.md`.
+- Security, privacy, policies, control matrix, and readiness gaps live in `docs/security-compliance.md`.
+- Incident and operational response lives in `docs/operations-runbook.md`.
+- ADRs remain in `docs/decisions.md`.
+- Historical planning files and generated policy DOCX files are removed from the active docs tree.
+- New docs should be avoided unless they cannot fit coherently into the active set.
+
+---
+
+## ADR-028 — Platform-Owned Gmail OAuth for Self-Serve
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat owns one Google OAuth app for the Gmail MVP path. Customers do not configure Google Cloud projects, OAuth client credentials, redirect URIs, Vercel environment variables, or provider infrastructure.
+
+### Context
+
+The previous UI and diagnostics could make Gmail setup feel customer-admin owned because they exposed redirect URI and environment setup details near onboarding. That contradicts the desired Bitrix-style self-serve model where the user clicks "Connect Gmail", approves access, and returns with an active mailbox.
+
+### Rationale
+
+Centralizing OAuth ownership keeps onboarding simple and reduces support burden. It also creates a clearer SOC 2 and ISO evidence story: platform secrets are owned by Work Hat, per-mailbox tokens are encrypted per tenant, and customers only grant/revoke mailbox access.
+
+### Consequences
+
+- User-facing onboarding and Settings show only Gmail OAuth readiness and the "Connect Gmail" action.
+- Redirect URI, OAuth client status, Gmail API expectation, token encryption, and service-role checks remain admin/operator diagnostics.
+- The canonical callback remains `https://work-hat.com/api/oauth/google/callback`.
+- OAuth callback stores encrypted access and refresh tokens in `email_connections`, scoped to org and mailbox.
+- Gmail import and send continue through the normalized email connector runtime and preserve human approval plus audit evidence.
+- Non-Gmail setup methods remain hidden until a future ADR accepts them as fully supported self-serve paths.
 
 *Last updated: April 2026*

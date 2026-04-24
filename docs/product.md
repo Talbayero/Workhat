@@ -1,69 +1,100 @@
-# Product Overview
+# Product
 
-Work Hat CRM is an AI-assisted operations CRM for support and customer operations teams. The platform is evolving from a shared inbox into an operations OS: conversations, contacts, companies, knowledge, QA, SLA tracking, workflow automation, and AI improvement all work from the same org-scoped operational record.
+Work Hat is a conversation-first CRM where AI helps teams handle customer communication faster, more consistently, and with measurable improvement.
 
-This file is the active product summary. Historical source planning documents live in `docs/archive/planning/`.
+It is not just Gmail with AI, not a chatbot, and not a generic CRM. Work Hat sits between customer communication channels and the human team:
 
-## Product Principles
+```text
+Customer message -> structured conversation -> AI draft -> human edit/approval -> send -> analyze edits -> improve
+```
 
-1. Human approval remains in the loop for customer replies.
-2. Operational state must be explainable: assignment, priority, SLA, risk, QA, and workflow actions need clear records.
-3. AI should improve operations through traceable draft, edit, prompt, and knowledge analytics.
-4. Automation should be lean and deterministic before it becomes visual or open-ended.
-5. Multi-tenant org isolation is a product requirement, not only an implementation detail.
+## Product Definition
 
-## Core Modules
+Work Hat is an operations system for managing customer conversations with AI assistance and feedback loops.
 
-| Module | Purpose |
-|---|---|
-| Inbox / Conversations | Agent workspace for customer threads, messages, replies, AI drafts, risk, status, assignment, tags, and intent |
-| Contacts / Companies | CRM records tied to conversations and customer context |
-| Knowledge | Operator-managed knowledge used by AI drafts and improvement recommendations |
-| AI Drafting | Human-approved suggested replies with prompt versioning, confidence, risk flags, and missing context |
-| Edit Analysis | Deterministic and LLM-assisted analysis of how humans changed AI drafts |
-| QA | Review layer for operational quality and risk follow-up |
-| SLA / Queue Health | First-response and next-response SLA tracking, breached/at-risk filters, aging buckets, and backlog pressure |
-| Workflow Engine | Event/rules system for deterministic operational actions |
-| AI Improvement | Prompt-version analytics, edit pattern clustering, and knowledge gap candidate surfacing |
-| Prompt Experiments | Controlled, deterministic prompt-version traffic allocation and rollback |
-| Channels | Gmail OAuth self-serve setup for the MVP, with admin diagnostics and cleanup for legacy/non-MVP connection records |
-| Audit / Security | Audit logs, capabilities, rate limiting, and incident evidence |
+The product should feel simple to a user:
 
-## Current Product Shape
+> I open Work Hat, see all conversations, click one, get a smart reply, tweak it, send it, and over time the system gets better.
 
-The current platform includes:
+## Core Product Loop
 
-- Authenticated org-scoped CRM workspace.
-- Self-serve account creation, password login, forgot-password/reset flow, and post-signup organization creation or invite activation.
-- Work Hat user identity is separate from the managed mailbox identity. A user can sign in as `owner@example.com` and connect `support@example.com` as the mailbox Work Hat reads and replies from.
-- Email conversations from Gmail OAuth. Gmail OAuth performs token persistence, active mailbox status, initial recent-message import, and optional Pub/Sub watch setup as part of the connection flow.
-- Onboarding and Settings present Gmail OAuth as the only self-serve MVP mailbox path. IMAP/SMTP, app password, mailbox password, and custom inbound are not shown as primary setup options.
-- A workspace is not marked ready until an active Gmail OAuth connection exists. Legacy forwarding addresses, saved credential records, and manual test conversations do not complete onboarding.
-- Approved outbound replies use the active Gmail OAuth mailbox while human approval remains mandatory.
-- AI draft generation with non-null prompt versions.
-- Capability-based authorization over role presets.
-- SLA snapshots and queue health views.
-- Workflow events, rules, and auditable execution.
-- AI improvement dashboard surfaces.
-- Prompt experimentation model with deterministic assignment and service-role assignment writes.
-- Security hardening around rate limits, audit logs, validation, and admin client usage.
+1. Capture conversations from email now, with SMS and chat later.
+2. Normalize each message into a structured conversation.
+3. Generate an AI reply draft using conversation context and knowledge.
+4. Keep humans in control through review, edit, and approval.
+5. Send the approved reply through the connected mailbox.
+6. Compare AI draft against the human-edited final reply.
+7. Use edit patterns to improve prompts, knowledge, QA, and operations.
+8. Measure performance with operational metrics.
 
-## Out Of Scope For The Current Phase
+## Current MVP Path
 
-- Full visual workflow builder.
-- Fully autonomous AI replies.
-- Complex BPM-style workflow orchestration.
-- Black-box model recommendations without traceable source edits or metrics.
-- Enterprise data warehouse integration.
-- Browser push/PWA-first experience.
+The only acceptable self-serve MVP path is:
 
-## SOC 2 Product Readiness Notes
+1. User creates a Work Hat account.
+2. User logs in.
+3. User can reset password.
+4. User creates a workspace.
+5. User connects Gmail through OAuth.
+6. Gmail OAuth uses Work Hat's owned Google OAuth app and stable callback.
+7. Connected Gmail creates an active mailbox connection.
+8. User imports or syncs latest email.
+9. Email appears in Inbox as a conversation.
+10. User generates an AI draft.
+11. User edits and sends the reply.
+12. Audit/logging records the flow.
 
-Product surfaces should support SOC 2 readiness by making control evidence visible:
+Do not claim onboarding is complete unless this path works.
 
-- Access decisions should be traceable to role/capability checks.
-- Important user and system actions should be captured in audit logs.
-- Queue/SLA and workflow automations should be explainable from stored records.
-- AI decisions should preserve prompt versions, assignment records, and human edits.
-- Operator runbooks should map to the actual UI and API behavior.
-- Normal users should never see raw environment-variable, database, or provider-stack errors. Admin-only setup health surfaces missing Google OAuth, encryption, Redis, and adapter prerequisites.
+## Modules
+
+| Layer | Module | Purpose |
+|---|---|---|
+| Execution | Inbox / Conversations | Conversation list, thread workspace, replies, internal notes, status, tags, risk, assignment |
+| Execution | Queue / SLA | First-response and next-response visibility, overdue detection, queue pressure |
+| Execution | Contacts / Companies | CRM context linked to conversations |
+| AI | Draft Generation | Human-approved suggested replies with prompt versioning |
+| AI | Knowledge | Operator-managed policies, SOPs, tone guides, and product facts |
+| Feedback | Edit Analysis | Measures what humans changed from the AI draft |
+| Feedback | AI Improvement | Acceptance rate, edit distance, repeated correction patterns, likely knowledge gaps |
+| Control | QA | Review layer for quality, risk, and coaching |
+| Control | Workflow Engine | Deterministic event/rule actions, not arbitrary automation scripting |
+| Control | Prompt Experiments | Controlled prompt-version rollout and rollback |
+| Trust | Audit / Security | Auth, authorization, audit logs, rate limits, tenant isolation, retention, privacy |
+
+## Metrics That Matter
+
+Work Hat should optimize for operational outcomes, not vanity metrics:
+
+- Draft acceptance rate.
+- Average edit distance.
+- Average change percent.
+- Full rewrite rate.
+- Edit category distribution.
+- First-response time.
+- Next-response time.
+- SLA compliance.
+- Queue backlog and aging.
+- Knowledge gap frequency.
+- Prompt-version performance.
+
+## Current Product Constraints
+
+- Gmail OAuth is the only self-serve email channel for the MVP.
+- Customers do not configure Google Cloud, OAuth client credentials, redirect URIs, Vercel environment variables, or provider infrastructure.
+- IMAP/SMTP, app password, mailbox password, custom inbound, SMS, and chat are not allowed in the MVP setup path.
+- Human approval is mandatory for customer replies.
+- AI recommendations must remain explainable and traceable.
+- Multi-tenant org isolation is mandatory.
+- Security and privacy controls must be evidence-backed for SOC 2, ISO 27001, and ISO 27701 readiness.
+
+## Out Of Scope
+
+- Fully autonomous customer replies.
+- Visual workflow builder.
+- Arbitrary scripting or user-defined code execution.
+- Multi-channel marketplace.
+- Complex enterprise BPM.
+- Black-box AI recommendations without source evidence.
+
+Last updated: April 2026
