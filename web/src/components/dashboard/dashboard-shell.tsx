@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { QAQueue } from "@/components/dashboard/qa-queue";
-import { type EditTypeKey, type DashboardStats, type EditLogEntry, type KnowledgeHealthPattern, type IntentStat, type AiImprovementInsights } from "@/lib/supabase/queries";
+import { type EditTypeKey, type DashboardStats, type EditLogEntry, type KnowledgeHealthPattern, type IntentStat, type AiImprovementInsights } from "@/lib/analytics";
 import type { InboxConversation } from "@/lib/mock-data";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 

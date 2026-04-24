@@ -9,7 +9,7 @@ import {
   type InboxViewId,
   type RiskLevel,
 } from "@/lib/mock-data";
-import { getConversations, getConversationById, getOrgIntentColors } from "@/lib/supabase/queries";
+import { getConversations, getConversationById, getOrgIntentColors } from "@/lib/data/inbox";
 import { ThreadWorkspace } from "./thread-workspace";
 import { NewConversationButton } from "./new-conversation-button";
 

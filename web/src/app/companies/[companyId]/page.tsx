@@ -1,11 +1,8 @@
 import { notFound } from "next/navigation";
 import { CompaniesShell } from "@/components/companies/companies-shell";
-import {
-  getCompanies,
-  getCompanyById,
-  getContactsForCompany,
-  getConversationsForCompany,
-} from "@/lib/supabase/queries";
+import { getCompanies, getCompanyById } from "@/lib/data/companies";
+import { getContactsForCompany } from "@/lib/data/contacts";
+import { getConversationsForCompany } from "@/lib/data/inbox";
 
 type CompanyPageProps = {
   params: Promise<{ companyId: string }>;

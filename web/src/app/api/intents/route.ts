@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { invalidateIntentCache } from "@/lib/ai/intent-classifier";
+import { invalidateIntentCache } from "@/ai/workflows/intent-classifier";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { logAudit } from "@/lib/security/audit-logger";
@@ -157,3 +157,4 @@ export async function POST(req: NextRequest) {
   });
   return NextResponse.json({ intent: data }, { status: 201 });
 }
+

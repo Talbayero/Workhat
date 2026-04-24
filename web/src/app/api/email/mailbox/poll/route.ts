@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchInboundForConnection, type MailboxConnectionRecord } from "@/lib/email-connector/adapters";
+import { fetchInboundForConnection, type MailboxConnectionRecord } from "@/lib/email/adapters";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -57,3 +57,4 @@ export async function GET(req: NextRequest) {
     results,
   });
 }
+

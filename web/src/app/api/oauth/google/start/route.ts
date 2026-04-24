@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { hasCapability } from "@/lib/auth/capabilities";
-import { buildGmailAuthUrl, getGoogleRedirectUri } from "@/lib/email-connector/google";
+import { buildGmailAuthUrl, getGoogleRedirectUri } from "@/lib/email/google";
 import { createClient } from "@/lib/supabase/server";
 
 const STATE_COOKIE = "workhat_gmail_oauth_state";
@@ -108,3 +108,4 @@ export async function GET(req: NextRequest) {
     return connectorRedirect(req, { emailError: toUserSetupError(error) });
   }
 }
+

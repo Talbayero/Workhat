@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { entryFromGapPattern } from "@/lib/ai/knowledge-gen";
-import type { GeneratedKnowledgeEntry } from "@/lib/ai/knowledge-gen";
+import { entryFromGapPattern } from "@/ai/workflows/knowledge-generation";
+import type { GeneratedKnowledgeEntry } from "@/ai/workflows/knowledge-generation";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 
@@ -136,3 +136,4 @@ export async function GET() {
 
   return NextResponse.json({ suggestions });
 }
+

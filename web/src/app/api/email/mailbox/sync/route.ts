@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
-import { fetchInboundForConnection, type MailboxConnectionRecord } from "@/lib/email-connector/adapters";
+import { fetchInboundForConnection, type MailboxConnectionRecord } from "@/lib/email/adapters";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -63,3 +63,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }
+

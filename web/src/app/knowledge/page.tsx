@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { KnowledgeShell } from "@/components/knowledge/knowledge-shell";
-import { getKnowledgeEntries } from "@/lib/supabase/queries";
+import { getKnowledgeEntries } from "@/lib/data/knowledge";
 import type { KnowledgeCategory } from "@/lib/mock-data";
 
 export const metadata: Metadata = { title: "Knowledge — Work Hat" };

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { decryptSecret, encryptSecret } from "@/lib/email-connector/encryption";
+import { decryptSecret, encryptSecret } from "@/lib/email/encryption";
 import {
   refreshGmailAccessToken,
   tokenExpiryDate,
   watchGmailInbox,
-} from "@/lib/email-connector/google";
+} from "@/lib/email/google";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -133,3 +133,4 @@ export async function POST() {
     return NextResponse.json({ error: "Failed to enable Gmail live watch. Please try again." }, { status: 500 });
   }
 }
+

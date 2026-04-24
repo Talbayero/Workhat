@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
 import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
-import type { ConfidenceLevel } from "@/lib/ai/types";
+import type { ConfidenceLevel } from "@/ai/types";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 type LocalMessage = InboxConversation["messages"][number];
@@ -1181,3 +1181,4 @@ export function ThreadWorkspace({
     </div>
   );
 }
+

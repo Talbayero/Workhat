@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getFreshGmailAccessToken,
   type EmailConnection,
-} from "@/lib/email-connector/gmail-importer";
-import { watchGmailInbox } from "@/lib/email-connector/google";
+} from "@/lib/email/gmail-importer";
+import { watchGmailInbox } from "@/lib/email/google";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type WatchConnection = EmailConnection & {
@@ -170,3 +170,4 @@ export async function GET(req: NextRequest) {
     results,
   });
 }
+

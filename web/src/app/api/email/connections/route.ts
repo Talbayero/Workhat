@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
-import { validateAndActivateMailboxConnection, type MailboxConnectionRecord } from "@/lib/email-connector/adapters";
-import { classifyMailboxError } from "@/lib/email-connector/adapters/errors";
+import { validateAndActivateMailboxConnection, type MailboxConnectionRecord } from "@/lib/email/adapters";
+import { classifyMailboxError } from "@/lib/email/adapters/errors";
 import {
   providerHasDefaultMailSettings,
   providerNeedsAppPasswordHint,
-} from "@/lib/email-connector/adapters/provider-config";
-import { encryptSecret } from "@/lib/email-connector/encryption";
+} from "@/lib/email/adapters/provider-config";
+import { encryptSecret } from "@/lib/email/encryption";
 import { logAudit } from "@/lib/security/audit-logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -494,3 +494,4 @@ export async function DELETE(req: NextRequest) {
 
   return NextResponse.json({ ok: true });
 }
+

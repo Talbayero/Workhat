@@ -6,7 +6,7 @@ import {
   processInboundEmail,
   resolveInboundChannel,
   verifyInboundChannelToken,
-} from "@/lib/email-connector/inbound";
+} from "@/lib/email/inbound";
 import { logAudit } from "@/lib/security/audit-logger";
 
 /* POST /api/inbound/email
@@ -104,3 +104,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Inbound email processing failed.", detail: message }, { status: 500 });
   }
 }
+

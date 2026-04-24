@@ -4,7 +4,7 @@ import { hasCapability } from "@/lib/auth/capabilities";
 import {
   getEmailSetupReadiness,
   publicEmailSetupReadiness,
-} from "@/lib/email-connector/setup-readiness";
+} from "@/lib/email/setup-readiness";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -29,3 +29,4 @@ export async function GET() {
     readiness: publicEmailSetupReadiness(getEmailSetupReadiness(), canViewSetupDetails),
   });
 }
+

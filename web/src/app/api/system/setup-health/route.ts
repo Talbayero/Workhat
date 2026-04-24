@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
-import { getEmailSetupReadiness } from "@/lib/email-connector/setup-readiness";
+import { getEmailSetupReadiness } from "@/lib/email/setup-readiness";
 
 export async function GET() {
   const appUser = await getCurrentAppUser({ label: "system/setup-health" });
@@ -12,3 +12,4 @@ export async function GET() {
 
   return NextResponse.json(getEmailSetupReadiness());
 }
+

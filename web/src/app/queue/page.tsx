@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { QueueHealthShell } from "@/components/queue/queue-health-shell";
-import { getQueueHealth, type QueueFilters } from "@/lib/supabase/queries";
+import { getQueueHealth, type QueueFilters } from "@/lib/data/inbox";
 import type { RiskLevel } from "@/lib/mock-data";
 
 export const metadata: Metadata = { title: "Queue health - Work Hat" };

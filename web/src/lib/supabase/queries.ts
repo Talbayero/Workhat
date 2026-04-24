@@ -1,5 +1,9 @@
 /**
- * Supabase query functions — replaces mock-data arrays with real DB calls.
+ * Legacy shared Supabase query aggregation.
+ *
+ * New callers should prefer the domain entrypoints in `lib/data/` and
+ * `lib/analytics/` so data access stays grouped by business responsibility.
+ *
  * All functions are async and must be called from server components or
  * server actions. For client components, fetch via page.tsx and pass as props.
  */

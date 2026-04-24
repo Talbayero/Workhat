@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ContactsShell } from "@/components/contacts/contacts-shell";
-import { getContacts } from "@/lib/supabase/queries";
+import { getContacts } from "@/lib/data/contacts";
 
 export const metadata: Metadata = { title: "Contacts — Work Hat" };
 

@@ -2,7 +2,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
-import { suggestKeywordsFromCorrection } from "@/lib/ai/intent-classifier";
+import { suggestKeywordsFromCorrection } from "@/ai/workflows/intent-classifier";
 import { logAudit } from "@/lib/security/audit-logger";
 
 /* ─────────────────────────────────────────────
@@ -285,3 +285,4 @@ export async function GET() {
     patterns: topPatterns,
   });
 }
+

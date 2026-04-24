@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CompaniesShell } from "@/components/companies/companies-shell";
-import { getCompanies } from "@/lib/supabase/queries";
+import { getCompanies } from "@/lib/data/companies";
 
 export const metadata: Metadata = { title: "Companies — Work Hat" };
 

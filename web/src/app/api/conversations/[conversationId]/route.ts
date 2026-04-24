@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/security/audit-logger";
 import { refreshConversationSla } from "@/lib/sla/refresh";
+import { notifyConversationAssignmentChanged } from "@/lib/notifications/conversation-notifications";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 /* PATCH /api/conversations/:id — update status, priority, assignee, tags */
@@ -16,6 +17,7 @@ const MAX_ASSIGNED_NAME_LENGTH = 100;
 const MAX_INTENT_LENGTH = 80;
 const MAX_TAG_COUNT = 20;
 const MAX_TAG_LENGTH = 50;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type RouteContext = { params: Promise<{ conversationId: string }> };
 
@@ -53,6 +55,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
+  const supabase = await createClient();
   const updates: Record<string, unknown> = {};
 
   if ("status" in body) {
@@ -78,6 +81,43 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: "Assigned user name is too long." }, { status: 422 });
     }
     updates.assigned_to_name = name;
+    if (!("assigned_user_id" in body)) {
+      updates.assigned_user_id = null;
+    }
+  }
+
+  if ("assigned_user_id" in body) {
+    if (typeof body.assigned_user_id !== "string" && body.assigned_user_id != null) {
+      return NextResponse.json({ error: "Assigned user id must be text." }, { status: 400 });
+    }
+
+    const rawUserId = typeof body.assigned_user_id === "string" ? body.assigned_user_id.trim() : "";
+    if (!rawUserId) {
+      updates.assigned_user_id = null;
+    } else {
+      if (!UUID_RE.test(rawUserId)) {
+        return NextResponse.json({ error: "Assigned user id is invalid." }, { status: 422 });
+      }
+
+      const { data: assignee, error: assigneeError } = await supabase
+        .from("users")
+        .select("id, full_name")
+        .eq("id", rawUserId)
+        .eq("org_id", appUser.org_id)
+        .maybeSingle();
+
+      if (assigneeError) {
+        console.error("[conversations/:id] assignee lookup failed:", assigneeError.message);
+        return NextResponse.json({ error: "Unable to verify the assignee." }, { status: 500 });
+      }
+
+      if (!assignee) {
+        return NextResponse.json({ error: "Assigned user not found for this workspace." }, { status: 404 });
+      }
+
+      updates.assigned_user_id = rawUserId;
+      updates.assigned_to_name = (assignee as { full_name?: string | null }).full_name?.trim() || "";
+    }
   }
 
   if ("tags" in body) {
@@ -106,10 +146,9 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ error: "No valid fields to update." }, { status: 400 });
   }
 
-  const supabase = await createClient();
   const { data: existing, error: existingError } = await supabase
     .from("conversations")
-    .select("id, status, priority, assigned_to_name, risk_level, tags, intent")
+    .select("id, status, priority, assigned_user_id, assigned_to_name, risk_level, tags, intent")
     .eq("id", conversationId)
     .eq("org_id", appUser.org_id)
     .maybeSingle();
@@ -152,6 +191,23 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         orgId: appUser.org_id,
         conversationId,
         source: "api.conversations.update",
+      });
+
+      await notifyConversationAssignmentChanged({
+        db: adminState.client,
+        orgId: appUser.org_id,
+        conversationId,
+        previousAssignedUserId: (existing as { assigned_user_id?: string | null }).assigned_user_id ?? null,
+        previousAssignedToName: (existing as { assigned_to_name?: string | null }).assigned_to_name ?? null,
+        nextAssignedUserId: "assigned_user_id" in updates
+          ? (updates.assigned_user_id as string | null | undefined) ?? null
+          : ((existing as { assigned_user_id?: string | null }).assigned_user_id ?? null),
+        nextAssignedToName: "assigned_to_name" in updates
+          ? (updates.assigned_to_name as string | null | undefined) ?? null
+          : ((existing as { assigned_to_name?: string | null }).assigned_to_name ?? null),
+        assignedByUserId: appUser.id,
+        fallbackAssignedByName: appUser.full_name ?? null,
+        requestOrigin: req.nextUrl.origin,
       });
     }
 

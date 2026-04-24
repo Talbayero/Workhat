@@ -4,7 +4,7 @@ import {
   markGmailSyncError,
   markGmailSyncSuccess,
   type EmailConnection,
-} from "@/lib/email-connector/gmail-importer";
+} from "@/lib/email/gmail-importer";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -71,3 +71,4 @@ export async function POST() {
     return NextResponse.json({ error: "Gmail sync failed. Please try again." }, { status: 500 });
   }
 }
+

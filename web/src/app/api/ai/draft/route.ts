@@ -22,10 +22,10 @@ import { after } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
-import { generateDraft, PROMPT_VERSION } from "@/lib/ai";
+import { generateDraft, PROMPT_VERSION } from "@/ai";
 import { generateEmbedding } from "@/lib/embeddings";
-import type { ConversationContext, MessageContext, KnowledgeSnippet } from "@/lib/ai/types";
-import { assignPromptVersion, linkPromptAssignmentToDraft } from "@/lib/prompt-experiments";
+import type { ConversationContext, MessageContext, KnowledgeSnippet } from "@/ai/types";
+import { assignPromptVersion, linkPromptAssignmentToDraft } from "@/ai/prompts/experiments";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
 // ── Request validation ────────────────────────────────────────────────────────
@@ -612,3 +612,4 @@ export async function POST(req: NextRequest) {
     },
   });
 }
+

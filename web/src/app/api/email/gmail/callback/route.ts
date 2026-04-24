@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { hasCapability } from "@/lib/auth/capabilities";
-import { encryptSecret } from "@/lib/email-connector/encryption";
+import { encryptSecret } from "@/lib/email/encryption";
 import {
   importRecentGmailInbox,
   markGmailSyncSuccess,
   type EmailConnection,
-} from "@/lib/email-connector/gmail-importer";
+} from "@/lib/email/gmail-importer";
 import {
   exchangeGmailCode,
   fetchGmailProfile,
@@ -14,7 +14,7 @@ import {
   GMAIL_PROVIDER,
   tokenExpiryDate,
   watchGmailInbox,
-} from "@/lib/email-connector/google";
+} from "@/lib/email/google";
 import { logAudit } from "@/lib/security/audit-logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -397,3 +397,4 @@ export async function GET(req: NextRequest) {
     return connectorRedirect(req, { emailError: toOperatorError(error) });
   }
 }
+

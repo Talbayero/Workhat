@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
-import { getMailboxDiagnostics, type MailboxConnectionRecord } from "@/lib/email-connector/adapters";
+import { getMailboxDiagnostics, type MailboxConnectionRecord } from "@/lib/email/adapters";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -107,3 +107,4 @@ export async function GET() {
 
   return NextResponse.json({ checks, connections, summary });
 }
+

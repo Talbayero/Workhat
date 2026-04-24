@@ -1,4 +1,4 @@
-import type { EditTypeKey } from "@/lib/supabase/queries";
+import type { EditTypeKey } from "@/lib/analytics";
 import type {
   AiImprovementInsights,
   EditPatternCluster,

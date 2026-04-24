@@ -9,7 +9,7 @@ import {
   getKnowledgeHealth,
   getIntentStats,
   getAiImprovementInsights,
-} from "@/lib/supabase/queries";
+} from "@/lib/analytics";
 
 /*
   Dashboard stays server-rendered for data loading, then hands the UI to the

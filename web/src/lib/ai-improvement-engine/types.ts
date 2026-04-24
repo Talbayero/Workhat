@@ -1,4 +1,4 @@
-import type { EditTypeKey } from "@/lib/supabase/queries";
+import type { EditTypeKey } from "@/lib/analytics";
 
 export type ImprovementEditRow = {
   id: string;

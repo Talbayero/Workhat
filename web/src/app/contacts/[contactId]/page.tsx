@@ -1,11 +1,8 @@
 import { notFound } from "next/navigation";
 import { ContactsShell } from "@/components/contacts/contacts-shell";
-import {
-  getContacts,
-  getContactById,
-  getCompanyById,
-  getConversationsForContact,
-} from "@/lib/supabase/queries";
+import { getCompanyById } from "@/lib/data/companies";
+import { getContacts, getContactById } from "@/lib/data/contacts";
+import { getConversationsForContact } from "@/lib/data/inbox";
 
 type ContactPageProps = {
   params: Promise<{ contactId: string }>;

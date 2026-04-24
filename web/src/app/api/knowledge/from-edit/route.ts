@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateEmbedding, chunkText } from "@/lib/embeddings";
-import { entryFromCorrection } from "@/lib/ai/knowledge-gen";
+import { entryFromCorrection } from "@/ai/workflows/knowledge-generation";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 
@@ -204,3 +204,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ entryId: entry.id }, { status: 201 });
 }
+

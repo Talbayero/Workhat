@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
-import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/lib/ai/intent-classifier";
+import { classifyIntent as classifyIntentFromDb, routeBySkill } from "@/ai/workflows/intent-classifier";
 import { getAdminClientOrLogError, getAdminClientOrLogWarn } from "@/lib/supabase/admin-helpers";
 import { logAudit } from "@/lib/security/audit-logger";
 import { refreshConversationSla } from "@/lib/sla/refresh";
@@ -382,3 +382,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ conversationId, contactId, companyId }, { status: 201 });
 }
+

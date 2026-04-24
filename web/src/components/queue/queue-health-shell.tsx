@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { InboxConversation, RiskLevel, SlaStatus } from "@/lib/mock-data";
-import type { QueueFilters, QueueHealth } from "@/lib/supabase/queries";
+import type { QueueFilters, QueueHealth } from "@/lib/data/inbox";
 
 const SLA_LABEL: Record<SlaStatus, string> = {
   not_applicable: "No SLA",

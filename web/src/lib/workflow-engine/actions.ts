@@ -6,6 +6,7 @@ import type {
   WorkflowEventRow,
   WorkflowRuleRow,
 } from "@/lib/workflow-engine/types";
+import { notifyConversationAssignmentChanged, notifyQaFollowUpAssigned } from "@/lib/notifications/conversation-notifications";
 
 const VALID_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
 const VALID_RISK_LEVELS = new Set(["green", "yellow", "red"]);
@@ -67,16 +68,42 @@ async function assignConversation(
     return { status: "skipped", output: { reason: "missing_assignment_target" } };
   }
 
+  const existing = await fetchConversation(db, event.org_id, event.conversation_id);
+  if (!existing) return { status: "skipped", output: { reason: "conversation_not_found" } };
+  if (
+    String(existing.assigned_user_id ?? "") === (assignedUserId || "") &&
+    String(existing.assigned_to_name ?? "").trim() === assignedToName
+  ) {
+    return {
+      status: "skipped",
+      resourceType: "conversation",
+      resourceId: event.conversation_id,
+      output: { reason: "assignment_unchanged", assignedUserId: assignedUserId || null, assignedToName },
+    };
+  }
+
   const { error } = await db
     .from("conversations")
     .update({
-      ...(assignedUserId ? { assigned_user_id: assignedUserId } : {}),
+      assigned_user_id: assignedUserId || null,
       assigned_to_name: assignedToName,
     })
     .eq("id", event.conversation_id)
     .eq("org_id", event.org_id);
 
   if (error) throw new Error(error.message);
+
+  await notifyConversationAssignmentChanged({
+    db,
+    orgId: event.org_id,
+    conversationId: event.conversation_id,
+    previousAssignedUserId: typeof existing.assigned_user_id === "string" ? existing.assigned_user_id : null,
+    previousAssignedToName: typeof existing.assigned_to_name === "string" ? existing.assigned_to_name : null,
+    nextAssignedUserId: assignedUserId || null,
+    nextAssignedToName: assignedToName,
+    assignedByUserId: event.actor_id,
+    requestOrigin: null,
+  });
 
   return {
     status: "succeeded",
@@ -203,6 +230,18 @@ async function createQaFollowUp(
     .single();
 
   if (error || !data) throw new Error(error?.message ?? "Failed to create QA follow-up.");
+
+  if (assignedToUserId) {
+    await notifyQaFollowUpAssigned({
+      db,
+      orgId: event.org_id,
+      conversationId: event.conversation_id,
+      reviewerUserId: assignedToUserId,
+      assignedByUserId: event.actor_id,
+      requestOrigin: null,
+    });
+  }
+
   return { status: "succeeded", resourceType: "qa_follow_up", resourceId: data.id, output: { severity, reason } };
 }
 

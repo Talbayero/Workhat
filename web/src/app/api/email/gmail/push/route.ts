@@ -5,7 +5,7 @@ import {
   markGmailSyncError,
   markGmailSyncSuccess,
   type EmailConnection,
-} from "@/lib/email-connector/gmail-importer";
+} from "@/lib/email/gmail-importer";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type PubSubPushPayload = {
@@ -188,3 +188,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
+

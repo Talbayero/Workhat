@@ -19,8 +19,8 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
-import { runEditAnalysis } from "@/lib/ai/analysis";
-import { sendConversationReply } from "@/lib/email-connector/outbound";
+import { runEditAnalysis } from "@/ai/workflows/edit-analysis";
+import { sendConversationReply } from "@/lib/email/outbound";
 import { refreshConversationSla } from "@/lib/sla/refresh";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
@@ -377,3 +377,4 @@ export async function POST(
     analysisQueued: Boolean(aiDraftId && sentReplyId),
   });
 }
+

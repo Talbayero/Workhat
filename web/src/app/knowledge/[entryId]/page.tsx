@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { KnowledgeShell } from "@/components/knowledge/knowledge-shell";
-import { getKnowledgeEntries, getKnowledgeEntryById } from "@/lib/supabase/queries";
+import { getKnowledgeEntries, getKnowledgeEntryById } from "@/lib/data/knowledge";
 import type { KnowledgeCategory } from "@/lib/mock-data";
 
 type Props = {

@@ -5,7 +5,7 @@ import {
   generateInboundWebhookSecret,
   hashInboundWebhookSecret,
   inboundWebhookSecretHint,
-} from "@/lib/email-connector/webhook-secret";
+} from "@/lib/email/webhook-secret";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function customInboundSetupEnabled() {
@@ -264,3 +264,4 @@ export async function POST(req: NextRequest) {
     channel: serializeChannel(req, data as { id: string; status: string; inbound_address: string | null; config_json: ChannelConfig }, null, secret),
   }, { status: 201 });
 }
+
