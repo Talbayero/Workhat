@@ -42,6 +42,13 @@ type SettingsOrgResponse = {
   };
 };
 
+type GmailSyncResponse = {
+  imported?: number;
+  skipped?: number;
+  scanned?: number;
+  error?: string;
+};
+
 function friendlyEmailConnectorMessage(message: string) {
   const normalized = message.toLowerCase();
 
@@ -71,6 +78,22 @@ function friendlyEmailConnectorMessage(message: string) {
   }
 
   return message;
+}
+
+function formatGmailSyncResult(data: GmailSyncResponse) {
+  const imported = data.imported ?? 0;
+  const scanned = data.scanned ?? 0;
+  const skipped = data.skipped ?? 0;
+
+  if (imported > 0) {
+    return `Imported ${imported} new Gmail conversation${imported === 1 ? "" : "s"}. Scanned ${scanned}, skipped ${skipped}. Open Inbox to review synced messages.`;
+  }
+
+  if (scanned > 0) {
+    return `Gmail sync scanned ${scanned} recent message${scanned === 1 ? "" : "s"}, but there were no new conversations to import. Skipped ${skipped} already imported or unsupported message${skipped === 1 ? "" : "s"}.`;
+  }
+
+  return "Gmail sync completed but found no recent mailbox messages. Send a new email to the connected Gmail address, wait a few seconds, then import again.";
 }
 
 // ── Reusable input components ─────────────────────────────────────────────────
@@ -194,14 +217,11 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
 
     try {
       const response = await fetch("/api/email/gmail/sync", { method: "POST" });
-      const data = await response.json().catch(() => ({})) as {
-        imported?: number;
-        error?: string;
-      };
+      const data = await response.json().catch(() => ({})) as GmailSyncResponse;
 
       if (!response.ok) throw new Error(data.error ?? "Gmail sync failed.");
 
-      setSyncResult(`Imported ${data.imported ?? 0} new Gmail conversations. Open Inbox to review synced messages.`);
+      setSyncResult(formatGmailSyncResult(data));
       await loadConnections();
     } catch (error) {
       setConnectionError(

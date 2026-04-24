@@ -52,10 +52,17 @@ export async function POST() {
     const result = await importRecentGmailInbox({
       db,
       connection: connection as EmailConnection,
-      maxResults: 10,
+      maxResults: 25,
     });
     await markGmailSyncSuccess({ db, connectionId: connection.id, result });
-    return NextResponse.json({ ok: true, imported: result.imported ?? 0 });
+    return NextResponse.json({
+      ok: true,
+      imported: result.imported,
+      skipped: result.skipped,
+      scanned: result.scanned,
+      latestHistoryId: result.latestHistoryId,
+      mode: result.mode,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gmail sync failed.";
     await markGmailSyncError({ db, connectionId: connection.id, message });

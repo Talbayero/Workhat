@@ -1,7 +1,7 @@
 import { getMailTransportSettings, providerNeedsAppPasswordHint } from "@/lib/email-connector/adapters/provider-config";
 import { getMailboxAdapter } from "@/lib/email-connector/adapters";
 import { classifyMailboxError } from "@/lib/email-connector/adapters/errors";
-import { assertGoogleOAuthConfig, buildGmailAuthUrl, getGoogleRedirectUri, GMAIL_SCOPES } from "@/lib/email-connector/google";
+import { assertGoogleOAuthConfig, buildGmailAuthUrl, getGoogleRedirectUri, GMAIL_IMPORT_QUERY, GMAIL_SCOPES } from "@/lib/email-connector/google";
 import { buildStoredDiagnostics, isActiveMailboxStatus, normalizeMailboxStatus } from "@/lib/email-connector/mailbox-status";
 import type { MailboxConnectionRecord } from "@/lib/email-connector/adapters/types";
 
@@ -173,5 +173,11 @@ describe("gmail oauth setup", () => {
     } as never;
 
     expect(getGoogleRedirectUri(req)).toBe("https://work-hat.com/api/oauth/google/callback");
+  });
+
+  it("uses an import query that includes recent inbox mail and self-test messages", () => {
+    expect(GMAIL_IMPORT_QUERY).toContain("newer_than:30d");
+    expect(GMAIL_IMPORT_QUERY).toContain("in:inbox");
+    expect(GMAIL_IMPORT_QUERY).toContain("to:me");
   });
 });

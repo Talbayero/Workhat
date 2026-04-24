@@ -72,6 +72,8 @@ Common failures:
 | Callback fails token exchange | Bad client secret, stale code, denied consent | Verify env and retry OAuth |
 | Connection not active | Token persistence/import failed | Inspect email connection diagnostics and logs |
 | Import returns no active Gmail | No active Gmail OAuth connection | Reconnect Gmail |
+| Import reports `scanned: 0` | Gmail API did not return recent matching mail | Confirm the test email was delivered to the connected Gmail address, wait a few seconds, then import again |
+| Import reports `scanned > 0` and `imported: 0` | Messages were already imported or skipped by dedupe | Open Inbox or send a fresh external test message |
 | Send reply fails | No active outbound Gmail connection or Gmail API error | Reconnect Gmail or inspect provider response |
 
 ## Email Import And Send
@@ -81,6 +83,8 @@ Manual import:
 ```text
 POST /api/email/gmail/sync
 ```
+
+Manual import returns `imported`, `scanned`, and `skipped`. The Gmail importer searches recent mail matching `newer_than:30d {in:inbox to:me}` so a self-test addressed to the connected mailbox is eligible even when Gmail labeling differs from ordinary inbound mail.
 
 Live watch:
 

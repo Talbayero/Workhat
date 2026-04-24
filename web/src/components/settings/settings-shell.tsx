@@ -92,6 +92,13 @@ type SetupHealth = {
   };
 };
 
+type MailboxSyncResponse = {
+  imported?: number;
+  skipped?: number;
+  scanned?: number;
+  error?: string;
+};
+
 type AgentSkill = { name: string; priority: number };
 
 type TeamMember = {
@@ -148,6 +155,22 @@ function friendlyEmailConnectorMessage(message: string) {
   }
 
   return message;
+}
+
+function formatMailboxSyncNotice(data: MailboxSyncResponse) {
+  const imported = data.imported ?? 0;
+  const scanned = data.scanned ?? 0;
+  const skipped = data.skipped ?? 0;
+
+  if (imported > 0) {
+    return `Mailbox sync imported ${imported} new conversation${imported === 1 ? "" : "s"}. Scanned ${scanned}, skipped ${skipped}.`;
+  }
+
+  if (scanned > 0) {
+    return `Mailbox sync scanned ${scanned} recent message${scanned === 1 ? "" : "s"}, but no new conversations were imported. Skipped ${skipped} already imported or unsupported message${skipped === 1 ? "" : "s"}.`;
+  }
+
+  return "Mailbox sync completed but found no recent messages. Send a new email to the connected Gmail address, wait a few seconds, then import again.";
 }
 
 // ── Shared UI components ───────────────────────────────────────────────────────
@@ -932,11 +955,11 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
         headers: action === "sync" ? { "Content-Type": "application/json" } : undefined,
         body: action === "sync" && primaryConnection?.id ? JSON.stringify({ connectionId: primaryConnection.id }) : undefined,
       });
-      const payload = await res.json().catch(() => ({}));
+      const payload = await res.json().catch(() => ({})) as MailboxSyncResponse;
       if (!res.ok) {
         throw new Error(payload.error ?? `Could not ${action === "sync" ? "sync mailbox" : "start Gmail live watch"}.`);
       }
-      setConnectionNotice(action === "sync" ? "Mailbox sync finished. New mail should now appear in the inbox." : "Live Gmail watch is active.");
+      setConnectionNotice(action === "sync" ? formatMailboxSyncNotice(payload) : "Live Gmail watch is active.");
       await refreshConnections();
     } catch (error) {
       setConnectionError(

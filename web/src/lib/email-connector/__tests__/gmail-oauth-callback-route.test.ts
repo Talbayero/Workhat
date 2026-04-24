@@ -28,7 +28,7 @@ jest.mock("@/lib/email-connector/google", () => ({
 }));
 
 jest.mock("@/lib/email-connector/gmail-importer", () => ({
-  importRecentGmailInbox: jest.fn(async () => ({ imported: 1, skipped: 0 })),
+  importRecentGmailInbox: jest.fn(async () => ({ imported: 1, skipped: 0, scanned: 1, latestHistoryId: "history-1", mode: "full" })),
   markGmailSyncSuccess: jest.fn(),
 }));
 

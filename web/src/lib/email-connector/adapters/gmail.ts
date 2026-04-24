@@ -128,7 +128,7 @@ export function createGmailAdapter({ db }: MailboxAdapterContext): MailboxAdapte
       const result = await importRecentGmailInbox({
         db,
         connection: toGmailConnection(connection),
-        maxResults: options.maxMessages ?? 10,
+        maxResults: options.maxMessages ?? 25,
       });
       await markGmailSyncSuccess({ db, connectionId: connection.id, result });
       await db

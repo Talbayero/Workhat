@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
 
 export const GMAIL_PROVIDER = "gmail" as const;
+export const GMAIL_IMPORT_QUERY = "newer_than:30d {in:inbox to:me}";
 
 export const GMAIL_SCOPES = [
   "openid",
@@ -196,7 +197,7 @@ export async function listGmailInboxMessages({
 }) {
   const params = new URLSearchParams({
     maxResults: String(maxResults),
-    q: "in:inbox newer_than:30d",
+    q: GMAIL_IMPORT_QUERY,
   });
   const response = await fetchWithCircuitBreaker(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`,
