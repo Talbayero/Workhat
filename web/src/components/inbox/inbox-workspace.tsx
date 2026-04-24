@@ -5,10 +5,8 @@ import {
   conversationStatusLabel,
   filterConversations,
   inboxViews,
-  type InboxConversation,
-  type InboxViewId,
-  type RiskLevel,
-} from "@/lib/mock-data";
+} from "@/lib/inbox/filters";
+import type { InboxConversation, InboxViewId, RiskLevel } from "@/lib/inbox/types";
 import { getConversations, getConversationById, getOrgIntentColors } from "@/lib/data/inbox";
 import { ThreadWorkspace } from "./thread-workspace";
 import { NewConversationButton } from "./new-conversation-button";

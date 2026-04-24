@@ -1,5 +1,5 @@
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
-import type { InboxViewId } from "@/lib/mock-data";
+import type { InboxViewId } from "@/lib/inbox/types";
 
 type Props = {
   params: Promise<{ conversationId: string }>;

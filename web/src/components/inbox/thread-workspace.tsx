@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { InboxConversation, RiskLevel } from "@/lib/mock-data";
+import type { InboxConversation, RiskLevel } from "@/lib/inbox/types";
 import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
 import type { ConfidenceLevel } from "@/ai/types";
 import { ErrorBoundary } from "@/components/ui/error-boundary";

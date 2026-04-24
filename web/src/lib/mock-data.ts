@@ -1,5 +1,16 @@
-export type RiskLevel = "green" | "yellow" | "red";
-export type SlaStatus = "not_applicable" | "ok" | "at_risk" | "breached";
+import {
+  conversationStatusLabel,
+  filterConversations,
+  inboxViews,
+} from "@/lib/inbox/filters";
+import type { InboxConversation, InboxViewId, RiskLevel, SlaStatus } from "@/lib/inbox/types";
+
+export {
+  conversationStatusLabel,
+  filterConversations,
+  inboxViews,
+};
+export type { InboxConversation, InboxViewId, RiskLevel, SlaStatus };
 
 export type ContactRecord = {
   id: string;
@@ -35,89 +46,6 @@ export type CompanyRecord = {
   tier: "priority" | "watch" | "standard";
 };
 
-export type InboxConversation = {
-  id: string;
-  contactId: string;
-  customerName: string;
-  companyId: string;
-  companyName: string;
-  subject: string;
-  preview: string;
-  status: "open" | "waiting_on_customer" | "waiting_on_internal" | "closed";
-  channel: "email";
-  riskLevel: RiskLevel;
-  aiConfidence: RiskLevel;
-  assignee: string;
-  lastSeen: string;
-  lastMessageAt?: string;
-  tags: string[];
-  intent: string;
-  sla?: {
-    status: SlaStatus;
-    target: "first_response" | "next_response" | null;
-    dueAt: string | null;
-    breachedAt: string | null;
-    lastEvaluatedAt: string | null;
-  };
-  messages: {
-    id: string;
-    sender: string;
-    senderType: "customer" | "agent" | "ai" | "internal";
-    timestamp: string;
-    body: string;
-  }[];
-  aiDraft: {
-    rationale: string;
-    missingContext: string[];
-    suggestions: string[];
-    draftText: string;
-  };
-  profile: {
-    email: string;
-    phone: string;
-    tier: string;
-    notes: string[];
-    openIssues: string[];
-  };
-};
-
-export type InboxViewId = "all" | "mine" | "unassigned" | "high-risk" | "ai-review" | "unclassified" | "sla-at-risk" | "sla-breached";
-
-export const inboxViews: { id: InboxViewId; label: string; count: number }[] = [
-  { id: "all", label: "All conversations", count: 42 },
-  { id: "mine", label: "Mine", count: 11 },
-  { id: "unassigned", label: "Unassigned", count: 6 },
-  { id: "high-risk", label: "High risk", count: 4 },
-  { id: "sla-at-risk", label: "SLA at risk", count: 0 },
-  { id: "sla-breached", label: "SLA breached", count: 0 },
-  { id: "ai-review", label: "AI needs review", count: 8 },
-  { id: "unclassified", label: "Unclassified", count: 0 },
-];
-
-export function filterConversations(
-  list: InboxConversation[],
-  view: InboxViewId,
-  currentAgent = "Marcos",
-): InboxConversation[] {
-  switch (view) {
-    case "mine":
-      return list.filter((c) => c.assignee === currentAgent);
-    case "unassigned":
-      return list.filter((c) => !c.assignee || c.assignee === "");
-    case "high-risk":
-      return list.filter((c) => c.riskLevel === "red" || c.riskLevel === "yellow");
-    case "ai-review":
-      return list.filter((c) => c.aiConfidence === "red" || c.aiConfidence === "yellow");
-    case "sla-at-risk":
-      return list.filter((c) => c.sla?.status === "at_risk");
-    case "sla-breached":
-      return list.filter((c) => c.sla?.status === "breached");
-    case "unclassified":
-      return list.filter((c) => !c.intent || c.intent.toLowerCase() === "unclassified" || c.intent.trim() === "");
-    default:
-      return list;
-  }
-}
 
 export const insightCards = [
   { label: "AI draft acceptance", value: "68%", delta: "+9% this week" },
@@ -1027,15 +955,6 @@ export function filterKnowledgeEntries(category: KnowledgeCategory | "all") {
   if (category === "all") return knowledgeEntries;
   return knowledgeEntries.filter((e) => e.category === category);
 }
-
-// ─── Display helpers ──────────────────────────────────────────────────────────
-
-export const conversationStatusLabel: Record<InboxConversation["status"], string> = {
-  open: "Open",
-  waiting_on_customer: "Waiting on customer",
-  waiting_on_internal: "Waiting on team",
-  closed: "Closed",
-};
 
 // --- Dashboard ---
 
