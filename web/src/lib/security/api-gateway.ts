@@ -50,12 +50,15 @@ const POLICIES: Record<string, RoutePolicy> = {
   "stripe-webhook":        { id: "stripe-webhook",        methods: ["POST"], windowMs: minute, maxRequests: 120, blacklistAfter: 0, keyMode: "ip", trustedSystem: true, dynamicBlacklist: false, maxBodyBytes: 256_000 },
   "onboarding-create-org":  { id: "onboarding-create-org", methods: ["POST"], windowMs: minute, maxRequests: 8,   blacklistAfter: 0, keyMode: "user-or-ip", dynamicBlacklist: false, failOpenOnStoreUnavailable: true, maxBodyBytes: 16_384 },
   "email-setup":            { id: "email-setup",            windowMs: minute, maxRequests: 30,  blacklistAfter: 0, keyMode: "user-or-ip", dynamicBlacklist: false, failOpenOnStoreUnavailable: true, maxBodyBytes: 128_000 },
+  // Authenticated app APIs fail open if Redis is unavailable so the product
+  // remains usable during setup. Admin diagnostics still surface Redis as a
+  // production hardening gap; public unauthenticated routes remain stricter.
   // All LLM-backed routes (30 req/min). knowledge/gaps gets its own tighter cap below.
-  "expensive-ai":          { id: "expensive-ai",          windowMs: minute, maxRequests: 30,  blacklistAfter: 3, keyMode: "org-user-or-ip", maxBodyBytes: 64_000 },
-  "email-connector":       { id: "email-connector",       windowMs: minute, maxRequests: 60,  blacklistAfter: 3, keyMode: "user-or-ip", maxBodyBytes: 128_000 },
-  "api-default":           { id: "api-default",           windowMs: minute, maxRequests: 180, blacklistAfter: 4, keyMode: "user-or-ip", maxBodyBytes: 512_000 },
+  "expensive-ai":          { id: "expensive-ai",          windowMs: minute, maxRequests: 30,  blacklistAfter: 3, keyMode: "org-user-or-ip", failOpenOnStoreUnavailable: true, maxBodyBytes: 64_000 },
+  "email-connector":       { id: "email-connector",       windowMs: minute, maxRequests: 60,  blacklistAfter: 3, keyMode: "user-or-ip", failOpenOnStoreUnavailable: true, maxBodyBytes: 128_000 },
+  "api-default":           { id: "api-default",           windowMs: minute, maxRequests: 180, blacklistAfter: 4, keyMode: "user-or-ip", failOpenOnStoreUnavailable: true, maxBodyBytes: 512_000 },
   // knowledge/gaps fires up to 5 parallel LLM calls per request — intentionally tight.
-  "knowledge-gaps":        { id: "knowledge-gaps",        methods: ["GET"], windowMs: minute, maxRequests: 6, blacklistAfter: 2, keyMode: "org-user-or-ip", maxBodyBytes: 0 },
+  "knowledge-gaps":        { id: "knowledge-gaps",        methods: ["GET"], windowMs: minute, maxRequests: 6, blacklistAfter: 2, keyMode: "org-user-or-ip", failOpenOnStoreUnavailable: true, maxBodyBytes: 0 },
 };
 
 let redisState: RedisState | null = null;

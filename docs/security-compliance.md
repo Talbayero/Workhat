@@ -108,6 +108,12 @@ Evidence sources:
 - Vendor review records.
 - Data deletion/export request records.
 
+## Request Protection Degradation
+
+Upstash Redis is required for full production rate limiting and dynamic blacklist persistence. During setup or Redis outage, authenticated app APIs fail open with warning logs so onboarding, Gmail setup, AI drafting, and workspace operations remain usable. Public unauthenticated abuse surfaces, such as waitlist submissions, remain fail-closed when the rate-limit store is unavailable.
+
+This is an availability tradeoff and must be treated as a hardening gap until Redis is configured in production.
+
 ## Type 1 And Type 2 Readiness
 
 SOC 2 Type 1 asks whether controls are designed and implemented at a point in time.

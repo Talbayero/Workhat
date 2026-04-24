@@ -40,6 +40,8 @@ The core path is healthy only if:
 11. User can edit/send reply.
 12. Audit/logging records the flow.
 
+Redis request protection should be configured before broader customer rollout. If Redis is missing, authenticated app APIs continue so setup is not blocked, but admin setup health must show Redis as incomplete and public abuse-prone routes may fail closed.
+
 ## Gmail OAuth Troubleshooting
 
 Check admin setup health:

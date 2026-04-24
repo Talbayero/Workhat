@@ -51,11 +51,15 @@ function friendlyEmailConnectorMessage(message: string) {
     normalized.includes("server key") ||
     normalized.includes("admin database")
   ) {
-    return "Google OAuth is not configured by your workspace admin.";
+    return "Admin setup required: Gmail OAuth is not configured";
   }
 
   if (normalized.includes("email_token_encryption_key") || normalized.includes("mailbox token encryption")) {
-    return "Mailbox token encryption is not configured by your workspace admin.";
+    return "Admin setup required: Gmail OAuth is not configured";
+  }
+
+  if (normalized.includes("rate_limit_store_unavailable") || normalized.includes("request protection")) {
+    return "Request protection is not fully configured yet. You can continue setup while an administrator finishes Redis hardening.";
   }
 
   if (normalized.includes("denied") || normalized.includes("not approved") || normalized.includes("cancelled")) {
@@ -786,10 +790,7 @@ export default function OnboardingPage() {
         </section>
 
         <p className="mt-5 text-center text-xs text-[var(--muted)]">
-          Already set up?{" "}
-          <button onClick={() => router.push("/login")} className="text-[var(--moss)]">
-            Sign in instead
-          </button>
+          Setup continues with your current Work Hat account. Use Settings after onboarding to manage the workspace.
         </p>
       </div>
     </main>
