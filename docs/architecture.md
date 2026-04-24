@@ -67,6 +67,7 @@ The application is a single Next.js deployment with three distinct execution con
 | Route | Purpose |
 |---|---|
 | `/api/inbound/email` | Public webhook for custom/non-Gmail inbound email sources |
+| `/api/oauth/google/start` | Compatibility alias that starts the Gmail OAuth connection flow |
 | `/api/email/gmail/push` | Google Cloud Pub/Sub push endpoint |
 | `/api/email/gmail/callback` | Gmail OAuth redirect handler |
 | `/api/stripe/webhook` | Stripe billing event handler |
@@ -331,13 +332,13 @@ Downstream effects after successful inbound processing:
 
 ### Mailbox Adapters
 
-Work Hat connects to Gmail via OAuth 2.0. Each org can connect one or more Gmail accounts via `/api/email/gmail/connect` -> `/api/email/gmail/callback`.
+Work Hat connects to Gmail via OAuth 2.0. Each org can connect one or more Gmail accounts via `/api/email/gmail/connect` -> `/api/email/gmail/callback`; `/api/oauth/google/start` is a compatibility alias that forwards into the same start route.
 
 Token and credential storage: Gmail access/refresh tokens and saved mailbox/app-password/IMAP credentials are encrypted with AES-256-GCM (`lib/email-connector/encryption.ts`) before being written to `email_connections`. The encryption key is `EMAIL_TOKEN_ENCRYPTION_KEY` (32-byte base64). Custom inbound webhook tokens do not use this key because only one-way token hashes are stored.
 
 Real-time sync: Google Cloud Pub/Sub pushes new message notifications to `/api/email/gmail/push`. The watch is set up via `/api/email/gmail/watch` and renewed by a cron job at `/api/email/gmail/renew-watches` (requires `CRON_SECRET` header for Vercel Cron authorization).
 
-Inbound processing: `lib/email-connector/gmail-importer.ts` is now a Gmail adapter. It fetches Gmail payloads, normalizes them into the same inbound message shape used by custom webhook sources, and calls the shared inbound processor. Threading still uses Gmail `threadId` plus standard `In-Reply-To` / `References` headers.
+Inbound processing: `lib/email-connector/gmail-importer.ts` is now a Gmail adapter. It fetches Gmail payloads, normalizes them into the same inbound message shape used by custom webhook sources, and calls the shared inbound processor. The OAuth callback runs a bounded initial import of recent inbox messages after token persistence; manual sync and Pub/Sub push use the same importer afterward. Threading still uses Gmail `threadId` plus standard `In-Reply-To` / `References` headers.
 
 Credential-based inbound: `POST /api/email/mailbox/sync` manually polls one active connection or the next active inbound connection for the org. `GET /api/email/mailbox/poll` is a cron/external-scheduler endpoint protected by `CRON_SECRET` that polls active inbound-enabled connections. IMAP UIDs are stored in `provider_metadata.imap_state.last_uid` for explainable incremental fetches.
 

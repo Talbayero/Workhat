@@ -73,13 +73,15 @@ function friendlyEmailConnectorMessage(message: string) {
 
   if (
     normalized.includes("google_client") ||
-    normalized.includes("not configured") ||
+    normalized.includes("google oauth is not configured") ||
     normalized.includes("server key") ||
-    normalized.includes("supabase") ||
-    normalized.includes("admin database") ||
-    normalized.includes("environment")
+    normalized.includes("admin database")
   ) {
-    return "Gmail connection is not ready yet. Please contact your Work Hat administrator.";
+    return "Google OAuth is not configured yet. Ask an administrator to set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and the Gmail callback URL.";
+  }
+
+  if (normalized.includes("email_token_encryption_key") || normalized.includes("mailbox token encryption")) {
+    return "Mailbox token encryption is not configured. Ask an administrator to set EMAIL_TOKEN_ENCRYPTION_KEY before connecting Gmail.";
   }
 
   if (normalized.includes("denied") || normalized.includes("not approved") || normalized.includes("cancelled")) {

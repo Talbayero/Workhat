@@ -9,6 +9,8 @@ Work Hat presents mailbox setup as four buyer-friendly connection types:
 
 Advanced/developer setup also supports custom inbound webhook/API channels for internal relays, SMTP parsing services, and future Postmark-style inbound providers. The four mailbox choices are live runtime paths, not saved placeholders: Gmail OAuth uses the Gmail adapter, and mailbox password, app password, and IMAP/SMTP use the IMAP/SMTP adapter for inbound polling and approved outbound replies.
 
+Gmail OAuth can be started through `/api/email/gmail/connect` or the compatibility alias `/api/oauth/google/start`. Both routes redirect to Google and return to `/api/email/gmail/callback`.
+
 ## Architecture
 
 Provider-specific adapters normalize email into `NormalizedInboundEmail` in `web/src/lib/email-connector/inbound.ts`. After normalization, all providers use the same deterministic processing path:
@@ -32,7 +34,7 @@ Runtime mailbox adapters live under `web/src/lib/email-connector/adapters/` and 
 - `refreshCredentials`
 - `getDiagnostics`
 
-`gmail` is the OAuth adapter. `mailbox_password`, `app_password`, and `imap_smtp` all use the IMAP/SMTP adapter after provider-specific host, port, TLS, and app-password guidance has been normalized.
+`gmail` is the OAuth adapter. On callback, Work Hat exchanges the authorization code, encrypts the access and refresh tokens, stores an active `email_connections` row, creates/updates the email channel, runs an initial recent-message import, and registers a Gmail watch when `GOOGLE_PUBSUB_TOPIC` is configured. `mailbox_password`, `app_password`, and `imap_smtp` all use the IMAP/SMTP adapter after provider-specific host, port, TLS, and app-password guidance has been normalized.
 
 ## Mailbox Setup UX
 
@@ -164,19 +166,20 @@ Operators should check:
 1. Apply migrations through `0039_mailbox_adapter_runtime.sql`.
 2. Sign in as an admin or manager with `integrations.manage`.
 3. Open onboarding Step 2 or Settings -> Channels and confirm the four mailbox connection types appear first.
-4. Set `EMAIL_TOKEN_ENCRYPTION_KEY` before using Gmail OAuth or credential-based mailbox setup.
-5. Connect Gmail through OAuth, or configure an app-password/IMAP mailbox such as Zoho.
-6. Confirm the saved connection becomes `active`; if it becomes `error`, use the displayed provider/auth/TLS diagnostic to correct the setup.
-7. Send a real email to the mailbox and run Settings -> Channels sync or the scheduler-backed `/api/email/mailbox/poll`.
-8. Confirm the conversation appears in Inbox and Queue.
-9. Send an approved reply from the thread and confirm `sent_replies`, outbound `messages`, and `last_outbound_send_at` are updated.
-10. Open Advanced developer setup and create a custom inbound channel when testing webhook ingestion.
-11. Copy the endpoint and token before leaving the page.
-12. Send a test webhook request with a unique `externalMessageId`.
-13. Confirm the sender contact was created and company was associated for a business domain.
-14. Confirm SLA status populated on the conversation.
-15. Confirm workflow events exist for the delivery.
-16. Repeat the same webhook request and confirm no duplicate message appears.
+4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `EMAIL_TOKEN_ENCRYPTION_KEY` before using Gmail OAuth. Add `https://<app-host>/api/email/gmail/callback` to the Google OAuth web client redirect URIs.
+5. Set `GOOGLE_PUBSUB_TOPIC` and `GMAIL_PUSH_TOKEN` when Gmail live watch/Pub/Sub ingestion is required; otherwise manual sync and polling remain available.
+6. Connect Gmail through OAuth, or configure an app-password/IMAP mailbox such as Zoho.
+7. Confirm the saved connection becomes `active`; if it becomes `error`, use the displayed provider/auth/TLS diagnostic to correct the setup.
+8. Send a real email to the mailbox and run Settings -> Channels sync or the scheduler-backed `/api/email/mailbox/poll`.
+9. Confirm the conversation appears in Inbox and Queue.
+10. Send an approved reply from the thread and confirm `sent_replies`, outbound `messages`, and `last_outbound_send_at` are updated.
+11. Open Advanced developer setup and create a custom inbound channel when testing webhook ingestion.
+12. Copy the endpoint and token before leaving the page.
+13. Send a test webhook request with a unique `externalMessageId`.
+14. Confirm the sender contact was created and company was associated for a business domain.
+15. Confirm SLA status populated on the conversation.
+16. Confirm workflow events exist for the delivery.
+17. Repeat the same webhook request and confirm no duplicate message appears.
 
 ## Backward Compatibility
 

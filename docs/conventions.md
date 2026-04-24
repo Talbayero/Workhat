@@ -313,6 +313,8 @@ Never store raw OAuth tokens or mailbox credentials in the database. Always encr
 
 Token refresh is handled automatically by the Gmail sender/importer — they detect expired access tokens and use the refresh token. Watch expiry (7-day Gmail limit) is handled by the cron renewal endpoint.
 
+Use `/api/email/gmail/connect` as the canonical start route. `/api/oauth/google/start` exists only as a compatibility alias for product links or older docs. The OAuth callback must keep route handling thin: exchange code, encrypt tokens, upsert `email_connections`, ensure the email channel, run the bounded initial sync, and leave provider-neutral contact/conversation/SLA/workflow behavior inside the shared inbound processor.
+
 ### Stripe
 
 No Stripe SDK. All Stripe calls use direct `fetch` to the Stripe REST API with the secret key. Webhook verification uses HMAC-SHA256 via `lib/stripe.ts`. The webhook handler must verify the signature before processing any event.

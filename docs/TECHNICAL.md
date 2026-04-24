@@ -396,6 +396,7 @@ The admin UI for this data is `/audit`. The page and API both call `src/lib/audi
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/email/gmail/connect` | **Public** | Initiate Gmail OAuth flow |
+| `GET` | `/api/oauth/google/start` | **Public** | Compatibility alias for Gmail OAuth start |
 | `GET` | `/api/email/gmail/callback` | **Public** | OAuth callback — exchanges code for tokens |
 | `POST` | `/api/email/gmail/push` | **Public** (token-verified) | Pub/Sub push notification receiver |
 | `POST` | `/api/email/gmail/sync` | admin/manager | Manual inbox sync |
@@ -489,6 +490,7 @@ After an agent edits and sends an AI draft, `src/lib/edit-analysis.ts` analyzes 
 User clicks "Connect Gmail"
         │
 GET /api/email/gmail/connect
+  (or GET /api/oauth/google/start compatibility alias)
   → Generates state nonce → stores in cookie
   → Redirects to Google OAuth consent screen
         │
@@ -497,7 +499,10 @@ GET /api/email/gmail/callback?code=...&state=...
   → Validates state cookie (CSRF protection)
   → Exchanges code for access + refresh tokens
   → Encrypts tokens with AES-256-GCM
-  → Stores encrypted tokens in email_connections
+  → Stores encrypted tokens in email_connections as provider=gmail, connection_type=oauth, status=active
+  → Ensures the org email channel points at the Gmail connection
+  → Imports a bounded recent-message window
+  → Registers Gmail watch when GOOGLE_PUBSUB_TOPIC is configured
   → Redirects user to /onboarding?step=inbox
 ```
 

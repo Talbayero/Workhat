@@ -111,6 +111,7 @@ export function EmailConnectionSetup({
   const [mailbox, setMailbox] = useState<MailboxForm>(emptyMailboxForm);
   const [appPassword, setAppPassword] = useState<AppPasswordForm>(emptyAppPasswordForm);
   const [imapSmtp, setImapSmtp] = useState<ImapSmtpForm>(emptyImapSmtpForm);
+  const [oauthStarting, setOauthStarting] = useState(false);
   const [localMessage, setLocalMessage] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   async function saveConnection(method: Exclude<EmailConnectionMethod, "oauth">) {
@@ -213,9 +214,10 @@ export function EmailConnectionSetup({
               {canEdit ? (
                 <Link
                   href={`/api/email/gmail/connect?returnTo=${encodeURIComponent(returnTo)}`}
+                  onClick={() => setOauthStarting(true)}
                   className="w-fit rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
                 >
-                  Connect Gmail
+                  {oauthStarting ? "Opening Google..." : "Connect Gmail"}
                 </Link>
               ) : (
                 <span className="w-fit rounded-full border border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">

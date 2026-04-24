@@ -108,6 +108,8 @@ Inbound emails not appearing or approved replies fail to send
 │  └─ Custom inbound → Check webhook delivery diagnostics
 │
 ├─ For Gmail
+│  ├─ Are GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and EMAIL_TOKEN_ENCRYPTION_KEY set?
+│  ├─ Does the Google OAuth web client allow https://<app-host>/api/email/gmail/callback?
 │  ├─ Is Gmail API responding?
 │  │  └─ Rate limited? → Back off, retry after 60s
 │  ├─ Is OAuth token expired?
@@ -192,7 +194,7 @@ Inbound emails not appearing or approved replies fail to send
    ```
 
 10. **If token expired, user must re-authenticate:**
-   - Direct user to Settings -> Channels or `/api/email/gmail/connect`
+   - Direct user to Settings -> Channels, `/api/email/gmail/connect`, or the compatibility alias `/api/oauth/google/start`
    - They'll see "Gmail is disconnected" message
    - Click "Reconnect Gmail"
 

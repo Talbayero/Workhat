@@ -39,8 +39,8 @@ const PROVIDER_DEFAULTS: Partial<Record<MailboxProvider, Omit<MailTransportSetti
     smtp: { host: "smtp.mail.me.com", port: 587, secure: false },
   },
   zoho: {
-    imap: { host: "imappro.zoho.com", port: 993, secure: true },
-    smtp: { host: "smtppro.zoho.com", port: 465, secure: true },
+    imap: { host: "imap.zoho.com", port: 993, secure: true },
+    smtp: { host: "smtp.zoho.com", port: 465, secure: true },
   },
 };
 

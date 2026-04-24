@@ -648,5 +648,6 @@ Work Hat needs internal dogfooding and demos that work without Google Workspace,
 - SMTP send is available for active outbound-enabled credential connections, but the human approval gate in the reply route remains unchanged.
 - Serverless deployments should use `/api/email/mailbox/poll` with `CRON_SECRET` or an external scheduler for recurring IMAP polling. The adapter does not use long-lived IMAP IDLE connections.
 - Provider-specific limitations, such as Gmail/iCloud/Outlook requiring app passwords for direct password flows, are surfaced as operator diagnostics rather than hidden setup failures.
+- Gmail OAuth remains the canonical OAuth/xOAuth path. `/api/email/gmail/connect` starts the flow, `/api/oauth/google/start` is a compatibility alias, and the callback persists encrypted tokens, marks the mailbox active, runs an initial recent-message import, and registers Pub/Sub watch when configured.
 
 *Last updated: April 2026*

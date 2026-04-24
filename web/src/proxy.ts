@@ -44,6 +44,7 @@ function isPublic(pathname: string): boolean {
   // require an authenticated session and must NOT be whitelisted here.
   if (pathname === "/api/email/gmail/connect") return true;
   if (pathname === "/api/email/gmail/callback") return true;
+  if (pathname === "/api/oauth/google/start") return true;
   if (pathname.startsWith("/api/email/gmail/push")) return true;
   // Login page itself
   if (pathname === "/login") return true;

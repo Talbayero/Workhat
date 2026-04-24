@@ -1,6 +1,7 @@
 import { getMailTransportSettings, providerNeedsAppPasswordHint } from "@/lib/email-connector/adapters/provider-config";
 import { getMailboxAdapter } from "@/lib/email-connector/adapters";
 import { classifyMailboxError } from "@/lib/email-connector/adapters/errors";
+import { assertGoogleOAuthConfig, buildGmailAuthUrl } from "@/lib/email-connector/google";
 import { buildStoredDiagnostics, isActiveMailboxStatus, normalizeMailboxStatus } from "@/lib/email-connector/mailbox-status";
 import type { MailboxConnectionRecord } from "@/lib/email-connector/adapters/types";
 
@@ -81,8 +82,8 @@ describe("mail transport settings", () => {
       credential_metadata: {},
     }));
 
-    expect(settings.imap.host).toBe("imappro.zoho.com");
-    expect(settings.smtp.host).toBe("smtppro.zoho.com");
+    expect(settings.imap.host).toBe("imap.zoho.com");
+    expect(settings.smtp.host).toBe("smtp.zoho.com");
     expect(settings.senderName).toBe("Zoho Support");
   });
 
@@ -119,5 +120,40 @@ describe("mailbox error classification", () => {
       message:
         "Mailbox validation failed. Verify the mailbox credentials and provider settings. If the provider uses 2FA or blocks direct password login, use an app password instead.",
     });
+  });
+});
+
+describe("gmail oauth setup", () => {
+  const originalClientId = process.env.GOOGLE_CLIENT_ID;
+  const originalClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  afterEach(() => {
+    if (originalClientId === undefined) delete process.env.GOOGLE_CLIENT_ID;
+    else process.env.GOOGLE_CLIENT_ID = originalClientId;
+    if (originalClientSecret === undefined) delete process.env.GOOGLE_CLIENT_SECRET;
+    else process.env.GOOGLE_CLIENT_SECRET = originalClientSecret;
+  });
+
+  it("fails with an operator-facing setup message when OAuth env is missing", () => {
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+
+    expect(() => assertGoogleOAuthConfig()).toThrow("Google OAuth is not configured");
+  });
+
+  it("builds a Gmail consent URL with offline access and state", () => {
+    process.env.GOOGLE_CLIENT_ID = "client.apps.googleusercontent.com";
+    process.env.GOOGLE_CLIENT_SECRET = "secret";
+
+    const url = new URL(buildGmailAuthUrl({
+      redirectUri: "https://work-hat.com/api/email/gmail/callback",
+      state: "state-123",
+    }));
+
+    expect(url.hostname).toBe("accounts.google.com");
+    expect(url.searchParams.get("access_type")).toBe("offline");
+    expect(url.searchParams.get("prompt")).toBe("consent");
+    expect(url.searchParams.get("state")).toBe("state-123");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://work-hat.com/api/email/gmail/callback");
   });
 });

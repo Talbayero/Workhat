@@ -132,6 +132,7 @@ function getRoutePolicy(pathname: string): RoutePolicy {
   if (pathname === "/api/email/connections")             return withEnvOverrides(POLICIES["email-setup"]);
   if (pathname === "/api/email/custom-inbound")           return withEnvOverrides(POLICIES["email-setup"]);
   if (pathname === "/api/email/gmail/connect")            return withEnvOverrides(POLICIES["email-setup"]);
+  if (pathname === "/api/oauth/google/start")             return withEnvOverrides(POLICIES["email-setup"]);
   if (pathname.startsWith("/api/ai/"))                   return withEnvOverrides(POLICIES["expensive-ai"]);
   if (pathname.startsWith("/api/email/"))                return withEnvOverrides(POLICIES["email-connector"]);
   // LLM-backed knowledge and intent routes — must be ordered before api-default.

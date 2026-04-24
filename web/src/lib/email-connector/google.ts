@@ -88,7 +88,9 @@ export function assertGoogleOAuthConfig() {
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    throw new Error("Gmail connection is not ready yet. Please contact your Work Hat administrator.");
+    throw new Error(
+      "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, then add the Gmail OAuth callback URL in Google Cloud."
+    );
   }
 
   return { clientId, clientSecret };

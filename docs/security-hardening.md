@@ -521,6 +521,8 @@ Legacy `POSTMARK_INBOUND_TOKEN` is accepted only when a channel has no per-chann
 
 OAuth tokens, mailbox passwords, app passwords, and IMAP/SMTP passwords are encrypted before being written to `email_connections`. The shared encryption layer uses `EMAIL_TOKEN_ENCRYPTION_KEY`, and decrypted values must only exist in memory inside trusted server routes or `lib/email-connector/adapters/` runtime code.
 
+Gmail OAuth starts at `/api/email/gmail/connect` or compatibility alias `/api/oauth/google/start`, then returns to `/api/email/gmail/callback`. The start route sets a short-lived HTTP-only state cookie and the callback rejects missing or mismatched state before exchanging a code. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `EMAIL_TOKEN_ENCRYPTION_KEY` are required before Gmail can be connected.
+
 Security controls:
 
 - `provider` and `connection_type` are separate so setup methods are not mistaken for trusted provider identities.

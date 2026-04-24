@@ -3,6 +3,11 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { hasCapability } from "@/lib/auth/capabilities";
 import { encryptSecret } from "@/lib/email-connector/encryption";
 import {
+  importRecentGmailInbox,
+  markGmailSyncSuccess,
+  type EmailConnection,
+} from "@/lib/email-connector/gmail-importer";
+import {
   exchangeGmailCode,
   fetchGmailProfile,
   getGoogleRedirectUri,
@@ -10,12 +15,14 @@ import {
   tokenExpiryDate,
   watchGmailInbox,
 } from "@/lib/email-connector/google";
+import { logAudit } from "@/lib/security/audit-logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const STATE_COOKIE = "workhat_gmail_oauth_state";
 const RETURN_TO_COOKIE = "workhat_gmail_oauth_return_to";
-const CONNECTOR_NOT_READY_MESSAGE = "Gmail connection is not ready yet. Please contact your Work Hat administrator.";
+const CONNECTOR_NOT_READY_MESSAGE =
+  "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, set EMAIL_TOKEN_ENCRYPTION_KEY, then add the Gmail OAuth callback URL in Google Cloud.";
 
 type ProviderMetadata = Record<string, unknown>;
 
@@ -36,6 +43,24 @@ function connectorRedirect(req: NextRequest, params: Record<string, string>) {
   response.cookies.delete(STATE_COOKIE);
   response.cookies.delete(RETURN_TO_COOKIE);
   return response;
+}
+
+function toOperatorError(error: unknown) {
+  if (!(error instanceof Error)) return CONNECTOR_NOT_READY_MESSAGE;
+  const message = error.message;
+  if (message.includes("EMAIL_TOKEN_ENCRYPTION_KEY")) {
+    return "Mailbox token encryption is not configured. Set EMAIL_TOKEN_ENCRYPTION_KEY before connecting Gmail.";
+  }
+  if (message.includes("GOOGLE_CLIENT_ID") || message.includes("GOOGLE_CLIENT_SECRET") || message.includes("Google OAuth is not configured")) {
+    return "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, then add the Gmail OAuth callback URL in Google Cloud.";
+  }
+  if (message.includes("Google token exchange failed")) {
+    return "Google token exchange failed. Verify the OAuth client secret and authorized redirect URI.";
+  }
+  if (message.includes("Gmail profile fetch failed")) {
+    return "Gmail connected to Google but Work Hat could not read the mailbox profile. Verify Gmail API access and requested scopes.";
+  }
+  return message;
 }
 
 export async function GET(req: NextRequest) {
@@ -92,6 +117,7 @@ export async function GET(req: NextRequest) {
     });
     const profile = await fetchGmailProfile(token.access_token);
     const email = profile.emailAddress.toLowerCase();
+    const encryptedAccessToken = encryptSecret(token.access_token);
 
     const { data: existing, error: existingError } = await db
       .from("email_connections")
@@ -137,7 +163,7 @@ export async function GET(req: NextRequest) {
         inbound_enabled: true,
         outbound_enabled: true,
         last_validated_at: new Date().toISOString(),
-        access_token_ciphertext: encryptSecret(token.access_token),
+        access_token_ciphertext: encryptedAccessToken,
         refresh_token_ciphertext: refreshTokenCiphertext,
         token_expires_at: tokenExpiryDate(token.expires_in).toISOString(),
         scopes: token.scope?.split(" ") ?? [],
@@ -208,6 +234,67 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    await logAudit({
+      action: "org.settings_updated",
+      orgId: appUser.org_id,
+      actorId: appUser.id,
+      actorRole: appUser.role,
+      resourceType: "email_connection",
+      resourceId: connection.id,
+      resourceLabel: email,
+      newValues: {
+        provider: GMAIL_PROVIDER,
+        connectionType: "oauth",
+        status: "active",
+        inboundEnabled: true,
+        outboundEnabled: true,
+      },
+      req,
+    });
+
+    try {
+      const importConnection: EmailConnection = {
+        id: connection.id,
+        org_id: appUser.org_id,
+        provider_account_email: email,
+        access_token_ciphertext: encryptedAccessToken,
+        refresh_token_ciphertext: refreshTokenCiphertext,
+        token_expires_at: tokenExpiryDate(token.expires_in).toISOString(),
+        last_history_id: profile.historyId ?? null,
+      };
+      const importResult = await importRecentGmailInbox({
+        db,
+        connection: importConnection,
+        maxResults: 10,
+      });
+      await markGmailSyncSuccess({ db, connectionId: connection.id, result: importResult });
+    } catch (syncError) {
+      const syncMessage = syncError instanceof Error ? syncError.message : "Initial Gmail sync failed.";
+      console.error("[gmail/callback] initial sync failed:", syncMessage);
+      const { error: syncUpdateError } = await db
+        .from("email_connections")
+        .update({
+          status: "active",
+          sync_status: "error",
+          last_error_code: "initial_sync_failed",
+          last_error_message: syncMessage,
+          error_message: `Gmail connected, but initial import failed: ${syncMessage}`,
+          diagnostics_json: {
+            status: "warn",
+            provider: GMAIL_PROVIDER,
+            connectionType: "oauth",
+            lastErrorCode: "initial_sync_failed",
+            lastErrorMessage: syncMessage,
+            nextAction: "Run Gmail sync from Settings after verifying Gmail API access.",
+          },
+        })
+        .eq("id", connection.id);
+
+      if (syncUpdateError) {
+        console.warn("[gmail/callback] failed to persist initial sync error:", syncUpdateError.message);
+      }
+    }
+
     const topicName = process.env.GOOGLE_PUBSUB_TOPIC;
     if (topicName) {
       try {
@@ -216,6 +303,7 @@ export async function GET(req: NextRequest) {
         const { error: watchUpdateError } = await db
           .from("email_connections")
           .update({
+            status: "active",
             sync_status: "watching",
             watch_expires_at: expiration,
             last_history_id: watch.historyId,
@@ -240,6 +328,7 @@ export async function GET(req: NextRequest) {
         const { error: watchErrorUpdateError } = await db
           .from("email_connections")
           .update({
+            status: "active",
             sync_status: "idle",
             error_message: `Gmail connected, but live watch setup failed: ${watchMessage}`,
             provider_metadata: {
@@ -262,6 +351,6 @@ export async function GET(req: NextRequest) {
     return connectorRedirect(req, { connected: GMAIL_PROVIDER });
   } catch (error) {
     console.error("[gmail/callback] OAuth callback failed:", error);
-    return connectorRedirect(req, { emailError: CONNECTOR_NOT_READY_MESSAGE });
+    return connectorRedirect(req, { emailError: toOperatorError(error) });
   }
 }
