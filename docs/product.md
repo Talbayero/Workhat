@@ -34,8 +34,10 @@ This file is the active product summary. Historical source planning documents li
 The current platform includes:
 
 - Authenticated org-scoped CRM workspace.
+- Self-serve account creation, password login, forgot-password/reset flow, and post-signup organization creation or invite activation.
+- Work Hat user identity is separate from the managed mailbox identity. A user can sign in as `owner@example.com` and connect `support@example.com` as the mailbox Work Hat reads and replies from.
 - Email conversations from Gmail OAuth, mailbox password, app password, IMAP/SMTP, or advanced custom inbound webhook channels. Gmail OAuth now performs token persistence, active mailbox status, initial recent-message import, and optional Pub/Sub watch setup as part of the connection flow.
-- Onboarding and Settings present four mailbox connection choices first: OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP; successful setup must validate into an active runtime connection before the workspace is treated as inbound-ready.
+- Onboarding and Settings present only mailbox connection choices the deployment can actually support. OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP are gated by setup readiness; successful setup must validate into an active runtime connection before the workspace is treated as inbound-ready.
 - Custom inbound webhook/API setup remains available under advanced/developer setup for relays and custom parsers.
 - Approved outbound replies use the active mailbox adapter when outbound is enabled, while human approval remains mandatory.
 - AI draft generation with non-null prompt versions.
@@ -64,3 +66,4 @@ Product surfaces should support SOC 2 readiness by making control evidence visib
 - Queue/SLA and workflow automations should be explainable from stored records.
 - AI decisions should preserve prompt versions, assignment records, and human edits.
 - Operator runbooks should map to the actual UI and API behavior.
+- Normal users should never see raw environment-variable, database, or provider-stack errors. Admin-only setup health surfaces missing Google OAuth, encryption, Redis, and adapter prerequisites.

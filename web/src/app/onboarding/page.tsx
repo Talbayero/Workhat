@@ -77,11 +77,11 @@ function friendlyEmailConnectorMessage(message: string) {
     normalized.includes("server key") ||
     normalized.includes("admin database")
   ) {
-    return "Google OAuth is not configured yet. Ask an administrator to set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and the Gmail callback URL.";
+    return "Google OAuth is not configured by your workspace admin.";
   }
 
   if (normalized.includes("email_token_encryption_key") || normalized.includes("mailbox token encryption")) {
-    return "Mailbox token encryption is not configured. Ask an administrator to set EMAIL_TOKEN_ENCRYPTION_KEY before connecting Gmail.";
+    return "Mailbox token encryption is not configured by your workspace admin.";
   }
 
   if (normalized.includes("denied") || normalized.includes("not approved") || normalized.includes("cancelled")) {

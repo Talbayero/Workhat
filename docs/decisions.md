@@ -650,4 +650,32 @@ Work Hat needs internal dogfooding and demos that work without Google Workspace,
 - Provider-specific limitations, such as Gmail/iCloud/Outlook requiring app passwords for direct password flows, are surfaced as operator diagnostics rather than hidden setup failures.
 - Gmail OAuth remains the canonical OAuth/xOAuth path. `/api/email/gmail/connect` starts the flow, `/api/oauth/google/start` is a compatibility alias, and the callback persists encrypted tokens, marks the mailbox active, runs an initial recent-message import, and registers Pub/Sub watch when configured.
 
+---
+
+## ADR-025 — Self-Serve Auth and Mailbox Setup Readiness
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat self-serve onboarding must gate mailbox setup choices from backend setup readiness. Normal users see only actionable user messages, while admins can inspect exact deployment prerequisites through an admin-only setup health model.
+
+### Context
+
+Mailbox setup was still leaking developer/admin concerns into user flows. Gmail OAuth could be clicked when Google env vars were missing, credential-backed setup could fail with low-level encryption or provider errors, and the UI did not clearly distinguish the Work Hat login account from the mailbox being connected.
+
+### Rationale
+
+Self-serve product behavior should be based on what the deployment can actually support. `/api/email/setup/readiness` gives onboarding and Settings a user-safe availability model. `/api/system/setup-health` gives admins precise checks for Google OAuth, credential encryption, server database key, Redis, and adapter availability without exposing those details to normal users.
+
+### Consequences
+
+- Work Hat login identity and managed mailbox identity are documented and labeled separately.
+- Signup, login, forgot-password, and reset-password use user-facing validation and Supabase Auth messages.
+- Gmail OAuth is unavailable in the UI until Google OAuth credentials, mailbox-token encryption, and authorized redirect URI confirmation are configured.
+- Password, app-password, and IMAP/SMTP methods are unavailable until secure credential storage and server database access are configured.
+- A saved mailbox row never counts as connected unless runtime status is `active`.
+- Raw environment-variable names and database/provider internals are limited to admin diagnostics and logs.
+
 *Last updated: April 2026*

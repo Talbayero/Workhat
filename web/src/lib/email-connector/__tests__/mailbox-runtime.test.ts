@@ -126,12 +126,15 @@ describe("mailbox error classification", () => {
 describe("gmail oauth setup", () => {
   const originalClientId = process.env.GOOGLE_CLIENT_ID;
   const originalClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const originalRedirectConfirmed = process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED;
 
   afterEach(() => {
     if (originalClientId === undefined) delete process.env.GOOGLE_CLIENT_ID;
     else process.env.GOOGLE_CLIENT_ID = originalClientId;
     if (originalClientSecret === undefined) delete process.env.GOOGLE_CLIENT_SECRET;
     else process.env.GOOGLE_CLIENT_SECRET = originalClientSecret;
+    if (originalRedirectConfirmed === undefined) delete process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED;
+    else process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED = originalRedirectConfirmed;
   });
 
   it("fails with an operator-facing setup message when OAuth env is missing", () => {
@@ -144,6 +147,7 @@ describe("gmail oauth setup", () => {
   it("builds a Gmail consent URL with offline access and state", () => {
     process.env.GOOGLE_CLIENT_ID = "client.apps.googleusercontent.com";
     process.env.GOOGLE_CLIENT_SECRET = "secret";
+    process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED = "true";
 
     const url = new URL(buildGmailAuthUrl({
       redirectUri: "https://work-hat.com/api/email/gmail/callback",

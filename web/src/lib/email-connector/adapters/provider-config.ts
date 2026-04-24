@@ -21,7 +21,7 @@ export const PASSWORD_RUNTIME_TYPES = new Set<MailboxConnectionType>([
   "imap_smtp",
 ]);
 
-const PROVIDER_DEFAULTS: Partial<Record<MailboxProvider, Omit<MailTransportSettings, "username" | "senderName">>> = {
+export const PROVIDER_DEFAULTS: Partial<Record<MailboxProvider, Omit<MailTransportSettings, "username" | "senderName">>> = {
   gmail: {
     imap: { host: "imap.gmail.com", port: 993, secure: true },
     smtp: { host: "smtp.gmail.com", port: 465, secure: true },
@@ -114,4 +114,8 @@ export function describeConnectionType(connectionType: string) {
 
 export function providerNeedsAppPasswordHint(provider: string, connectionType: string) {
   return connectionType === "mailbox_password" && ["gmail", "icloud", "outlook", "microsoft365"].includes(provider);
+}
+
+export function providerHasDefaultMailSettings(provider: string): provider is keyof typeof PROVIDER_DEFAULTS {
+  return provider in PROVIDER_DEFAULTS;
 }

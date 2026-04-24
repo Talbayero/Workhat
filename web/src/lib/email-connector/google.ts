@@ -83,13 +83,25 @@ export function getGoogleRedirectUri(req: NextRequest) {
   return `${getAppBaseUrl(req)}/api/email/gmail/callback`;
 }
 
+export function isGoogleRedirectUriConfirmed() {
+  return process.env.GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED === "true";
+}
+
+export function assertGoogleRedirectUriConfirmed(redirectUri: string) {
+  if (!isGoogleRedirectUriConfirmed()) {
+    throw new Error(
+      `Google OAuth redirect URI is not confirmed. Add ${redirectUri} to the Google OAuth client's authorized redirect URIs, then set GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true.`
+    );
+  }
+}
+
 export function assertGoogleOAuthConfig() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
     throw new Error(
-      "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, then add the Gmail OAuth callback URL in Google Cloud."
+      "Google OAuth is not configured by your workspace admin."
     );
   }
 
@@ -104,6 +116,7 @@ export function buildGmailAuthUrl({
   state: string;
 }) {
   const { clientId } = assertGoogleOAuthConfig();
+  assertGoogleRedirectUriConfirmed(redirectUri);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,

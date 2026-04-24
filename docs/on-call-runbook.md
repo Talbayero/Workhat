@@ -107,9 +107,14 @@ Inbound emails not appearing or approved replies fail to send
 │  ├─ IMAP/SMTP mailbox → Check mailbox adapter diagnostics
 │  └─ Custom inbound → Check webhook delivery diagnostics
 │
+├─ If setup options are disabled or connection buttons do nothing
+│  ├─ Open Settings -> Channels -> Admin setup health
+│  ├─ Check /api/system/setup-health as an admin
+│  └─ Confirm normal users only see user-safe setup messages
+│
 ├─ For Gmail
-│  ├─ Are GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and EMAIL_TOKEN_ENCRYPTION_KEY set?
-│  ├─ Does the Google OAuth web client allow https://<app-host>/api/email/gmail/callback?
+│  ├─ Are GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED set?
+│  ├─ Does the Google OAuth web client allow the exact https://<app-host>/api/email/gmail/callback shown in Admin setup health?
 │  ├─ Is Gmail API responding?
 │  │  └─ Rate limited? → Back off, retry after 60s
 │  ├─ Is OAuth token expired?
@@ -141,6 +146,7 @@ Inbound emails not appearing or approved replies fail to send
 
 1. **Check mailbox adapter diagnostics in the app:**
    - Go to Settings -> Channels.
+   - Admins should first review Admin setup health for Google OAuth, credential encryption, server database key, Redis, and adapter availability.
    - Confirm the connection is `active` for the needed direction.
    - Open diagnostics and note `last_error_code`, `last_error_message`, `last_validated_at`, `last_inbound_sync_at`, and `last_outbound_send_at`.
 
@@ -154,6 +160,19 @@ Inbound emails not appearing or approved replies fail to send
    WHERE org_id = 'org-123'
    ORDER BY updated_at DESC;
    ```
+
+2a. **Check admin-only setup health before asking users to retry setup:**
+   ```bash
+   curl https://work-hat.com/api/system/setup-health \
+     -H "Cookie: <admin-session-cookie>"
+   ```
+
+   Expected checks:
+   - `summary.googleOAuthConfigured = true` before offering Gmail OAuth.
+   - `summary.googleRedirectUriConfirmed = true`; otherwise Google may return `redirect_uri_mismatch`.
+   - `summary.encryptionConfigured = true` before saving OAuth tokens or mailbox credentials.
+   - `summary.serverDatabaseConfigured = true` before custom inbound or credential validation.
+   - `summary.activeInboundAdapterAvailable = true` before treating onboarding as inbound-ready.
 
 3. **For IMAP/SMTP inbound, run a manual poll through the app/API:**
    ```bash

@@ -11,6 +11,21 @@ Advanced/developer setup also supports custom inbound webhook/API channels for i
 
 Gmail OAuth can be started through `/api/email/gmail/connect` or the compatibility alias `/api/oauth/google/start`. Both routes redirect to Google and return to `/api/email/gmail/callback`.
 
+## Self-Serve Setup Readiness
+
+Mailbox setup is gated by `/api/email/setup/readiness`. The UI must disable unavailable methods instead of sending users into broken setup paths.
+
+Availability rules:
+
+- OAuth / xOAuth is available only when `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `EMAIL_TOKEN_ENCRYPTION_KEY` are configured and `GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true` confirms the app callback URL is registered in Google Cloud.
+- Mailbox login and password, app password, and IMAP/SMTP are available only when credential encryption and the server database key are configured.
+- Advanced custom inbound is available when the server database key is configured because webhook tokens are stored as one-way hashes, not decryptable secrets.
+- A saved `email_connections` row is not a connected mailbox until validation marks it `active`.
+
+Non-admin users receive only user-safe messages, such as "Gmail OAuth is not available for this workspace yet." Admins can see exact missing setup values in Settings -> Channels and through `/api/system/setup-health`.
+
+Work Hat login identity and mailbox identity are separate. A user signs in to Work Hat with their account email, then connects the mailbox Work Hat should manage. Those can be different addresses.
+
 ## Architecture
 
 Provider-specific adapters normalize email into `NormalizedInboundEmail` in `web/src/lib/email-connector/inbound.ts`. After normalization, all providers use the same deterministic processing path:
@@ -152,6 +167,9 @@ Duplicate webhook deliveries return a duplicate result and do not emit workflow 
 
 Operators should check:
 
+- Settings -> Channels -> Admin setup health for Google OAuth, credential encryption, Redis, and adapter availability.
+- `GET /api/email/setup/readiness` for the user-safe setup availability model.
+- `GET /api/system/setup-health` for the admin-only setup health model.
 - Settings -> Channels for mailbox status, last validation, last poll, last sync/send, and next-action diagnostics.
 - `GET /api/email/mailbox/diagnostics` for adapter/env/connection health.
 - `POST /api/email/mailbox/sync` for a manual active mailbox poll.
@@ -166,7 +184,7 @@ Operators should check:
 1. Apply migrations through `0039_mailbox_adapter_runtime.sql`.
 2. Sign in as an admin or manager with `integrations.manage`.
 3. Open onboarding Step 2 or Settings -> Channels and confirm the four mailbox connection types appear first.
-4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `EMAIL_TOKEN_ENCRYPTION_KEY` before using Gmail OAuth. Add `https://<app-host>/api/email/gmail/callback` to the Google OAuth web client redirect URIs.
+4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `EMAIL_TOKEN_ENCRYPTION_KEY` before using Gmail OAuth. Add `https://<app-host>/api/email/gmail/callback` to the Google OAuth web client redirect URIs, then set `GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true`.
 5. Set `GOOGLE_PUBSUB_TOPIC` and `GMAIL_PUSH_TOKEN` when Gmail live watch/Pub/Sub ingestion is required; otherwise manual sync and polling remain available.
 6. Connect Gmail through OAuth, or configure an app-password/IMAP mailbox such as Zoho.
 7. Confirm the saved connection becomes `active`; if it becomes `error`, use the displayed provider/auth/TLS diagnostic to correct the setup.

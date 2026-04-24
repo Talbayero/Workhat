@@ -8,7 +8,7 @@ import { buildGmailAuthUrl, getGoogleRedirectUri } from "@/lib/email-connector/g
 const STATE_COOKIE = "workhat_gmail_oauth_state";
 const RETURN_TO_COOKIE = "workhat_gmail_oauth_return_to";
 const CONNECTOR_NOT_READY_MESSAGE =
-  "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, then add the Gmail OAuth callback URL in Google Cloud.";
+  "Google OAuth is not configured by your workspace admin.";
 
 function getSafeReturnTo(req: NextRequest) {
   const returnTo = req.nextUrl.searchParams.get("returnTo") ?? req.nextUrl.searchParams.get("next");
@@ -75,7 +75,10 @@ export async function GET(req: NextRequest) {
     return response;
   } catch (error) {
     console.error("[gmail/connect] OAuth setup failed:", error);
-    const message = error instanceof Error ? error.message : CONNECTOR_NOT_READY_MESSAGE;
+    const rawMessage = error instanceof Error ? error.message : CONNECTOR_NOT_READY_MESSAGE;
+    const message = rawMessage.includes("GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED")
+      ? "Google OAuth redirect URI is not confirmed by your workspace admin."
+      : rawMessage;
     return connectorRedirect(req, { emailError: message });
   }
 }

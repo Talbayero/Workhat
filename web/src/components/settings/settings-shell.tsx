@@ -92,6 +92,24 @@ type EmailDiagnostics = {
   };
 };
 
+type SetupHealth = {
+  checks: EmailDiagnosticCheck[];
+  summary: {
+    googleOAuthConfigured: boolean;
+    googleRedirectUri: string | null;
+    googleRedirectUriConfirmed: boolean;
+    encryptionConfigured: boolean;
+    serverDatabaseConfigured: boolean;
+    credentialMailboxConfigured: boolean;
+    customInboundConfigured: boolean;
+    redisConfigured: boolean;
+    activeInboundAdapterAvailable: boolean;
+    activeOutboundAdapterAvailable: boolean;
+    missingRequiredEnv: string[];
+    nextAction: string;
+  };
+};
+
 type AgentSkill = { name: string; priority: number };
 
 type TeamMember = {
@@ -132,11 +150,11 @@ function friendlyEmailConnectorMessage(message: string) {
     normalized.includes("server key") ||
     normalized.includes("admin database")
   ) {
-    return "Google OAuth is not configured yet. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and the Gmail callback URL before connecting Gmail.";
+    return "Google OAuth is not configured by your workspace admin.";
   }
 
   if (normalized.includes("email_token_encryption_key") || normalized.includes("mailbox token encryption")) {
-    return "Mailbox token encryption is not configured. Set EMAIL_TOKEN_ENCRYPTION_KEY before connecting Gmail.";
+    return "Mailbox token encryption is not configured by your workspace admin.";
   }
 
   if (normalized.includes("denied") || normalized.includes("not approved") || normalized.includes("cancelled")) {
@@ -881,6 +899,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
   const [connectionAction, setConnectionAction] = useState<"sync" | "watch" | "disconnect" | null>(null);
   const [customAction, setCustomAction] = useState<"create" | "update" | "regenerate" | null>(null);
   const [diagnostics, setDiagnostics] = useState<EmailDiagnostics | null>(null);
+  const [setupHealth, setSetupHealth] = useState<SetupHealth | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
 
@@ -987,11 +1006,16 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
     setDiagnosticsLoading(true);
     setDiagnosticsError(null);
     try {
-      const res = await fetch("/api/email/mailbox/diagnostics");
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const [diagnosticsRes, setupRes] = await Promise.all([
+        fetch("/api/email/mailbox/diagnostics"),
+        fetch("/api/system/setup-health"),
+      ]);
+      const payload = await diagnosticsRes.json().catch(() => ({}));
+      const setupPayload = await setupRes.json().catch(() => ({}));
+      if (!diagnosticsRes.ok) {
         throw new Error(payload.error ?? "Could not load mailbox diagnostics.");
       }
+      if (setupRes.ok) setSetupHealth(setupPayload as SetupHealth);
       setDiagnostics(payload as EmailDiagnostics);
     } catch (error) {
       setDiagnosticsError(error instanceof Error ? error.message : "Could not load mailbox diagnostics.");
@@ -1326,10 +1350,9 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="eyebrow text-[9px] text-[var(--muted)]">System readiness</p>
-            <p className="mt-1 text-base font-semibold">Mailbox connector diagnostics</p>
+            <p className="mt-1 text-base font-semibold">Admin setup health</p>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
-              These checks confirm the production environment has the server-only keys needed for OAuth, encrypted credential storage,
-              IMAP polling, SMTP sending, and scheduled operations.
+              These admin-only checks confirm whether self-serve mailbox setup is ready for users before they reach onboarding.
             </p>
           </div>
           <button
@@ -1350,6 +1373,19 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           )}
           {!diagnosticsLoading && diagnostics && (
             <div className="space-y-4">
+              {setupHealth && (
+                <div className="grid gap-3 md:grid-cols-3">
+                  <ConnectorMetric label="Google OAuth configured" value={setupHealth.summary.googleOAuthConfigured ? "Yes" : "No"} />
+                  <ConnectorMetric label="Google redirect confirmed" value={setupHealth.summary.googleRedirectUriConfirmed ? "Yes" : "No"} />
+                  <ConnectorMetric label="Google redirect URI" value={setupHealth.summary.googleRedirectUri ?? "Set NEXT_PUBLIC_APP_URL"} />
+                  <ConnectorMetric label="Encryption key configured" value={setupHealth.summary.encryptionConfigured ? "Yes" : "No"} />
+                  <ConnectorMetric label="Server database key configured" value={setupHealth.summary.serverDatabaseConfigured ? "Yes" : "No"} />
+                  <ConnectorMetric label="Redis configured" value={setupHealth.summary.redisConfigured ? "Yes" : "No"} />
+                  <ConnectorMetric label="Inbound adapter available" value={setupHealth.summary.activeInboundAdapterAvailable ? "Yes" : "No"} />
+                  <ConnectorMetric label="Outbound adapter available" value={setupHealth.summary.activeOutboundAdapterAvailable ? "Yes" : "No"} />
+                  <ConnectorMetric label="Next action" value={setupHealth.summary.nextAction} />
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <DiagnosticPill status="pass" label={`${diagnostics.summary.pass} ready`} />
                 <DiagnosticPill status="warn" label={`${diagnostics.summary.warn} warnings`} />

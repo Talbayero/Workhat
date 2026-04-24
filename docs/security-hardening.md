@@ -521,7 +521,7 @@ Legacy `POSTMARK_INBOUND_TOKEN` is accepted only when a channel has no per-chann
 
 OAuth tokens, mailbox passwords, app passwords, and IMAP/SMTP passwords are encrypted before being written to `email_connections`. The shared encryption layer uses `EMAIL_TOKEN_ENCRYPTION_KEY`, and decrypted values must only exist in memory inside trusted server routes or `lib/email-connector/adapters/` runtime code.
 
-Gmail OAuth starts at `/api/email/gmail/connect` or compatibility alias `/api/oauth/google/start`, then returns to `/api/email/gmail/callback`. The start route sets a short-lived HTTP-only state cookie and the callback rejects missing or mismatched state before exchanging a code. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `EMAIL_TOKEN_ENCRYPTION_KEY` are required before Gmail can be connected.
+Gmail OAuth starts at `/api/email/gmail/connect` or compatibility alias `/api/oauth/google/start`, then returns to `/api/email/gmail/callback`. The start route sets a short-lived HTTP-only state cookie and the callback rejects missing or mismatched state before exchanging a code. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `EMAIL_TOKEN_ENCRYPTION_KEY`, and `GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=true` are required before Gmail can be offered in the UI.
 
 Security controls:
 
@@ -539,6 +539,16 @@ Credential rotation is explicit: the operator reconnects or updates the mailbox 
 ---
 
 ## Error Handling & Logging
+
+Self-serve setup surfaces must not expose raw environment variable names, database constraint names, stack traces, or provider exception strings to normal users. API routes should translate setup failures into actionable user messages, for example:
+
+- "Google OAuth is not configured by your workspace admin."
+- "Mailbox credential storage is not configured."
+- "This provider requires OAuth or an app password."
+- "Mailbox credentials were rejected."
+- "IMAP access appears disabled."
+
+Admin-only diagnostics may expose exact missing environment variables and setup prerequisites through Settings -> Channels and `/api/system/setup-health`, which requires `settings.manage`.
 
 ### Error Response Format
 

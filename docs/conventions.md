@@ -97,6 +97,18 @@ Rate limit identity rules:
 
 Use Upstash Redis for counters and dynamic blacklist entries. Do not reintroduce in-memory `Map` counters for production request protection; they reset on serverless cold starts and do not coordinate across Vercel instances.
 
+### Self-Serve Setup Gating
+
+User-facing setup screens must ask the backend what is actually available before showing a live action. Mailbox setup uses `/api/email/setup/readiness`; admin setup health uses `/api/system/setup-health`.
+
+Rules:
+
+- Do not present Gmail OAuth as clickable unless Google OAuth and mailbox-token encryption are configured.
+- Do not present password, app-password, or IMAP/SMTP setup as live unless credential encryption and the server database key are configured.
+- Do not count a saved mailbox record as connected. Readiness requires an active runtime connection for the needed direction.
+- Keep Work Hat login identity and connected mailbox identity separate in labels and copy.
+- Never expose raw environment variable names, database constraint names, stack traces, or provider exception strings to normal users. Admin-only diagnostics may include exact missing setup values.
+
 ---
 
 ## Data Access

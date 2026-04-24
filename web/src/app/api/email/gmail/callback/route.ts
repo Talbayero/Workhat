@@ -22,7 +22,7 @@ import { createClient } from "@/lib/supabase/server";
 const STATE_COOKIE = "workhat_gmail_oauth_state";
 const RETURN_TO_COOKIE = "workhat_gmail_oauth_return_to";
 const CONNECTOR_NOT_READY_MESSAGE =
-  "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, set EMAIL_TOKEN_ENCRYPTION_KEY, then add the Gmail OAuth callback URL in Google Cloud.";
+  "Google OAuth is not configured by your workspace admin.";
 
 type ProviderMetadata = Record<string, unknown>;
 
@@ -49,10 +49,10 @@ function toOperatorError(error: unknown) {
   if (!(error instanceof Error)) return CONNECTOR_NOT_READY_MESSAGE;
   const message = error.message;
   if (message.includes("EMAIL_TOKEN_ENCRYPTION_KEY")) {
-    return "Mailbox token encryption is not configured. Set EMAIL_TOKEN_ENCRYPTION_KEY before connecting Gmail.";
+    return "Mailbox token encryption is not configured by your workspace admin.";
   }
   if (message.includes("GOOGLE_CLIENT_ID") || message.includes("GOOGLE_CLIENT_SECRET") || message.includes("Google OAuth is not configured")) {
-    return "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, then add the Gmail OAuth callback URL in Google Cloud.";
+    return "Google OAuth is not configured by your workspace admin.";
   }
   if (message.includes("Google token exchange failed")) {
     return "Google token exchange failed. Verify the OAuth client secret and authorized redirect URI.";

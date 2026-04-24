@@ -3,6 +3,10 @@ import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { validateAndActivateMailboxConnection, type MailboxConnectionRecord } from "@/lib/email-connector/adapters";
 import { classifyMailboxError } from "@/lib/email-connector/adapters/errors";
+import {
+  providerHasDefaultMailSettings,
+  providerNeedsAppPasswordHint,
+} from "@/lib/email-connector/adapters/provider-config";
 import { encryptSecret } from "@/lib/email-connector/encryption";
 import { logAudit } from "@/lib/security/audit-logger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -73,7 +77,7 @@ function encryptionUnavailableResponse() {
   return NextResponse.json(
     {
       error: "Mailbox credential storage is not configured.",
-      hint: "Set EMAIL_TOKEN_ENCRYPTION_KEY so Work Hat can encrypt saved mailbox credentials for password, app password, and IMAP/SMTP setup.",
+      hint: "Ask a workspace administrator to finish secure mailbox credential storage before using password, app password, or IMAP/SMTP setup.",
     },
     { status: 503 }
   );
@@ -183,6 +187,24 @@ export async function POST(req: NextRequest) {
     }
     credential = password;
     provider = normalizeMailboxProvider({ email, providerHint });
+    if (providerNeedsAppPasswordHint(provider, connectionType)) {
+      return NextResponse.json(
+        {
+          error: "This provider requires OAuth or an app password.",
+          hint: "Use OAuth when available, or create a provider-issued app password and choose App password setup.",
+        },
+        { status: 422 }
+      );
+    }
+    if (!providerHasDefaultMailSettings(provider)) {
+      return NextResponse.json(
+        {
+          error: "This provider requires IMAP and SMTP settings.",
+          hint: "Choose IMAP / SMTP and enter the incoming and outgoing mail server settings from your mailbox provider.",
+        },
+        { status: 422 }
+      );
+    }
     metadata = {
       connection_type: connectionType,
       provider_hint: providerHint || null,
@@ -200,6 +222,15 @@ export async function POST(req: NextRequest) {
     }
     credential = appPassword;
     provider = normalizeMailboxProvider({ email, providerHint });
+    if (!providerHasDefaultMailSettings(provider)) {
+      return NextResponse.json(
+        {
+          error: "This provider requires IMAP and SMTP settings.",
+          hint: "Choose IMAP / SMTP and enter the incoming and outgoing mail server settings from your mailbox provider.",
+        },
+        { status: 422 }
+      );
+    }
     metadata = {
       connection_type: connectionType,
       provider_hint: providerHint || null,

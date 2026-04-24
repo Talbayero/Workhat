@@ -11,7 +11,7 @@ Work Hat CRM is an AI-first operations CRM for customer support and BPO teams. T
 | Framework | Next.js 16 (App Router) | TypeScript throughout |
 | UI | React 19 + Tailwind CSS v4 + shadcn/ui | No CSS-in-JS |
 | Database | Supabase (PostgreSQL 15) | pgvector, pgcrypto, citext, pg_trgm extensions |
-| Auth | Supabase Auth | Email/password + Google OAuth (Gmail scope) |
+| Auth | Supabase Auth | Email/password signup, login, password reset, invite/session callback |
 | Storage | Supabase Storage | Not yet heavily used in V1 |
 | AI | OpenAI Chat Completions (GPT-4o) | Provider-abstracted via `lib/ai/` |
 | Email | Provider-neutral inbound pipeline + mailbox adapter runtime | Gmail OAuth/Pub/Sub, credential-based IMAP/SMTP polling, SMTP send, and advanced custom inbound webhooks |
@@ -68,6 +68,8 @@ The application is a single Next.js deployment with three distinct execution con
 |---|---|
 | `/api/inbound/email` | Public webhook for custom/non-Gmail inbound email sources |
 | `/api/oauth/google/start` | Compatibility alias that starts the Gmail OAuth connection flow |
+| `/api/email/setup/readiness` | Authenticated mailbox setup readiness used by onboarding/settings to gate unsupported methods |
+| `/api/system/setup-health` | Admin-only setup health for Google OAuth, credential encryption, Redis, and adapter availability |
 | `/api/email/gmail/push` | Google Cloud Pub/Sub push endpoint |
 | `/api/email/gmail/callback` | Gmail OAuth redirect handler |
 | `/api/stripe/webhook` | Stripe billing event handler |
@@ -212,7 +214,28 @@ Supabase Auth handles session management. The server-side client uses `@supabase
 
 Auth flows:
 - Email + password signup/login (standard Supabase)
+- Forgot-password and reset-password flows through Supabase Auth. `/login?mode=forgot` sends the reset email and `/login?mode=reset` lets a signed callback session choose a new password.
+- Invite/session callback through `/auth/callback`, which activates pending invited users or sends brand-new users to `/onboarding`.
 - Google OAuth — used exclusively for Gmail API access (not as a login method in its own right). Tokens are stored encrypted in `email_connections`, not in Supabase Auth.
+
+Work Hat account identity and connected mailbox identity are intentionally separate. The user signing in to Work Hat does not need to be the same email address as the support mailbox configured in `email_connections`.
+
+### Mailbox Setup Readiness
+
+Onboarding and Settings call `/api/email/setup/readiness` before rendering mailbox connection methods. The response reports user-safe availability for OAuth/xOAuth, mailbox password, app password, IMAP/SMTP, and advanced custom inbound. Admin-capable users also receive setup details; non-admins receive only actionable messages such as asking a workspace administrator to finish setup.
+
+`/api/system/setup-health` requires `settings.manage` and returns the full setup-health model:
+
+- Google OAuth configured
+- Mailbox credential encryption configured
+- Server database key configured
+- Redis request-protection configured
+- Active inbound adapter available
+- Active outbound adapter available
+- Missing required environment variables
+- Recommended next action
+
+UI code must gate connection methods from this model. A saved record in `email_connections` is not treated as connected unless the runtime status is `active` for the relevant direction.
 
 Session validation in `proxy.ts` uses `supabase.auth.getUser()` — this validates the JWT against the Supabase server on every protected request, not just locally.
 
@@ -430,6 +453,7 @@ SUPABASE_SERVICE_ROLE_KEY=          # Must begin with sb_secret_... (new format)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 EMAIL_TOKEN_ENCRYPTION_KEY=         # openssl rand -base64 32; required for Gmail OAuth tokens and saved mailbox credentials
+GOOGLE_OAUTH_REDIRECT_URI_CONFIRMED=false # Set true only after https://<app-host>/api/email/gmail/callback is in Google authorized redirect URIs
 GOOGLE_PUBSUB_TOPIC=                # projects/{id}/topics/{name}
 
 # OpenAI
