@@ -12,6 +12,49 @@ type DiagnosticCheck = {
   message: string;
 };
 
+type GmailImportDiagnostics = {
+  schema: Record<string, boolean>;
+  counts: {
+    conversations: number;
+    messages: number;
+    gmailMessages: number;
+    gmailMessagesWithConversationId: number;
+    gmailThreadConversations: number;
+    orphanedGmailMessages: number;
+    wrongOrgLinkedGmailMessages: number;
+    inboundEvents: number;
+    inboxRowsWithSlaSelect: number;
+    inboxRowsWithLegacySelect: number;
+  };
+  samples: {
+    conversationIds: string[];
+    gmailMessageIds: string[];
+    orphanedMessageIds: string[];
+  };
+  likelyRootCause: string | null;
+};
+
+const SLA_COLUMNS = [
+  "sla_status",
+  "sla_target",
+  "sla_due_at",
+  "sla_breached_at",
+  "sla_last_evaluated_at",
+  "first_response_due_at",
+  "next_response_due_at",
+] as const;
+
+const INBOX_SELECT_WITH_SLA = `id, subject, status, priority, contact_id, company_id, assigned_to_name,
+  assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+  sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
+  contacts(full_name, email, phone, tier, notes, tags),
+  companies(name), channels(type)`;
+
+const INBOX_SELECT_LEGACY = `id, subject, status, priority, contact_id, company_id, assigned_to_name,
+  assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+  contacts(full_name, email, phone, tier, notes, tags),
+  companies(name), channels(type)`;
+
 function checkEnv(name: string, label: string, missingMessage: string, validator?: (value: string) => DiagnosticCheck) {
   const value = process.env[name];
   if (!value) {
@@ -91,6 +134,108 @@ function checkSupabaseAdmin(): DiagnosticCheck {
   };
 }
 
+async function checkConversationColumn(
+  db: NonNullable<ReturnType<typeof createOptionalAdminClient>["client"]>,
+  orgId: string,
+  column: string
+) {
+  const { error } = await db
+    .from("conversations")
+    .select(`id, ${column}`)
+    .eq("org_id", orgId)
+    .limit(1);
+
+  return !error;
+}
+
+async function collectGmailImportDiagnostics(
+  db: NonNullable<ReturnType<typeof createOptionalAdminClient>["client"]>,
+  orgId: string
+): Promise<GmailImportDiagnostics> {
+  const schemaEntries = await Promise.all(
+    SLA_COLUMNS.map(async (column) => [column, await checkConversationColumn(db, orgId, column)] as const)
+  );
+
+  const { error: orgSlaPoliciesError } = await db
+    .from("org_sla_policies")
+    .select("id")
+    .eq("org_id", orgId)
+    .limit(1);
+
+  const schema = Object.fromEntries(schemaEntries) as Record<string, boolean>;
+  schema.org_sla_policies = !orgSlaPoliciesError;
+
+  const [conversationCountRes, messageCountRes, gmailMessageCountRes, gmailMessageWithConversationRes, gmailThreadConversationRes, inboundEventCountRes, inboxWithSlaRes, inboxLegacyRes, gmailMessagesRes, conversationIdsRes] = await Promise.all([
+    db.from("conversations").select("*", { count: "exact", head: true }).eq("org_id", orgId),
+    db.from("messages").select("*", { count: "exact", head: true }).eq("org_id", orgId),
+    db.from("messages").select("*", { count: "exact", head: true }).eq("org_id", orgId).like("channel_message_id", "gmail:%"),
+    db.from("messages").select("*", { count: "exact", head: true }).eq("org_id", orgId).like("channel_message_id", "gmail:%").not("conversation_id", "is", null),
+    db.from("conversations").select("*", { count: "exact", head: true }).eq("org_id", orgId).like("external_thread_id", "gmail:%"),
+    db.from("inbound_email_events").select("*", { count: "exact", head: true }).eq("org_id", orgId),
+    db.from("conversations").select(INBOX_SELECT_WITH_SLA).eq("org_id", orgId).order("last_message_at", { ascending: false }).limit(25),
+    db.from("conversations").select(INBOX_SELECT_LEGACY).eq("org_id", orgId).order("last_message_at", { ascending: false }).limit(25),
+    db.from("messages").select("id, conversation_id, channel_message_id").eq("org_id", orgId).like("channel_message_id", "gmail:%").order("created_at", { ascending: false }).limit(5000),
+    db.from("conversations").select("id, org_id").eq("org_id", orgId).limit(5000),
+  ]);
+
+  const gmailMessages = (gmailMessagesRes.data ?? []) as { id: string; conversation_id: string | null; channel_message_id: string | null }[];
+  const currentOrgConversationIds = new Set(((conversationIdsRes.data ?? []) as { id: string; org_id: string }[]).map((row) => row.id));
+  const linkedConversationIds = [...new Set(gmailMessages.map((row) => row.conversation_id).filter((value): value is string => Boolean(value)))];
+  const { data: linkedConversations, error: linkedConversationError } = linkedConversationIds.length > 0
+    ? await db.from("conversations").select("id, org_id").in("id", linkedConversationIds)
+    : { data: [], error: null };
+
+  if (linkedConversationError) {
+    console.warn("[gmail/diagnostics] linked conversation lookup failed:", linkedConversationError.message);
+  }
+
+  const linkedConversationOrg = new Map(
+    ((linkedConversations ?? []) as { id: string; org_id: string }[]).map((row) => [row.id, row.org_id])
+  );
+
+  const orphanedMessages = gmailMessages.filter(
+    (row) => row.conversation_id && !currentOrgConversationIds.has(row.conversation_id)
+  );
+  const wrongOrgLinkedMessages = gmailMessages.filter((row) => {
+    if (!row.conversation_id) return false;
+    const linkedOrgId = linkedConversationOrg.get(row.conversation_id);
+    return Boolean(linkedOrgId && linkedOrgId !== orgId);
+  });
+
+  let likelyRootCause: string | null = null;
+  if (Object.values(schema).some((exists) => !exists)) {
+    likelyRootCause = "schema_lag";
+  } else if (orphanedMessages.length > 0 || wrongOrgLinkedMessages.length > 0) {
+    likelyRootCause = "orphaned_or_cross_org_gmail_messages";
+  } else if ((gmailMessageCountRes.count ?? 0) > 0 && (conversationCountRes.count ?? 0) > 0 && inboxWithSlaRes.error) {
+    likelyRootCause = "inbox_query_error";
+  } else if ((gmailMessageCountRes.count ?? 0) > 0 && (conversationCountRes.count ?? 0) > 0 && (inboxLegacyRes.data?.length ?? 0) === 0) {
+    likelyRootCause = "conversations_exist_but_not_visible_in_inbox_query";
+  }
+
+  return {
+    schema,
+    counts: {
+      conversations: conversationCountRes.count ?? 0,
+      messages: messageCountRes.count ?? 0,
+      gmailMessages: gmailMessageCountRes.count ?? 0,
+      gmailMessagesWithConversationId: gmailMessageWithConversationRes.count ?? 0,
+      gmailThreadConversations: gmailThreadConversationRes.count ?? 0,
+      orphanedGmailMessages: orphanedMessages.length,
+      wrongOrgLinkedGmailMessages: wrongOrgLinkedMessages.length,
+      inboundEvents: inboundEventCountRes.count ?? 0,
+      inboxRowsWithSlaSelect: inboxWithSlaRes.data?.length ?? 0,
+      inboxRowsWithLegacySelect: inboxLegacyRes.data?.length ?? 0,
+    },
+    samples: {
+      conversationIds: ((inboxLegacyRes.data ?? []) as { id: string }[]).slice(0, 10).map((row) => row.id),
+      gmailMessageIds: gmailMessages.slice(0, 10).map((row) => row.id),
+      orphanedMessageIds: orphanedMessages.slice(0, 10).map((row) => row.id),
+    },
+    likelyRootCause,
+  };
+}
+
 export async function GET() {
   const appUser = await getCurrentAppUser({ label: "gmail/diagnostics" });
   if (!appUser) {
@@ -149,5 +294,15 @@ export async function GET() {
     fail: checks.filter((check) => check.status === "fail").length,
   };
 
-  return NextResponse.json({ checks, summary });
+  const adminState = createOptionalAdminClient();
+  let gmailImportDiagnostics: GmailImportDiagnostics | null = null;
+  if (adminState.client) {
+    try {
+      gmailImportDiagnostics = await collectGmailImportDiagnostics(adminState.client, appUser.org_id);
+    } catch (error) {
+      console.warn("[gmail/diagnostics] import diagnostics failed:", error);
+    }
+  }
+
+  return NextResponse.json({ checks, summary, gmailImportDiagnostics });
 }
