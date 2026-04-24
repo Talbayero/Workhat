@@ -46,6 +46,7 @@ type GmailSyncResponse = {
   imported?: number;
   skipped?: number;
   scanned?: number;
+  skipReasons?: Record<string, number>;
   error?: string;
 };
 
@@ -84,13 +85,17 @@ function formatGmailSyncResult(data: GmailSyncResponse) {
   const imported = data.imported ?? 0;
   const scanned = data.scanned ?? 0;
   const skipped = data.skipped ?? 0;
+  const reasons = Object.entries(data.skipReasons ?? {});
+  const reasonText = reasons.length
+    ? ` Reasons: ${reasons.map(([reason, count]) => `${reason} ${count}`).join(", ")}.`
+    : "";
 
   if (imported > 0) {
-    return `Imported ${imported} new Gmail conversation${imported === 1 ? "" : "s"}. Scanned ${scanned}, skipped ${skipped}. Open Inbox to review synced messages.`;
+    return `Imported ${imported} new Gmail conversation${imported === 1 ? "" : "s"}. Scanned ${scanned}, skipped ${skipped}.${reasonText} Open Inbox to review synced messages.`;
   }
 
   if (scanned > 0) {
-    return `Gmail sync scanned ${scanned} recent message${scanned === 1 ? "" : "s"}, but there were no new conversations to import. Skipped ${skipped} already imported or unsupported message${skipped === 1 ? "" : "s"}.`;
+    return `Gmail sync scanned ${scanned} recent message${scanned === 1 ? "" : "s"}, but there were no new conversations to import. Skipped ${skipped} already imported or unsupported message${skipped === 1 ? "" : "s"}.${reasonText}`;
   }
 
   return "Gmail sync completed but found no recent mailbox messages. Send a new email to the connected Gmail address, wait a few seconds, then import again.";

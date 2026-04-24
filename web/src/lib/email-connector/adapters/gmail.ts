@@ -140,6 +140,7 @@ export function createGmailAdapter({ db }: MailboxAdapterContext): MailboxAdapte
         scanned: result.scanned,
         imported: result.imported,
         skipped: result.skipped,
+        skipReasons: result.skipReasons ?? {},
         latestCursor: result.latestHistoryId,
       };
     },

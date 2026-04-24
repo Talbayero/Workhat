@@ -96,6 +96,7 @@ type MailboxSyncResponse = {
   imported?: number;
   skipped?: number;
   scanned?: number;
+  skipReasons?: Record<string, number>;
   error?: string;
 };
 
@@ -161,13 +162,17 @@ function formatMailboxSyncNotice(data: MailboxSyncResponse) {
   const imported = data.imported ?? 0;
   const scanned = data.scanned ?? 0;
   const skipped = data.skipped ?? 0;
+  const reasons = Object.entries(data.skipReasons ?? {});
+  const reasonText = reasons.length
+    ? ` Reasons: ${reasons.map(([reason, count]) => `${reason} ${count}`).join(", ")}.`
+    : "";
 
   if (imported > 0) {
-    return `Mailbox sync imported ${imported} new conversation${imported === 1 ? "" : "s"}. Scanned ${scanned}, skipped ${skipped}.`;
+    return `Mailbox sync imported ${imported} new conversation${imported === 1 ? "" : "s"}. Scanned ${scanned}, skipped ${skipped}.${reasonText}`;
   }
 
   if (scanned > 0) {
-    return `Mailbox sync scanned ${scanned} recent message${scanned === 1 ? "" : "s"}, but no new conversations were imported. Skipped ${skipped} already imported or unsupported message${skipped === 1 ? "" : "s"}.`;
+    return `Mailbox sync scanned ${scanned} recent message${scanned === 1 ? "" : "s"}, but no new conversations were imported. Skipped ${skipped} already imported or unsupported message${skipped === 1 ? "" : "s"}.${reasonText}`;
   }
 
   return "Mailbox sync completed but found no recent messages. Send a new email to the connected Gmail address, wait a few seconds, then import again.";

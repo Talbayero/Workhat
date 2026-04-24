@@ -60,6 +60,7 @@ export async function POST() {
       imported: result.imported,
       skipped: result.skipped,
       scanned: result.scanned,
+      skipReasons: result.skipReasons ?? {},
       latestHistoryId: result.latestHistoryId,
       mode: result.mode,
     });

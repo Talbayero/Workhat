@@ -471,6 +471,46 @@ async function updateInboundEvent(db: Db, eventId: string | null, updates: Recor
   if (error) console.warn("[inbound] event update failed:", error.message);
 }
 
+async function findConversationById({
+  db,
+  orgId,
+  conversationId,
+}: {
+  db: Db;
+  orgId: string;
+  conversationId: string | null | undefined;
+}) {
+  if (!conversationId) return null;
+  const { data, error } = await db
+    .from("conversations")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as { id: string } | null;
+}
+
+async function findMessageById({
+  db,
+  orgId,
+  messageId,
+}: {
+  db: Db;
+  orgId: string;
+  messageId: string | null | undefined;
+}) {
+  if (!messageId) return null;
+  const { data, error } = await db
+    .from("messages")
+    .select("id, conversation_id")
+    .eq("org_id", orgId)
+    .eq("id", messageId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as { id: string; conversation_id: string } | null;
+}
+
 async function findExistingInboundEvent({
   db,
   orgId,
@@ -528,15 +568,30 @@ export async function processInboundEmail({
     .maybeSingle();
   if (existingMessageError) throw new Error(existingMessageError.message);
   if (existingMessage) {
-    return {
-      ok: true,
-      duplicate: true,
+    const existingConversation = await findConversationById({
+      db,
+      orgId,
+      conversationId: existingMessage.conversation_id,
+    });
+    if (existingConversation) {
+      return {
+        ok: true,
+        duplicate: true,
+        orgId,
+        channelId: channel.id,
+        conversationId: existingMessage.conversation_id,
+        messageId: existingMessage.id,
+        skipped: "duplicate_message",
+      };
+    }
+
+    console.warn("[inbound] duplicate message references a missing conversation; attempting event recovery", {
       orgId,
       channelId: channel.id,
-      conversationId: existingMessage.conversation_id,
       messageId: existingMessage.id,
-      skipped: "duplicate_message",
-    };
+      conversationId: existingMessage.conversation_id,
+      channelMessageId,
+    });
   }
 
   let eventId: string | null = null;
@@ -569,34 +624,60 @@ export async function processInboundEmail({
     });
 
     if (existingEvent?.message_id) {
+      const existingMessage = await findMessageById({ db, orgId, messageId: existingEvent.message_id });
+      const existingConversation = await findConversationById({
+        db,
+        orgId,
+        conversationId: existingEvent.conversation_id ?? existingMessage?.conversation_id,
+      });
+      if (!existingMessage || !existingConversation) {
+        eventId = existingEvent.id;
+        await updateInboundEvent(db, eventId, {
+          status: "processing",
+          error_message: null,
+          processed_at: null,
+          received_at: message.receivedAt,
+          message_id: null,
+          conversation_id: null,
+          payload_metadata: {
+            from: message.from.email,
+            to: message.to.map((recipient) => recipient.email),
+            subject: message.subject,
+            retry_reason: "recover_broken_duplicate_event",
+          },
+        });
+      } else {
       return {
         ok: true,
         duplicate: true,
         orgId,
         channelId: channel.id,
-        conversationId: existingEvent.conversation_id ?? undefined,
-        messageId: existingEvent.message_id,
+        conversationId: existingConversation.id,
+        messageId: existingMessage.id,
         skipped: "duplicate_event",
       };
+      }
     }
 
     if (!existingEvent) {
       return { ok: true, duplicate: true, orgId, channelId: channel.id, skipped: "duplicate_event" };
     }
 
-    eventId = existingEvent.id;
-    await updateInboundEvent(db, eventId, {
-      status: "processing",
-      error_message: null,
-      processed_at: null,
-      received_at: message.receivedAt,
-      payload_metadata: {
-        from: message.from.email,
-        to: message.to.map((recipient) => recipient.email),
-        subject: message.subject,
-        retry_reason: "recover_incomplete_event",
-      },
-    });
+    if (!eventId) {
+      eventId = existingEvent.id;
+      await updateInboundEvent(db, eventId, {
+        status: "processing",
+        error_message: null,
+        processed_at: null,
+        received_at: message.receivedAt,
+        payload_metadata: {
+          from: message.from.email,
+          to: message.to.map((recipient) => recipient.email),
+          subject: message.subject,
+          retry_reason: "recover_incomplete_event",
+        },
+      });
+    }
   }
   if (eventError && eventError.code !== "23505") throw new Error(eventError.message ?? "Failed to record inbound event.");
   if (!event && !eventId) throw new Error("Failed to record inbound event.");

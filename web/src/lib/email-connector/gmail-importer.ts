@@ -28,6 +28,7 @@ export type GmailImportResult = {
   scanned: number;
   latestHistoryId: string | null;
   mode: "full" | "history";
+  skipReasons?: Record<string, number>;
 };
 
 function getHeader(message: GmailMessage, name: string) {
@@ -178,7 +179,11 @@ async function importMessage({
     source: "gmail.importer",
   });
 
-  return { imported: !result.duplicate, historyId: message.historyId ?? null };
+  return {
+    imported: !result.duplicate,
+    historyId: message.historyId ?? null,
+    skipReason: result.duplicate ? result.skipped ?? "duplicate" : null,
+  };
 }
 
 async function getChannel(db: SupabaseDb, orgId: string): Promise<InboundChannel> {
@@ -222,6 +227,7 @@ export async function importRecentGmailInbox({
   let imported = 0;
   let skipped = 0;
   let latestHistoryId: string | null = null;
+  const skipReasons: Record<string, number> = {};
 
   for (const item of list.messages ?? []) {
     const result = await importMessage({
@@ -232,7 +238,11 @@ export async function importRecentGmailInbox({
     });
     latestHistoryId = result.historyId ?? latestHistoryId;
     if (result.imported) imported += 1;
-    else skipped += 1;
+    else {
+      skipped += 1;
+      const reason = result.skipReason ?? "skipped";
+      skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+    }
   }
 
   return {
@@ -241,6 +251,7 @@ export async function importRecentGmailInbox({
     scanned: list.messages?.length ?? 0,
     latestHistoryId,
     mode: "full",
+    skipReasons,
   };
 }
 
@@ -263,6 +274,7 @@ export async function importGmailHistory({
   let latestHistoryId: string | null = null;
   let pageToken: string | undefined;
   const seen = new Set<string>();
+  const skipReasons: Record<string, number> = {};
 
   for (let page = 0; page < maxPages; page += 1) {
     const history = await listGmailHistory({ accessToken, startHistoryId, pageToken });
@@ -283,7 +295,11 @@ export async function importGmailHistory({
         });
         latestHistoryId = result.historyId ?? latestHistoryId;
         if (result.imported) imported += 1;
-        else skipped += 1;
+        else {
+          skipped += 1;
+          const reason = result.skipReason ?? "skipped";
+          skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+        }
       }
     }
 
@@ -291,7 +307,7 @@ export async function importGmailHistory({
     if (!pageToken) break;
   }
 
-  return { imported, skipped, scanned, latestHistoryId, mode: "history" };
+  return { imported, skipped, scanned, latestHistoryId, mode: "history", skipReasons };
 }
 
 export async function markGmailSyncSuccess({

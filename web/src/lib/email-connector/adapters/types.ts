@@ -106,6 +106,7 @@ export type FetchInboundResult = {
   scanned: number;
   imported: number;
   skipped: number;
+  skipReasons?: Record<string, number>;
   latestCursor: string | null;
 };
 

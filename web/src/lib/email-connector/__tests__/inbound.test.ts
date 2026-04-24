@@ -302,6 +302,7 @@ describe("processInboundEmail", () => {
 
   it("returns duplicate without emitting downstream events when a message already exists", async () => {
     const { db } = createDb({
+      conversations: [{ id: "conversation-existing", org_id: orgId, risk_level: "yellow", status: "open" }],
       messages: [{ id: "message-existing", org_id: orgId, channel_message_id: "custom_inbound:msg-1", conversation_id: "conversation-existing" }],
     });
 
@@ -347,6 +348,8 @@ describe("processInboundEmail", () => {
 
   it("treats duplicate event inserts as idempotent replay", async () => {
     const { db } = createDb({
+      conversations: [{ id: "conversation-existing", org_id: orgId, risk_level: "yellow", status: "open" }],
+      messages: [{ id: "message-existing", org_id: orgId, channel_message_id: "custom_inbound:msg-1", conversation_id: "conversation-existing" }],
       inbound_email_events: [
         {
           id: "event-existing",
@@ -367,7 +370,7 @@ describe("processInboundEmail", () => {
     });
 
     expect(result.duplicate).toBe(true);
-    expect(result.skipped).toBe("duplicate_event");
+    expect(result.skipped).toBe("duplicate_message");
     expect(emitWorkflowEvent).not.toHaveBeenCalled();
   });
 
