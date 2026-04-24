@@ -354,6 +354,8 @@ describe("processInboundEmail", () => {
           channel_id: channelId,
           dedupe_key: "channel-1:custom_inbound:msg-1",
           status: "processed",
+          conversation_id: "conversation-existing",
+          message_id: "message-existing",
         },
       ],
     });
@@ -367,5 +369,39 @@ describe("processInboundEmail", () => {
     expect(result.duplicate).toBe(true);
     expect(result.skipped).toBe("duplicate_event");
     expect(emitWorkflowEvent).not.toHaveBeenCalled();
+  });
+
+  it("recovers incomplete duplicate event rows instead of skipping forever", async () => {
+    const { db, tables } = createDb({
+      inbound_email_events: [
+        {
+          id: "event-existing",
+          org_id: orgId,
+          channel_id: channelId,
+          dedupe_key: "channel-1:custom_inbound:msg-1",
+          provider: "custom_inbound",
+          external_message_id: "msg-1",
+          status: "error",
+          conversation_id: null,
+          message_id: null,
+          error_message: "previous partial import",
+        },
+      ],
+    });
+
+    const result = await processInboundEmail({
+      db: db as never,
+      channel: channel(),
+      message: message(),
+    });
+
+    expect(result.duplicate).toBe(false);
+    expect(tables.conversations).toHaveLength(1);
+    expect(tables.messages).toHaveLength(1);
+    expect(tables.inbound_email_events).toHaveLength(1);
+    expect(tables.inbound_email_events[0].status).toBe("processed");
+    expect(tables.inbound_email_events[0].message_id).toBe(tables.messages[0].id);
+    expect(emitWorkflowEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: "conversation.created" }));
+    expect(emitWorkflowEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: "message.received" }));
   });
 });
