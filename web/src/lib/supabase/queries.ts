@@ -133,6 +133,13 @@ type DbConversation = {
   channels?: { type: string | null } | null;
 };
 
+type SupabaseErrorLike = {
+  code?: string;
+  message: string;
+  details?: string;
+  hint?: string;
+};
+
 const CONVERSATION_SELECT = `id, subject, status, priority, contact_id, company_id, assigned_to_name,
        assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
        sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
@@ -153,6 +160,21 @@ function isConversationSchemaLagError(message: string) {
     "sla_breached_at",
     "sla_last_evaluated_at",
   ].some((column) => normalized.includes(column));
+}
+
+function isPermissionDeniedError(error: SupabaseErrorLike | null | undefined) {
+  return (error?.message ?? "").toLowerCase().includes("permission denied");
+}
+
+function logSupabaseError(label: string, error: SupabaseErrorLike | null | undefined, extra: Record<string, unknown> = {}) {
+  if (!error) return;
+  console.error(label, {
+    code: error.code ?? null,
+    message: error.message,
+    details: error.details ?? null,
+    hint: error.hint ?? null,
+    ...extra,
+  });
 }
 
 function dbConvToFrontend(row: DbConversation): InboxConversation {
@@ -202,14 +224,20 @@ export async function getConversations(
   view?: InboxViewId
 ): Promise<InboxConversation[]> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const orgId = await getCurrentOrgId(supabase);
   if (!orgId) {
     console.warn("[queries] getConversations: current org could not be resolved");
     return [];
   }
 
-  const buildConversationQuery = (selectClause: string) => {
-    let query = supabase
+  const buildConversationQuery = (
+    client: Awaited<ReturnType<typeof createClient>> | NonNullable<ReturnType<typeof createOptionalAdminClient>["client"]>,
+    selectClause: string
+  ) => {
+    let query = client
       .from("conversations")
       .select(selectClause)
       .eq("org_id", orgId)
@@ -232,20 +260,60 @@ export async function getConversations(
     return query;
   };
 
-  let { data, error } = await buildConversationQuery(CONVERSATION_SELECT);
+  let querySource: "user" | "admin-fallback" = "user";
+  let { data, error } = await buildConversationQuery(supabase, CONVERSATION_SELECT);
   if (error && isConversationSchemaLagError(error.message)) {
     console.warn("[queries] getConversations retrying with legacy select:", error.message);
-    const fallback = await buildConversationQuery(CONVERSATION_SELECT_LEGACY);
+    const fallback = await buildConversationQuery(supabase, CONVERSATION_SELECT_LEGACY);
     data = fallback.data;
     error = fallback.error;
   }
+  if (error && isPermissionDeniedError(error)) {
+    console.warn("[queries] getConversations user-scoped read denied; retrying with tenant-scoped admin fallback", {
+      userId: user?.id ?? null,
+      orgId,
+      view: view ?? "all",
+    });
+    const adminState = createOptionalAdminClient();
+    if (!adminState.client) {
+      logSupabaseError("[queries] getConversations admin fallback unavailable", error, {
+        adminReason: adminState.reason,
+        userId: user?.id ?? null,
+        orgId,
+        view: view ?? "all",
+      });
+    } else {
+      querySource = "admin-fallback";
+      const fallback = await buildConversationQuery(adminState.client, CONVERSATION_SELECT);
+      data = fallback.data;
+      error = fallback.error;
+
+      if (error && isConversationSchemaLagError(error.message)) {
+        console.warn("[queries] getConversations admin fallback retrying with legacy select:", error.message);
+        const legacyFallback = await buildConversationQuery(adminState.client, CONVERSATION_SELECT_LEGACY);
+        data = legacyFallback.data;
+        error = legacyFallback.error;
+      }
+    }
+  }
   if (error) {
-    console.error("[queries] getConversations error:", error.message);
-    throw new Error("Unable to load inbox conversations.");
+    logSupabaseError("[queries] getConversations error", error, {
+      userId: user?.id ?? null,
+      orgId,
+      view: view ?? "all",
+      querySource,
+    });
+    throw new Error(`Unable to load inbox conversations: ${error.message}`);
   }
 
   const conversations = ((data ?? []) as unknown as DbConversation[]).map(dbConvToFrontend);
-  console.info("[queries] getConversations loaded:", { orgId, view: view ?? "all", count: conversations.length });
+  console.info("[queries] getConversations loaded:", {
+    userId: user?.id ?? null,
+    orgId,
+    view: view ?? "all",
+    count: conversations.length,
+    querySource,
+  });
   return conversations;
 }
 
@@ -256,39 +324,97 @@ export async function getConversationById(
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data: appUser } = await supabase
-    .from("users")
-    .select("org_id")
-    .eq("auth_user_id", user.id)
-    .single();
-  if (!appUser) return null;
-  const orgId = (appUser as { org_id: string }).org_id;
+  const orgId = await getCurrentOrgId(supabase);
+  if (!orgId) {
+    console.warn("[queries] getConversationById: current org could not be resolved", { userId: user.id, conversationId: id });
+    return null;
+  }
 
-  const buildConversationByIdQuery = (selectClause: string) =>
-    supabase
+  const buildConversationByIdQuery = (
+    client: Awaited<ReturnType<typeof createClient>> | NonNullable<ReturnType<typeof createOptionalAdminClient>["client"]>,
+    selectClause: string
+  ) =>
+    client
       .from("conversations")
       .select(selectClause)
       .eq("id", id)
       .eq("org_id", orgId)
       .single();
 
-  const [initialConvRes, msgRes] = await Promise.all([
-    buildConversationByIdQuery(CONVERSATION_SELECT),
-    supabase
+  const buildMessageQuery = (
+    client: Awaited<ReturnType<typeof createClient>> | NonNullable<ReturnType<typeof createOptionalAdminClient>["client"]>
+  ) =>
+    client
       .from("messages")
       .select("id, sender_type, author_name, body_text, is_note, created_at")
       .eq("conversation_id", id)
       .eq("org_id", orgId)
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true });
+
+  let querySource: "user" | "admin-fallback" = "user";
+  const [initialConvRes, initialMsgRes] = await Promise.all([
+    buildConversationByIdQuery(supabase, CONVERSATION_SELECT),
+    buildMessageQuery(supabase),
   ]);
 
   let convRes = initialConvRes;
+  let msgRes = initialMsgRes;
   if (convRes.error && isConversationSchemaLagError(convRes.error.message)) {
     console.warn("[queries] getConversationById retrying with legacy select:", convRes.error.message);
-    convRes = await buildConversationByIdQuery(CONVERSATION_SELECT_LEGACY);
+    convRes = await buildConversationByIdQuery(supabase, CONVERSATION_SELECT_LEGACY);
   }
 
-  if (convRes.error || !convRes.data) return null;
+  if ((convRes.error && isPermissionDeniedError(convRes.error)) || (msgRes.error && isPermissionDeniedError(msgRes.error))) {
+    console.warn("[queries] getConversationById user-scoped read denied; retrying with tenant-scoped admin fallback", {
+      userId: user.id,
+      orgId,
+      conversationId: id,
+      conversationError: convRes.error?.message ?? null,
+      messageError: msgRes.error?.message ?? null,
+    });
+
+    const adminState = createOptionalAdminClient();
+    if (!adminState.client) {
+      logSupabaseError("[queries] getConversationById admin fallback unavailable", convRes.error ?? msgRes.error, {
+        adminReason: adminState.reason,
+        userId: user.id,
+        orgId,
+        conversationId: id,
+      });
+    } else {
+      querySource = "admin-fallback";
+      const [adminConvRes, adminMsgRes] = await Promise.all([
+        buildConversationByIdQuery(adminState.client, CONVERSATION_SELECT),
+        buildMessageQuery(adminState.client),
+      ]);
+      convRes = adminConvRes;
+      msgRes = adminMsgRes;
+
+      if (convRes.error && isConversationSchemaLagError(convRes.error.message)) {
+        console.warn("[queries] getConversationById admin fallback retrying with legacy select:", convRes.error.message);
+        convRes = await buildConversationByIdQuery(adminState.client, CONVERSATION_SELECT_LEGACY);
+      }
+    }
+  }
+
+  if (convRes.error || !convRes.data) {
+    logSupabaseError("[queries] getConversationById conversation query failed", convRes.error, {
+      userId: user.id,
+      orgId,
+      conversationId: id,
+      querySource,
+    });
+    return null;
+  }
+  if (msgRes.error) {
+    logSupabaseError("[queries] getConversationById message query failed", msgRes.error, {
+      userId: user.id,
+      orgId,
+      conversationId: id,
+      querySource,
+    });
+    return null;
+  }
 
   const conv = dbConvToFrontend(convRes.data as unknown as DbConversation);
   conv.messages = (msgRes.data ?? []).map((m) => ({
