@@ -10,7 +10,7 @@ import { fetchWithCircuitBreaker } from "@/lib/security/circuit-breaker";
    Body: { email: string, role?: string }
 
    1. Inserts into waitlist_signups (idempotent on email)
-   2. Sends notification email to teddyalbayero@work-hat.com via Resend
+   2. Sends notification email to info@work-hat.com via Resend
       (requires RESEND_API_KEY env var — skips gracefully if missing)
 ───────────────────────────────────────────── */
 
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
           },
           body: JSON.stringify({
             from: "Work Hat <notifications@work-hat.com>",
-            to: ["teddyalbayero@work-hat.com"],
+            to: ["info@work-hat.com"],
             subject: `New waitlist signup: ${email}`,
             html: `
               <div style="font-family: system-ui, sans-serif; max-width: 480px;">

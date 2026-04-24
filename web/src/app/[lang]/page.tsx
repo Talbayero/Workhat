@@ -42,7 +42,7 @@ export const Footer = ({ dict, lang }: { dict: Dictionary; lang: Locale }) => {
             <nav className="flex flex-col gap-2">
               <Link href="/login" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.nav.signIn}</Link>
               <Link href="#waitlist" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.nav.getEarlyAccess}</Link>
-              <a href="mailto:teddyalbayero@work-hat.com?subject=Work Hat demo request" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.footer.bookDemo}</a>
+              <a href="mailto:info@work-hat.com?subject=Work Hat demo request" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.footer.bookDemo}</a>
             </nav>
           </div>
         </div>
@@ -212,7 +212,7 @@ function WaitlistSection({ dict }: { dict: Dictionary["home"]["waitlist"] }) {
         </div>
 
         <a
-          href="mailto:teddyalbayero@work-hat.com?subject=Work Hat demo request"
+          href="mailto:info@work-hat.com?subject=Work Hat demo request"
           className="mt-4 inline-block text-sm text-[var(--muted)] underline underline-offset-4 decoration-[var(--line-strong)] transition-colors hover:text-[var(--foreground)]"
         >
           {dict.talk}
