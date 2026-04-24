@@ -6,7 +6,10 @@ import { createOptionalAdminClient } from "@/lib/supabase/admin";
 /* GET /api/conversations/count
    Returns the count of open conversations for the authenticated user's org.
    Used by the sidebar badge to show pending queue size.
-   Lightweight — only fetches a count, no rows. */
+   Lightweight — only fetches a count, no rows.
+
+   The admin fallback below is temporary resilience for RLS/grant drift. It
+   must remain strictly scoped to the caller's resolved org_id. */
 
 export async function GET() {
   const appUser = await getCurrentAppUser({ label: "conversations/count", select: "org_id" });

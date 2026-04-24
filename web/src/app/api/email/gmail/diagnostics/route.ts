@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 type DiagnosticStatus = "pass" | "warn" | "fail";
 
@@ -32,6 +33,24 @@ type GmailImportDiagnostics = {
     orphanedMessageIds: string[];
   };
   likelyRootCause: string | null;
+};
+
+type UserScopedReadCheck = {
+  ok: boolean;
+  message: string;
+  count?: number;
+};
+
+type UserScopedReadDiagnostics = {
+  authUserId: string | null;
+  appUserId: string | null;
+  orgId: string | null;
+  tables: {
+    users: UserScopedReadCheck;
+    organizations: UserScopedReadCheck;
+    conversations: UserScopedReadCheck;
+    messages: UserScopedReadCheck;
+  };
 };
 
 const SLA_COLUMNS = [
@@ -236,6 +255,89 @@ async function collectGmailImportDiagnostics(
   };
 }
 
+async function collectUserScopedReadDiagnostics(): Promise<UserScopedReadDiagnostics> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      authUserId: null,
+      appUserId: null,
+      orgId: null,
+      tables: {
+        users: { ok: false, message: "No authenticated Supabase user." },
+        organizations: { ok: false, message: "No authenticated Supabase user." },
+        conversations: { ok: false, message: "No authenticated Supabase user." },
+        messages: { ok: false, message: "No authenticated Supabase user." },
+      },
+    };
+  }
+
+  const { data: appUser, error: appUserError } = await supabase
+    .from("users")
+    .select("id, org_id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+
+  const orgId = (appUser as { org_id?: string } | null)?.org_id ?? null;
+  const appUserId = (appUser as { id?: string } | null)?.id ?? null;
+
+  const usersCheck: UserScopedReadCheck = appUserError
+    ? { ok: false, message: appUserError.message }
+    : appUser
+      ? { ok: true, message: "Authenticated user can read their app user row.", count: 1 }
+      : { ok: false, message: "No app user row found for the authenticated Supabase user." };
+
+  if (!orgId) {
+    return {
+      authUserId: user.id,
+      appUserId,
+      orgId: null,
+      tables: {
+        users: usersCheck,
+        organizations: { ok: false, message: "Skipped because org_id could not be resolved." },
+        conversations: { ok: false, message: "Skipped because org_id could not be resolved." },
+        messages: { ok: false, message: "Skipped because org_id could not be resolved." },
+      },
+    };
+  }
+
+  const [orgRes, conversationsRes, messagesRes] = await Promise.all([
+    supabase
+      .from("organizations")
+      .select("id", { count: "exact", head: true })
+      .eq("id", orgId),
+    supabase
+      .from("conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId),
+    supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId),
+  ]);
+
+  return {
+    authUserId: user.id,
+    appUserId,
+    orgId,
+    tables: {
+      users: usersCheck,
+      organizations: orgRes.error
+        ? { ok: false, message: orgRes.error.message }
+        : { ok: true, message: "Authenticated user can read their organization row.", count: orgRes.count ?? 0 },
+      conversations: conversationsRes.error
+        ? { ok: false, message: conversationsRes.error.message }
+        : { ok: true, message: "Authenticated user can read org-scoped conversations.", count: conversationsRes.count ?? 0 },
+      messages: messagesRes.error
+        ? { ok: false, message: messagesRes.error.message }
+        : { ok: true, message: "Authenticated user can read org-scoped messages.", count: messagesRes.count ?? 0 },
+    },
+  };
+}
+
 export async function GET() {
   const appUser = await getCurrentAppUser({ label: "gmail/diagnostics" });
   if (!appUser) {
@@ -296,6 +398,7 @@ export async function GET() {
 
   const adminState = createOptionalAdminClient();
   let gmailImportDiagnostics: GmailImportDiagnostics | null = null;
+  let userScopedReadDiagnostics: UserScopedReadDiagnostics | null = null;
   if (adminState.client) {
     try {
       gmailImportDiagnostics = await collectGmailImportDiagnostics(adminState.client, appUser.org_id);
@@ -304,5 +407,11 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ checks, summary, gmailImportDiagnostics });
+  try {
+    userScopedReadDiagnostics = await collectUserScopedReadDiagnostics();
+  } catch (error) {
+    console.warn("[gmail/diagnostics] user-scoped read diagnostics failed:", error);
+  }
+
+  return NextResponse.json({ checks, summary, gmailImportDiagnostics, userScopedReadDiagnostics });
 }

@@ -6,6 +6,11 @@
  *
  * All functions are async and must be called from server components or
  * server actions. For client components, fetch via page.tsx and pass as props.
+ *
+ * Note on admin fallbacks:
+ * These are temporary resilience paths for production environments where RLS
+ * grants drifted out of sync. They must stay tenant-scoped to the current
+ * authenticated user's org and should not become the default read path.
  */
 
 import { createClient } from "@/lib/supabase/server";
