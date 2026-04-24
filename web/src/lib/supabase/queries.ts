@@ -104,6 +104,28 @@ type DbConversation = {
   channels?: { type: string | null } | null;
 };
 
+const CONVERSATION_SELECT = `id, subject, status, priority, contact_id, company_id, assigned_to_name,
+       assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
+       contacts(full_name, email, phone, tier, notes, tags),
+       companies(name), channels(type)`;
+
+const CONVERSATION_SELECT_LEGACY = `id, subject, status, priority, contact_id, company_id, assigned_to_name,
+       assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
+       contacts(full_name, email, phone, tier, notes, tags),
+       companies(name), channels(type)`;
+
+function isConversationSchemaLagError(message: string) {
+  const normalized = message.toLowerCase();
+  return [
+    "sla_status",
+    "sla_target",
+    "sla_due_at",
+    "sla_breached_at",
+    "sla_last_evaluated_at",
+  ].some((column) => normalized.includes(column));
+}
+
 function dbConvToFrontend(row: DbConversation): InboxConversation {
   return {
     id: row.id,
@@ -154,34 +176,37 @@ export async function getConversations(
   const orgId = await getCurrentOrgId(supabase);
   if (!orgId) return [];
 
-  let query = supabase
-    .from("conversations")
-    .select(
-      `id, subject, status, priority, contact_id, company_id, assigned_to_name,
-       assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
-       sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
-       contacts(full_name, email, phone, tier, notes, tags),
-       companies(name), channels(type)`
-    )
-    .eq("org_id", orgId)
-    .order("last_message_at", { ascending: false });
+  const buildConversationQuery = (selectClause: string) => {
+    let query = supabase
+      .from("conversations")
+      .select(selectClause)
+      .eq("org_id", orgId)
+      .order("last_message_at", { ascending: false });
 
-  // Apply view filter at DB level where possible
-  if (view === "mine") {
-    // "mine" filtered client-side since we don't have current user's name easily here
-  } else if (view === "high-risk") {
-    query = query.in("risk_level", ["red", "yellow"]);
-  } else if (view === "ai-review") {
-    query = query.in("ai_confidence", ["red", "yellow"]);
-  } else if (view === "unassigned") {
-    query = query.eq("assigned_to_name", "");
-  } else if (view === "sla-at-risk") {
-    query = query.eq("sla_status", "at_risk");
-  } else if (view === "sla-breached") {
-    query = query.eq("sla_status", "breached");
+    if (view === "mine") {
+      // "mine" filtered client-side since we don't have current user's name easily here
+    } else if (view === "high-risk") {
+      query = query.in("risk_level", ["red", "yellow"]);
+    } else if (view === "ai-review") {
+      query = query.in("ai_confidence", ["red", "yellow"]);
+    } else if (view === "unassigned") {
+      query = query.eq("assigned_to_name", "");
+    } else if (view === "sla-at-risk") {
+      query = query.eq("sla_status", "at_risk");
+    } else if (view === "sla-breached") {
+      query = query.eq("sla_status", "breached");
+    }
+
+    return query;
+  };
+
+  let { data, error } = await buildConversationQuery(CONVERSATION_SELECT);
+  if (error && isConversationSchemaLagError(error.message)) {
+    console.warn("[queries] getConversations retrying with legacy select:", error.message);
+    const fallback = await buildConversationQuery(CONVERSATION_SELECT_LEGACY);
+    data = fallback.data;
+    error = fallback.error;
   }
-
-  const { data, error } = await query;
   if (error) {
     console.error("[queries] getConversations error:", error.message);
     return [];
@@ -205,19 +230,16 @@ export async function getConversationById(
   if (!appUser) return null;
   const orgId = (appUser as { org_id: string }).org_id;
 
-  const [convRes, msgRes] = await Promise.all([
+  const buildConversationByIdQuery = (selectClause: string) =>
     supabase
       .from("conversations")
-      .select(
-        `id, subject, status, priority, contact_id, company_id, assigned_to_name,
-         assigned_user_id, risk_level, ai_confidence, preview, intent, tags, last_message_at,
-         sla_status, sla_target, sla_due_at, sla_breached_at, sla_last_evaluated_at,
-         contacts(full_name, email, phone, tier, notes, tags),
-         companies(name), channels(type)`
-      )
+      .select(selectClause)
       .eq("id", id)
       .eq("org_id", orgId)
-      .single(),
+      .single();
+
+  const [initialConvRes, msgRes] = await Promise.all([
+    buildConversationByIdQuery(CONVERSATION_SELECT),
     supabase
       .from("messages")
       .select("id, sender_type, author_name, body_text, is_note, created_at")
@@ -225,6 +247,12 @@ export async function getConversationById(
       .eq("org_id", orgId)
       .order("created_at", { ascending: true }),
   ]);
+
+  let convRes = initialConvRes;
+  if (convRes.error && isConversationSchemaLagError(convRes.error.message)) {
+    console.warn("[queries] getConversationById retrying with legacy select:", convRes.error.message);
+    convRes = await buildConversationByIdQuery(CONVERSATION_SELECT_LEGACY);
+  }
 
   if (convRes.error || !convRes.data) return null;
 
