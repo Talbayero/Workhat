@@ -13,7 +13,6 @@
  *   8. Return message + sent_reply IDs
  */
 
-import { randomUUID } from "crypto";
 import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
@@ -39,8 +38,6 @@ type OutboundResult = {
   simulated?: boolean;
 };
 
-type AdminDb = NonNullable<ReturnType<typeof createOptionalAdminClient>["client"]>;
-
 const MAX_REPLY_LENGTH = 50_000;
 
 function validateBody(raw: unknown): ReplyPayload | null {
@@ -54,47 +51,6 @@ function validateBody(raw: unknown): ReplyPayload | null {
       typeof obj.aiDraftId === "string" && obj.aiDraftId.trim()
         ? obj.aiDraftId.trim()
         : null,
-  };
-}
-
-async function buildManualTestOutbound(
-  db: AdminDb,
-  orgId: string,
-  conversationId: string
-): Promise<OutboundResult | null> {
-  const { data: inbound } = await db
-    .from("messages")
-    .select("metadata_json")
-    .eq("org_id", orgId)
-    .eq("conversation_id", conversationId)
-    .eq("direction", "inbound")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const metadata = (inbound as { metadata_json?: Record<string, unknown> } | null)?.metadata_json ?? {};
-  if (metadata.created_manually !== true) return null;
-
-  const { data: channel } = await db
-    .from("channels")
-    .select("inbound_address, config_json")
-    .eq("org_id", orgId)
-    .eq("type", "email")
-    .maybeSingle();
-
-  const channelData = channel as { inbound_address?: string | null; config_json?: Record<string, string> } | null;
-  const fromAddress =
-    channelData?.config_json?.support_email ||
-    channelData?.inbound_address ||
-    "local-test@work-hat.com";
-
-  return {
-    provider: "workhat_test",
-    providerMessageId: `local-${randomUUID()}`,
-    providerThreadId: `local-thread-${conversationId}`,
-    rfcMessageId: `<workhat-local-${randomUUID()}@work-hat.com>`,
-    sentFrom: fromAddress,
-    simulated: true,
   };
 }
 
@@ -275,13 +231,9 @@ export async function POST(
   }
 
   if (!outbound) {
-    outbound = await buildManualTestOutbound(admin, orgId, conversationId);
-  }
-
-  if (!outbound) {
     return NextResponse.json({
-      error: "Connect and validate a mailbox before sending customer replies.",
-      hint: "Use onboarding or Settings -> Channels to activate Gmail OAuth, app-password, mailbox-password, or IMAP/SMTP sending. Internal notes are still available.",
+      error: "Connect Gmail OAuth before sending customer replies.",
+      hint: "Use onboarding or Settings -> Channels to activate Gmail OAuth. The MVP does not support simulated sends or non-Gmail mailbox sending.",
     }, { status: 400 });
   }
 
@@ -416,11 +368,6 @@ export async function POST(
       },
     });
   });
-
-  // Do not expose whether the send was simulated — callers get ok:true either way
-  if (outbound.simulated) {
-    console.info("[reply] simulated send (no Gmail mailbox connected) for conversation:", conversationId);
-  }
 
   return NextResponse.json({
     ok: true,

@@ -28,9 +28,10 @@ export async function GET(req: NextRequest) {
   const { data, error } = await db
     .from("email_connections")
     .select(CONNECTION_SELECT)
+    .eq("provider", "gmail")
+    .eq("connection_type", "oauth")
     .eq("inbound_enabled", true)
     .in("status", ["active", "connected"])
-    .neq("connection_type", "custom_inbound")
     .order("last_inbound_sync_at", { ascending: true, nullsFirst: true })
     .limit(10);
 

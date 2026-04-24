@@ -74,8 +74,8 @@ export function getEmailSetupReadiness(): SetupReadiness {
     encryptionConfigured &&
     canonicalBaseUrlConfigured &&
     googleOAuthRoutesAvailable;
-  const credentialMailboxConfigured = adminConfigured && encryptionConfigured;
-  const customInboundConfigured = adminConfigured;
+  const credentialMailboxConfigured = false;
+  const customInboundConfigured = false;
 
   const checks: SetupReadinessCheck[] = [
     check("GOOGLE_CLIENT_ID", "Google OAuth client ID", "Required before Gmail OAuth can be offered to users."),
@@ -122,61 +122,36 @@ export function getEmailSetupReadiness(): SetupReadiness {
             ? `Set Google OAuth env vars and add ${googleRedirectUri} to Google authorized redirect URIs.`
             : "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and APP_BASE_URL.",
         },
-    mailbox_password: credentialMailboxConfigured
-      ? {
-          key: "mailbox_password",
-          status: "available",
-          userMessage: "Mailbox password setup is available for providers that still allow direct mailbox authentication.",
-        }
-      : {
-          key: "mailbox_password",
-          status: "unavailable",
-          userMessage: "Mailbox password setup is not available yet.",
-          adminMessage: "Set EMAIL_TOKEN_ENCRYPTION_KEY and the server database key.",
-        },
-    app_password: credentialMailboxConfigured
-      ? {
-          key: "app_password",
-          status: "available",
-          userMessage: "App-password setup is available.",
-        }
-      : {
-          key: "app_password",
-          status: "unavailable",
-          userMessage: "App-password setup is not available yet.",
-          adminMessage: "Set EMAIL_TOKEN_ENCRYPTION_KEY and the server database key.",
-        },
-    imap_smtp: credentialMailboxConfigured
-      ? {
-          key: "imap_smtp",
-          status: "available",
-          userMessage: "IMAP/SMTP setup is available.",
-        }
-      : {
-          key: "imap_smtp",
-          status: "unavailable",
-          userMessage: "IMAP/SMTP setup is not available yet.",
-          adminMessage: "Set EMAIL_TOKEN_ENCRYPTION_KEY and the server database key.",
-        },
-    custom_inbound: customInboundConfigured
-      ? {
-          key: "custom_inbound",
-          status: "available",
-          userMessage: "Advanced webhook setup is available.",
-        }
-      : {
-          key: "custom_inbound",
-          status: "unavailable",
-          userMessage: "Advanced webhook setup is not available yet.",
-          adminMessage: "Set the server database key.",
-        },
+    mailbox_password: {
+      key: "mailbox_password",
+      status: "unavailable",
+      userMessage: "Mailbox password setup is disabled for the MVP.",
+      adminMessage: "Use Gmail OAuth only. Re-enable credential mailbox setup after the Gmail MVP path is verified end to end.",
+    },
+    app_password: {
+      key: "app_password",
+      status: "unavailable",
+      userMessage: "App-password setup is disabled for the MVP.",
+      adminMessage: "Use Gmail OAuth only. Re-enable app-password setup after the Gmail MVP path is verified end to end.",
+    },
+    imap_smtp: {
+      key: "imap_smtp",
+      status: "unavailable",
+      userMessage: "IMAP/SMTP setup is disabled for the MVP.",
+      adminMessage: "Use Gmail OAuth only. Re-enable IMAP/SMTP after the Gmail MVP path is verified end to end.",
+    },
+    custom_inbound: {
+      key: "custom_inbound",
+      status: "unavailable",
+      userMessage: "Custom inbound setup is disabled for the MVP.",
+      adminMessage: "Use Gmail OAuth only. Keep custom inbound out of self-serve onboarding until the Gmail MVP path is verified.",
+    },
   };
 
-  const activeInboundAdapterAvailable =
-    googleOAuthConfigured || credentialMailboxConfigured || customInboundConfigured;
-  const activeOutboundAdapterAvailable = googleOAuthConfigured || credentialMailboxConfigured;
+  const activeInboundAdapterAvailable = googleOAuthConfigured;
+  const activeOutboundAdapterAvailable = googleOAuthConfigured;
   const nextAction = activeInboundAdapterAvailable && activeOutboundAdapterAvailable
-    ? "Mailbox setup is ready for self-serve use."
+    ? "Gmail OAuth setup is ready for self-serve use."
     : activeInboundAdapterAvailable
       ? "Inbound setup is available. Configure an outbound-capable mailbox before sending approved replies."
       : "Finish system setup before inviting non-admin users to connect mailboxes.";

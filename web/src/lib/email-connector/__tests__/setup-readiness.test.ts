@@ -64,7 +64,7 @@ describe("email setup readiness", () => {
     expect(readiness.methods.mailbox_password.status).toBe("unavailable");
   });
 
-  it("allows credential mailbox self-serve readiness without requiring Gmail OAuth", () => {
+  it("keeps credential mailbox methods unavailable during the Gmail-only MVP", () => {
     clearTrackedEnv();
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_test";
@@ -73,10 +73,12 @@ describe("email setup readiness", () => {
     const readiness = getEmailSetupReadiness();
 
     expect(readiness.summary.googleOAuthConfigured).toBe(false);
-    expect(readiness.summary.credentialMailboxConfigured).toBe(true);
+    expect(readiness.summary.credentialMailboxConfigured).toBe(false);
     expect(readiness.methods.oauth.status).toBe("unavailable");
-    expect(readiness.methods.imap_smtp.status).toBe("available");
-    expect(readiness.summary.nextAction).toBe("Mailbox setup is ready for self-serve use.");
+    expect(readiness.methods.mailbox_password.status).toBe("unavailable");
+    expect(readiness.methods.app_password.status).toBe("unavailable");
+    expect(readiness.methods.imap_smtp.status).toBe("unavailable");
+    expect(readiness.summary.nextAction).toBe("Finish system setup before inviting non-admin users to connect mailboxes.");
   });
 
   it("hides admin-only env names from non-admin readiness responses", () => {

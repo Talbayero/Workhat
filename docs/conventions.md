@@ -104,9 +104,9 @@ User-facing setup screens must ask the backend what is actually available before
 Rules:
 
 - Do not present Gmail OAuth unless Google OAuth env, the OAuth routes, and mailbox-token encryption are configured.
-- Do not present password, app-password, or IMAP/SMTP setup unless credential encryption and the server database key are configured.
-- If no email adapter is operational, hide mailbox connection methods and show test inbox / demo mode.
-- Do not count a saved mailbox record as connected. Readiness requires an active runtime connection for the needed direction.
+- Do not present password, app-password, IMAP/SMTP, custom inbound, or manual demo inbox as self-serve MVP setup.
+- If Gmail OAuth is not operational, hide alternate mailbox methods and show an admin setup requirement.
+- Do not count a saved mailbox record as connected. MVP readiness requires an active Gmail OAuth runtime connection for the needed direction.
 - Keep Work Hat login identity and connected mailbox identity separate in labels and copy.
 - Never expose raw environment variable names, database constraint names, stack traces, or provider exception strings to normal users. Admin-only diagnostics may include exact missing setup values.
 
@@ -342,8 +342,9 @@ Manual testing uses:
 
 - **Demo routes** (`/demo/*`) — serve mock data from `lib/mock-data.ts`. These can be used to verify UI without any auth or real data.
 - **`/api/email/mailbox/diagnostics`** — debug endpoint for mailbox adapter, environment, and connection state.
-- **`/api/email/mailbox/sync`** — manual active mailbox poll for IMAP/SMTP and Gmail-compatible adapter checks.
-- **Settings -> Channels** — custom inbound channel endpoint/secret/status diagnostics.
+- **`/api/email/gmail/sync`** — manual Gmail OAuth import for MVP verification.
+- **`/api/email/mailbox/sync`** — compatibility endpoint constrained to active Gmail OAuth records during the MVP.
+- **Settings -> Channels** — Gmail OAuth diagnostics, setup health, and legacy connection cleanup.
 - **Supabase local** (`supabase start`) — local Postgres instance for DB testing against migrations.
 
 ---

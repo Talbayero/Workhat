@@ -648,7 +648,7 @@ export function ThreadWorkspace({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Local-only send notice — shown when Gmail is skipped for a manual test conversation */}
+        {/* Provider send notice */}
         {sendNotice && (
           <div aria-live="polite" className="shrink-0 border-t border-[var(--line)] px-5 py-3">
             <div className="flex items-center justify-between gap-3 rounded-[14px] border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.08)] px-4 py-3">

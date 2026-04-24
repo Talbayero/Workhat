@@ -28,6 +28,8 @@ export async function POST(req: NextRequest) {
     .from("email_connections")
     .select(CONNECTION_SELECT)
     .eq("org_id", appUser.org_id)
+    .eq("provider", "gmail")
+    .eq("connection_type", "oauth")
     .eq("inbound_enabled", true)
     .in("status", ["active", "connected"])
     .order("updated_at", { ascending: false })
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   if (!connection) {
     return NextResponse.json(
-      { error: "No active inbound mailbox is available. Validate a mailbox connection before importing mail." },
+      { error: "No active Gmail OAuth mailbox is available. Connect Gmail before importing mail." },
       { status: 400 }
     );
   }

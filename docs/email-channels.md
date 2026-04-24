@@ -1,17 +1,68 @@
 # Email Channels
 
-Work Hat presents mailbox setup as four buyer-friendly connection types:
+Work Hat's MVP self-serve email path is Gmail OAuth only.
 
-- OAuth / xOAuth: Gmail today; Outlook / Microsoft 365 maps to the same category as its adapter is enabled.
-- Mailbox login and password: direct mailbox authentication where a provider still permits it.
-- App password: Gmail with 2FA, Outlook, iCloud, and similar provider-issued app-password flows.
-- IMAP / SMTP: custom corporate mailboxes, hosted providers, cPanel, Zoho, and private servers.
+Do not present IMAP/SMTP, app password, mailbox password, or custom inbound as ordinary setup choices until each path is verified end to end. Those adapters may exist in code for future work or compatibility, but they do not count as product readiness.
 
-Advanced/developer setup also supports custom inbound webhook/API channels for internal relays, SMTP parsing services, and future Postmark-style inbound providers. The four mailbox choices are live runtime paths, not saved placeholders: Gmail OAuth uses the Gmail adapter, and mailbox password, app password, and IMAP/SMTP use the IMAP/SMTP adapter for inbound polling and approved outbound replies.
+## Supported MVP Path
 
-Gmail OAuth starts through `/api/oauth/google/start` and returns to `/api/oauth/google/callback`. Legacy `/api/email/gmail/connect` and `/api/email/gmail/callback` remain as compatibility aliases, but new setup and Google Cloud configuration must use the canonical OAuth routes.
+1. User creates a Work Hat account.
+2. User creates or joins an organization.
+3. User connects Gmail through OAuth.
+4. Work Hat stores an active `email_connections` row:
+   - `provider = 'gmail'`
+   - `connection_type = 'oauth'`
+   - `status = 'active'`
+   - `inbound_enabled = true`
+   - `outbound_enabled = true`
+5. Work Hat imports recent Gmail messages through the Gmail importer.
+6. Imported email becomes conversations and messages in the Inbox.
+7. Agents generate, edit, approve, and send replies through Gmail.
+8. Audit logs, sent reply records, message records, workflow events, and SLA refreshes record the flow.
 
-Current Gmail OAuth scopes:
+## Canonical Google OAuth Routes
+
+Use one redirect URI in Google Cloud:
+
+```text
+https://work-hat.com/api/oauth/google/callback
+```
+
+The OAuth start route is:
+
+```text
+GET /api/oauth/google/start
+```
+
+The OAuth callback route is:
+
+```text
+GET /api/oauth/google/callback
+```
+
+Legacy Gmail routes may redirect to the canonical routes for compatibility, but new setup and diagnostics must use the canonical callback URI above.
+
+## Required Environment Variables
+
+Gmail OAuth is available only when all of these are configured:
+
+- `APP_BASE_URL=https://work-hat.com`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `EMAIL_TOKEN_ENCRYPTION_KEY`
+
+Additional operational variables:
+
+- `SUPABASE_SERVICE_ROLE_KEY` for server-side connection persistence and import.
+- `GOOGLE_PUBSUB_TOPIC` and `GMAIL_PUSH_TOKEN` for Gmail watch/Pub/Sub updates.
+- `CRON_SECRET` for protected cron endpoints.
+- Redis variables for rate limiting when enabled.
+
+Admins can see missing values and the exact redirect URI in Settings -> Channels -> Admin setup health and `/api/system/setup-health`.
+
+## Gmail Scopes
+
+Current OAuth scopes:
 
 - `openid`
 - `email`
@@ -19,200 +70,61 @@ Current Gmail OAuth scopes:
 - `https://www.googleapis.com/auth/gmail.readonly`
 - `https://www.googleapis.com/auth/gmail.send`
 
-## Self-Serve Setup Readiness
+These support mailbox identity, recent message import, and sending human-approved replies.
 
-Mailbox setup is gated by `/api/email/setup/readiness`. The UI must hide unavailable methods instead of sending users into broken setup paths or showing non-functional choices as primary options.
+## Readiness Rules
 
-Availability rules:
+A workspace is email-ready only when it has an active Gmail OAuth connection. Legacy forwarding addresses, saved credential records, custom inbound channels, or manually created conversations do not satisfy onboarding readiness.
 
-- OAuth / xOAuth is available only when `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `EMAIL_TOKEN_ENCRYPTION_KEY`, and `APP_BASE_URL` are configured. Admin diagnostics expose the exact callback URL to register in Google Cloud.
-- Mailbox login and password, app password, and IMAP/SMTP are available only when credential encryption and the server database key are configured.
-- Advanced custom inbound is available when the server database key is configured because webhook tokens are stored as one-way hashes, not decryptable secrets.
-- A saved `email_connections` row is not a connected mailbox until validation marks it `active`.
+Readiness checks live in `web/src/lib/email-connector/setup-readiness.ts` and are exposed through:
 
-When no adapter is operational, onboarding shows Test inbox / demo mode. That path creates a manual inbound conversation through `/api/conversations`, so users can test the inbox, SLA refresh, workflow events, and AI draft generation without pretending email is connected.
+- `GET /api/email/setup/readiness`
+- `GET /api/system/setup-health`
 
-Non-admin users receive only user-safe messages. Admins can see exact missing setup values in Settings -> Channels and through `/api/system/setup-health`.
+Normal users see user-safe setup messages. Admins see missing environment variables and the exact OAuth redirect URI.
 
-Work Hat login identity and mailbox identity are separate. A user signs in to Work Hat with their account email, then connects the mailbox Work Hat should manage. Those can be different addresses.
+## Disabled Paths
 
-## Architecture
+The following paths are disabled from self-serve MVP setup:
 
-Provider-specific adapters normalize email into `NormalizedInboundEmail` in `web/src/lib/email-connector/inbound.ts`. After normalization, all providers use the same deterministic processing path:
+- Mailbox login and password
+- App password
+- IMAP / SMTP
+- Custom inbound webhook/API setup
+- Demo/test inbox as a substitute for connected email
 
-1. Resolve org/channel by `channelId` or configured recipient address.
-2. Verify the channel shared secret.
-3. Insert `inbound_email_events` for delivery tracking and idempotency.
-4. Match or create the contact by sender email.
-5. Associate a company for non-generic sender domains.
-6. Thread into an existing conversation by external thread id, `In-Reply-To`, or `References`; otherwise create a new conversation.
-7. Insert the inbound message.
-8. Refresh SLA state.
-9. Emit workflow events exactly once for non-duplicate deliveries.
+The backend must not mark any of these as a completed mailbox setup. Settings may show legacy records only for reset/cleanup and diagnostics.
 
-Runtime mailbox adapters live under `web/src/lib/email-connector/adapters/` and implement a shared interface:
+## Import And Send
 
-- `validateConnection`
-- `activateConnection`
-- `fetchInbound`
-- `sendOutbound`
-- `refreshCredentials`
-- `getDiagnostics`
-
-`gmail` is the OAuth adapter. On callback, Work Hat exchanges the authorization code, encrypts the access and refresh tokens, stores an active `email_connections` row, creates/updates the email channel, runs an initial recent-message import, and registers a Gmail watch when `GOOGLE_PUBSUB_TOPIC` is configured. `mailbox_password`, `app_password`, and `imap_smtp` all use the IMAP/SMTP adapter after provider-specific host, port, TLS, and app-password guidance has been normalized.
-
-## Mailbox Setup UX
-
-Onboarding Step 2 and Settings -> Channels start with the four mailbox connection choices above. The intent is that a prospect immediately sees:
-
-- I can connect Gmail.
-- I can connect Outlook / Microsoft 365.
-- I can connect my company mailbox with app-password or IMAP/SMTP settings.
-
-Credential-based methods are normalized into `email_connections` with encrypted secrets and non-secret connection metadata. They require `EMAIL_TOKEN_ENCRYPTION_KEY` because Work Hat decrypts mailbox credentials during validation, polling, and SMTP send. Custom inbound webhook token storage does not require this key because webhook tokens are stored as one-way hashes in `channels.config_json`.
-
-`email_connections` separates the two concepts that the UI exposes:
-
-- `connection_type`: `oauth`, `mailbox_password`, `app_password`, `imap_smtp`, or `custom_inbound`.
-- `provider`: `gmail`, `microsoft365`, `outlook`, `exchange`, `zoho`, `icloud`, `custom`, or `custom_inbound`.
-
-For example, a Zoho IMAP/SMTP setup is stored as `connection_type = 'imap_smtp'` and `provider = 'zoho'`, not as provider `imap_smtp`.
-
-## Mailbox Status Model
-
-Saving a mailbox record is not enough for readiness. A connection moves through explicit states:
-
-- `configured`: saved but not yet validated.
-- `validating`: validation is in progress.
-- `active`: credentials and transport were validated; the mailbox can be used for enabled inbound/outbound paths.
-- `error`: validation, sync, or send failed; diagnostics contain the operator-facing reason.
-- `disconnected`: intentionally disabled.
-
-Onboarding, Settings, and inbox readiness use `status = 'active'` plus `inbound_enabled` or `outbound_enabled`, depending on the operation. Legacy Gmail rows with `status = 'connected'` are accepted by application code during migration, but migration `0039_mailbox_adapter_runtime.sql` backfills them to `active`.
-
-Runtime fields on `email_connections`:
-
-- `inbound_enabled`, `outbound_enabled`
-- `last_validated_at`
-- `last_inbound_sync_at`
-- `last_outbound_send_at`
-- `last_error_code`, `last_error_message`
-- `diagnostics_json`
-- `credential_metadata`
-
-The IMAP adapter stores its UID cursor in `provider_metadata.imap_state.last_uid`. First sync imports a small recent window, then subsequent syncs fetch messages after the stored UID.
-
-## Custom Inbound Setup
-
-Settings -> Channels and onboarding keep custom inbound under Advanced developer setup. Users with `integrations.manage` can:
-
-- Create a custom inbound channel.
-- Set a channel name and reply identity metadata.
-- Copy the webhook endpoint.
-- Copy the shared token after creation or regeneration.
-- View status, last successful inbound event, last event status, and last error.
-
-Custom inbound token storage does not require `EMAIL_TOKEN_ENCRYPTION_KEY`. Work Hat stores a one-way hash of the generated webhook token, so the full token is shown only immediately after creation or regeneration. Gmail OAuth and saved mailbox/app-password/IMAP credentials require `EMAIL_TOKEN_ENCRYPTION_KEY` because those secrets must be decrypted later for provider API or mailbox calls.
-
-The endpoint format is:
+Manual Gmail import uses:
 
 ```text
-POST https://<app-host>/api/inbound/email?channelId=<channel_id>
+POST /api/email/gmail/sync
 ```
 
-Authentication can use any of:
+Generic mailbox sync/poll routes are constrained to Gmail OAuth records during the MVP:
 
 ```text
-Authorization: Bearer <channel-token>
-X-WorkHat-Inbound-Token: <channel-token>
-X-Inbound-Token: <channel-token>
+POST /api/email/mailbox/sync
+GET /api/email/mailbox/poll
 ```
 
-## Payload Contract
+Outbound customer replies use `lib/email-connector/outbound.ts`, which selects only active Gmail OAuth connections during the MVP. If no active Gmail connection exists, `/api/conversations/[conversationId]/reply` returns a visible error instead of simulating a send.
 
-The generic JSON payload supports these fields:
+## Manual Verification Checklist
 
-```json
-{
-  "provider": "internal_relay",
-  "externalMessageId": "provider-message-id",
-  "externalThreadId": "provider-thread-id",
-  "from": { "email": "customer@example.com", "name": "Customer Name" },
-  "to": [{ "email": "support@workhat.example", "name": "Support" }],
-  "cc": [],
-  "subject": "Need help",
-  "textBody": "Plain-text body",
-  "htmlBody": "<p>HTML body</p>",
-  "receivedAt": "2026-04-22T12:00:00.000Z",
-  "headers": {
-    "message-id": "<message@example.com>",
-    "in-reply-to": "<prior@example.com>",
-    "references": "<prior@example.com>"
-  },
-  "metadata": {
-    "relay": "internal"
-  }
-}
-```
-
-Postmark-style field names such as `MessageID`, `FromFull`, `ToFull`, `Subject`, `TextBody`, `HtmlBody`, `Headers`, and `InReplyTo` are accepted for compatibility.
-
-Required fields:
-
-- Message id (`externalMessageId`, `messageId`, `MessageID`, or `headers.message-id`)
-- Valid sender email
-- At least one valid recipient
-- Text or HTML body
-
-## Idempotency
-
-Replay protection uses two layers:
-
-- `inbound_email_events.dedupe_key`: `<channel_id>:<provider>:<external_message_id>`
-- `messages.channel_message_id`: `<provider>:<external_message_id>`
-
-Duplicate webhook deliveries return a duplicate result and do not emit workflow events, refresh SLA, or insert another message.
-
-## Diagnostics
-
-Operators should check:
-
-- Settings -> Channels -> Admin setup health for Google OAuth, credential encryption, Redis, and adapter availability.
-- `GET /api/email/setup/readiness` for the user-safe setup availability model.
-- `GET /api/system/setup-health` for the admin-only setup health model.
-- Settings -> Channels for mailbox status, last validation, last poll, last sync/send, and next-action diagnostics.
-- `GET /api/email/mailbox/diagnostics` for adapter/env/connection health.
-- `POST /api/email/mailbox/sync` for a manual active mailbox poll.
-- `GET /api/email/mailbox/poll` from a scheduler with `Authorization: Bearer <CRON_SECRET>` for recurring IMAP polling.
-- `inbound_email_events` for recent delivery status and error messages.
-- `messages.channel_message_id` for provider message ids.
-- `workflow_events` for `conversation.created`, `conversation.updated`, `message.received`, and `risk.changed`.
-- Conversation SLA snapshot fields for queue health updates after inbound delivery.
-
-## Manual Demo Verification
-
-1. Apply migrations through `0039_mailbox_adapter_runtime.sql`.
-2. Sign in as an admin or manager with `integrations.manage`.
-3. Open onboarding Step 2 or Settings -> Channels and confirm the four mailbox connection types appear first.
-4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `EMAIL_TOKEN_ENCRYPTION_KEY`, and `APP_BASE_URL=https://work-hat.com` before using Gmail OAuth. Add `https://work-hat.com/api/oauth/google/callback` to the Google OAuth web client authorized redirect URIs.
-5. Set `GOOGLE_PUBSUB_TOPIC` and `GMAIL_PUSH_TOKEN` when Gmail live watch/Pub/Sub ingestion is required; otherwise manual sync and polling remain available.
-6. Connect Gmail through OAuth, or configure an app-password/IMAP mailbox such as Zoho.
-7. Confirm the saved connection becomes `active`; if it becomes `error`, use the displayed provider/auth/TLS diagnostic to correct the setup.
-8. Send a real email to the mailbox and run Settings -> Channels sync or the scheduler-backed `/api/email/mailbox/poll`.
-9. Confirm the conversation appears in Inbox and Queue.
-10. Send an approved reply from the thread and confirm `sent_replies`, outbound `messages`, and `last_outbound_send_at` are updated.
-11. Open Advanced developer setup and create a custom inbound channel when testing webhook ingestion.
-12. Copy the endpoint and token before leaving the page.
-13. Send a test webhook request with a unique `externalMessageId`.
-14. Confirm the sender contact was created and company was associated for a business domain.
-15. Confirm SLA status populated on the conversation.
-16. Confirm workflow events exist for the delivery.
-17. Repeat the same webhook request and confirm no duplicate message appears.
-
-## Backward Compatibility
-
-Gmail support remains active. Gmail import now calls the shared inbound processor after fetching and normalizing Gmail payloads, and Gmail outbound remains available through the Gmail adapter. Credential-based mailbox connections use the IMAP/SMTP adapter for live inbound polling and approved outbound replies. The custom inbound API endpoint, token model, and normalized payload contract remain backward-compatible; they are now presented as advanced setup instead of the primary buyer path.
-
-`POSTMARK_INBOUND_TOKEN` remains a legacy fallback only for channels without per-channel tokens. New custom inbound channels should use Settings-generated tokens.
+1. Confirm Google Cloud has `https://work-hat.com/api/oauth/google/callback` in Authorized redirect URIs.
+2. Confirm Settings -> Channels -> Admin setup health shows Google OAuth configured.
+3. Create a new Work Hat account.
+4. Create a workspace.
+5. Connect Gmail from onboarding.
+6. Confirm the callback returns to onboarding/settings with a visible success message.
+7. Confirm `email_connections` has an active Gmail OAuth row for the org.
+8. Run Gmail import from onboarding or Settings.
+9. Confirm a Gmail message appears in Inbox as a conversation.
+10. Generate an AI draft.
+11. Edit and send an approved reply.
+12. Confirm audit logs, outbound message, `sent_replies`, workflow events, and SLA fields were updated.
 
 *Last updated: April 2026*

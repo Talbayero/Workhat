@@ -65,14 +65,16 @@ function LoginForm() {
       return;
     }
 
-    const { data: channel } = await supabase
-      .from("channels")
+    const { data: activeGmail } = await supabase
+      .from("email_connections")
       .select("id")
       .eq("org_id", (appUser as { org_id: string }).org_id)
-      .eq("type", "email")
-      .single();
+      .eq("provider", "gmail")
+      .eq("connection_type", "oauth")
+      .in("status", ["active", "connected"])
+      .maybeSingle();
 
-    router.replace(channel ? next : "/onboarding");
+    router.replace(activeGmail ? next : "/onboarding?step=inbox");
     router.refresh();
   }
 

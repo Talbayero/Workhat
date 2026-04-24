@@ -17,6 +17,7 @@ type MailboxProvider = "gmail" | "microsoft365" | "outlook" | "exchange" | "zoho
 const CREDENTIAL_METHODS = new Set(["mailbox_password", "app_password", "imap_smtp"]);
 const PROVIDERS = new Set(["gmail", "microsoft365", "outlook", "exchange", "zoho", "icloud", "custom"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ENABLE_CREDENTIAL_MAILBOX_SETUP = process.env.ENABLE_CREDENTIAL_MAILBOX_SETUP === "true";
 
 function stringField(body: Record<string, unknown>, key: string) {
   const value = body[key];
@@ -157,6 +158,16 @@ export async function POST(req: NextRequest) {
     body = (await req.json()) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+  }
+
+  if (!ENABLE_CREDENTIAL_MAILBOX_SETUP) {
+    return NextResponse.json(
+      {
+        error: "This mailbox connection method is disabled for the MVP.",
+        hint: "Use Gmail OAuth from onboarding or Settings -> Channels. Password, app-password, IMAP/SMTP, and custom inbound setup are not part of the current self-serve path.",
+      },
+      { status: 410 }
+    );
   }
 
   const connectionType = stringField(body, "method") as CredentialConnectionType;

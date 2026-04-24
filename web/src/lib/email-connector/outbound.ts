@@ -11,6 +11,8 @@ export async function getActiveOutboundConnection(db: Db, orgId: string): Promis
       "id, org_id, provider, connection_type, provider_account_email, display_name, status, sync_status, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, scopes, last_history_id, watch_expires_at, last_sync_at, inbound_enabled, outbound_enabled, last_validated_at, last_inbound_sync_at, last_outbound_send_at, last_error_code, last_error_message, error_message, diagnostics_json, credential_metadata, provider_metadata"
     )
     .eq("org_id", orgId)
+    .eq("provider", "gmail")
+    .eq("connection_type", "oauth")
     .eq("outbound_enabled", true)
     .in("status", ["active", "connected"])
     .order("updated_at", { ascending: false })

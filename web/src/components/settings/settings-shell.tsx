@@ -396,7 +396,7 @@ function SetupTab({
 }) {
   const hasOrg = Boolean(org);
   const hasInboundAddress = Boolean(channel?.inboundAddress);
-  const hasInboundMailbox = mailboxReady || hasInboundAddress;
+  const hasInboundMailbox = mailboxReady;
   const hasKnowledgePath = true;
   const hasTeam = team.length > 0;
 
@@ -413,10 +413,10 @@ function SetupTab({
     {
       label: "Connect email channel",
       description: mailboxReady
-        ? "Active mailbox ready for inbound polling and approved replies."
+        ? "Active Gmail OAuth mailbox ready for import and approved replies."
         : hasInboundAddress
-        ? `Fallback inbound address active: ${channel?.inboundAddress}`
-        : "Connect and validate a mailbox or generate the fallback inbound address.",
+        ? "Legacy forwarding address exists, but Gmail OAuth is still required for MVP readiness."
+        : "Connect Gmail OAuth before marking this workspace ready.",
       complete: hasInboundMailbox,
       action: () => onOpenTab("channels"),
       actionLabel: "Review channels",
@@ -465,8 +465,7 @@ function SetupTab({
           <div className="mt-5 rounded-[18px] border border-[rgba(144,50,61,0.35)] bg-[rgba(73,17,28,0.18)] p-4">
             <p className="text-sm font-semibold">Your setup is not complete yet</p>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              No active inbound mailbox or fallback inbound address is ready yet.
-              Connect and validate a mailbox, or run onboarding to generate the fallback inbound address.
+              No active Gmail OAuth mailbox is ready yet. Connect Gmail and import the latest mail before using the workspace.
             </p>
             <Link
               href={`${baseDir}/onboarding`}
@@ -887,8 +886,6 @@ function CopyButton({ value }: { value: string }) {
 
 function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | null; canEdit: boolean; onDirty: () => void }) {
   const [fromName, setFromName] = useState(channel?.fromName ?? "");
-  const [testSending, setTestSending] = useState(false);
-  const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [connections, setConnections] = useState<EmailConnection[]>([]);
   const [customChannels, setCustomChannels] = useState<CustomInboundChannel[]>([]);
   const [customName, setCustomName] = useState("Work Hat internal inbound");
@@ -1080,37 +1077,15 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
     }).format(new Date(value));
   }
 
-  async function sendTestEmail() {
-    setTestSending(true);
-    setTestResult(null);
-    try {
-      const res = await fetch("/api/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contactEmail: "test@example.com",
-          contactName: "Test Customer",
-          subject: "Test conversation — channel verification",
-          firstMessage: "This is an automated test message to verify your Work Hat inbox is configured correctly. You can delete this conversation.",
-          intent: "support",
-        }),
-      });
-      setTestResult(res.ok ? "success" : "error");
-    } catch {
-      setTestResult("error");
-    }
-    setTestSending(false);
-  }
-
   return (
     <div className="space-y-5">
       <SectionCard>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="eyebrow text-[9px] text-[var(--muted)]">Mailbox connection</p>
-            <p className="mt-1 text-base font-semibold">Choose how your team receives email</p>
+            <p className="mt-1 text-base font-semibold">Connect Gmail OAuth</p>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
-              Connect Gmail, Microsoft 365, app-password mailboxes, or IMAP/SMTP servers without starting from webhook infrastructure.
+              Gmail OAuth is the only self-serve mailbox path enabled for the MVP. Other connection methods stay hidden until they are verified end to end.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1128,7 +1103,6 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           <EmailConnectionSetup
             canEdit={canEdit}
             returnTo="/settings?tab=channels"
-            onSaved={refreshConnections}
             onNotice={setConnectionNotice}
             onError={(message) => setConnectionError(message || null)}
           />
@@ -1142,7 +1116,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
               <div>
                 <p className="text-sm font-semibold">No mailbox connected yet</p>
               <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                Choose a connection type above. Active mailbox methods can poll inbound email and send approved replies.
+                Connect Gmail OAuth above. That is the only mailbox method that completes MVP readiness.
               </p>
               </div>
               <span className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(144,50,61,0.45)] px-3 py-1.5 text-xs text-[var(--muted)]">
@@ -1232,14 +1206,14 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           Advanced developer setup
         </summary>
         <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-          Webhook/API inbound channels are still available for relays and custom parsers, but ordinary mailbox setup should start with the connection choices above.
+          Custom inbound setup is disabled for the MVP. Complete and verify the Gmail OAuth path before re-enabling developer channels.
         </p>
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="eyebrow text-[9px] text-[var(--muted)]">Custom inbound</p>
             <p className="mt-1 text-base font-semibold">Non-Gmail webhook channel</p>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">
-              Use this for internal dogfooding, demos, SMTP relays, or parsed inbound providers that can POST normalized email events to Work Hat.
+              Hidden from self-serve setup until the Gmail MVP path is functional end to end.
             </p>
           </div>
           <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
@@ -1258,7 +1232,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
             <input
               value={customName}
               onChange={(event) => setCustomName(event.target.value)}
-              disabled={!canEdit}
+              disabled
               className="rounded-lg border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
             />
           </label>
@@ -1267,7 +1241,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
             <input
               value={customFromName}
               onChange={(event) => setCustomFromName(event.target.value)}
-              disabled={!canEdit}
+              disabled
               placeholder="Work Hat Support"
               className="rounded-lg border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
             />
@@ -1277,7 +1251,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
             <input
               value={customReplyIdentity}
               onChange={(event) => setCustomReplyIdentity(event.target.value)}
-              disabled={!canEdit}
+              disabled
               placeholder="support@yourdomain.com"
               className="rounded-lg border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
             />
@@ -1288,23 +1262,23 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           {!customChannel ? (
             <button
               onClick={() => saveCustomInbound("create")}
-              disabled={!canEdit || customAction !== null}
+              disabled
               className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-45"
             >
-              {customAction === "create" ? "Creating..." : "Create custom channel"}
+              Disabled for MVP
             </button>
           ) : (
             <>
               <button
                 onClick={() => saveCustomInbound("update")}
-                disabled={!canEdit || customAction !== null}
+                disabled
                 className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-45"
               >
                 {customAction === "update" ? "Saving..." : "Save channel"}
               </button>
               <button
                 onClick={() => saveCustomInbound("regenerate")}
-                disabled={!canEdit || customAction !== null}
+                disabled
                 className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[rgba(255,190,190,0.9)] transition-colors hover:border-[rgba(144,50,61,0.75)] disabled:opacity-45"
               >
                 {customAction === "regenerate" ? "Regenerating..." : "Regenerate token"}
@@ -1412,10 +1386,9 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
       {/* Your inbound address */}
       <SectionCard>
         <p className="eyebrow text-[9px] text-[var(--muted)]">Email channel</p>
-        <p className="mt-1 text-base font-semibold">Your inbound address</p>
+        <p className="mt-1 text-base font-semibold">Legacy inbound address</p>
         <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-          Every email sent to this address creates a conversation in your inbox.
-          You can use it directly or forward your existing support email here.
+          The MVP path does not rely on this address. Use Gmail OAuth and Gmail sync for real onboarding verification.
         </p>
 
         <div className="mt-4 flex items-center gap-2">
@@ -1443,7 +1416,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
         {hasAddress && (
           <div className="mt-3 flex items-center gap-2 text-[10px] text-[var(--muted)]">
             <span className="status-dot status-dot-green" />
-            Address is active — emails sent here will appear in your inbox
+            Legacy address exists, but Gmail OAuth is the supported MVP path
           </div>
         )}
       </SectionCard>
@@ -1454,50 +1427,14 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           <p className="eyebrow text-[9px] text-[var(--muted)]">Setup guide</p>
           <p className="mt-1 text-base font-semibold">Mailbox setup map</p>
           <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-            Use the connection type that matches the mailbox your team already has. Webhook/API setup is reserved for developer relays and parsers.
+            The only supported MVP setup path is Gmail OAuth. Other mailbox methods remain disabled until this path is verified end to end.
           </p>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {[
-              ["OAuth / xOAuth", "Gmail OAuth is live. Outlook / Microsoft 365 can use app password or IMAP/SMTP until Microsoft OAuth is enabled."],
-              ["Mailbox login and password", "Direct mailbox authentication for providers that still allow it."],
-              ["App password", "Provider-issued app passwords for Gmail with 2FA, Outlook, iCloud, and similar setups."],
-              ["IMAP / SMTP", "Host, port, and TLS settings for company mailboxes, Zoho, cPanel, and private servers."],
-            ].map(([title, body]) => (
-              <div key={title} className="rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4">
-                <p className="text-sm font-semibold">{title}</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{body}</p>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Test connection */}
-      {hasAddress && (
-        <SectionCard>
-          <p className="eyebrow text-[9px] text-[var(--muted)]">Test</p>
-          <p className="mt-1 text-base font-semibold">Verify your inbox works</p>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-            Create a test conversation to confirm your inbox is receiving messages and the AI draft is working.
-          </p>
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              onClick={sendTestEmail}
-              disabled={testSending}
-              className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {testSending ? "Creating test…" : "Send test conversation"}
-            </button>
-            {testResult === "success" && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400">
-                <span className="status-dot status-dot-green" />
-                Test conversation created — check your inbox
-              </div>
-            )}
-            {testResult === "error" && (
-              <p className="text-xs text-[rgba(220,80,80,0.9)]">Something went wrong. Try again.</p>
-            )}
+          <div className="mt-4 rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4">
+            <p className="text-sm font-semibold">Gmail OAuth</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              Connect Gmail, persist an active OAuth mailbox, import latest email, generate an AI draft, and send an approved reply.
+            </p>
           </div>
         </SectionCard>
       )}

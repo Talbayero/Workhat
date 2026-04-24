@@ -26,7 +26,7 @@ This file is the active product summary. Historical source planning documents li
 | Workflow Engine | Event/rules system for deterministic operational actions |
 | AI Improvement | Prompt-version analytics, edit pattern clustering, and knowledge gap candidate surfacing |
 | Prompt Experiments | Controlled, deterministic prompt-version traffic allocation and rollback |
-| Channels | Buyer-friendly mailbox setup for OAuth/xOAuth, mailbox password, app password, and IMAP/SMTP, with custom inbound webhook/API kept as an advanced path |
+| Channels | Gmail OAuth self-serve setup for the MVP, with admin diagnostics and cleanup for legacy/non-MVP connection records |
 | Audit / Security | Audit logs, capabilities, rate limiting, and incident evidence |
 
 ## Current Product Shape
@@ -36,11 +36,10 @@ The current platform includes:
 - Authenticated org-scoped CRM workspace.
 - Self-serve account creation, password login, forgot-password/reset flow, and post-signup organization creation or invite activation.
 - Work Hat user identity is separate from the managed mailbox identity. A user can sign in as `owner@example.com` and connect `support@example.com` as the mailbox Work Hat reads and replies from.
-- Email conversations from Gmail OAuth, mailbox password, app password, IMAP/SMTP, or advanced custom inbound webhook channels. Gmail OAuth now performs token persistence, active mailbox status, initial recent-message import, and optional Pub/Sub watch setup as part of the connection flow.
-- Onboarding and Settings present only mailbox connection choices the deployment can actually support. OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP are gated by setup readiness; unsupported methods are hidden instead of shown as broken options.
-- If no email adapter is operational, onboarding shows test inbox / demo mode so users can create a manual inbound conversation and test inbox, workflow, SLA, and AI draft behavior without email integration.
-- Custom inbound webhook/API setup remains available under advanced/developer setup for relays and custom parsers.
-- Approved outbound replies use the active mailbox adapter when outbound is enabled, while human approval remains mandatory.
+- Email conversations from Gmail OAuth. Gmail OAuth performs token persistence, active mailbox status, initial recent-message import, and optional Pub/Sub watch setup as part of the connection flow.
+- Onboarding and Settings present Gmail OAuth as the only self-serve MVP mailbox path. IMAP/SMTP, app password, mailbox password, and custom inbound are not shown as primary setup options.
+- A workspace is not marked ready until an active Gmail OAuth connection exists. Legacy forwarding addresses, saved credential records, and manual test conversations do not complete onboarding.
+- Approved outbound replies use the active Gmail OAuth mailbox while human approval remains mandatory.
 - AI draft generation with non-null prompt versions.
 - Capability-based authorization over role presets.
 - SLA snapshots and queue health views.

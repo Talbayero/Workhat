@@ -102,15 +102,13 @@ User sees "Insufficient permissions" on feature they should have access to
 ```
 Inbound emails not appearing or approved replies fail to send
 │
-├─ Is the affected path Gmail OAuth, IMAP/SMTP mailbox, or custom inbound?
-│  ├─ Gmail OAuth → Check Gmail watch/API state
-│  ├─ IMAP/SMTP mailbox → Check mailbox adapter diagnostics
-│  └─ Custom inbound → Check webhook delivery diagnostics
+├─ Is the active MVP Gmail OAuth path configured?
+│  └─ Gmail OAuth → Check Gmail watch/API state
 │
 ├─ If setup options are disabled or connection buttons do nothing
 │  ├─ Open Settings -> Channels -> Admin setup health
 │  ├─ Check /api/system/setup-health as an admin
-│  └─ Confirm normal users see test inbox / demo mode when no adapter is operational
+│  └─ Confirm normal users see admin setup required, not alternate mailbox methods
 │
 ├─ For Gmail
 │  ├─ Are GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, EMAIL_TOKEN_ENCRYPTION_KEY, and APP_BASE_URL set?
@@ -122,19 +120,8 @@ Inbound emails not appearing or approved replies fail to send
 │  └─ Is webhook delivery failing?
 │     └─ Check Pub/Sub delivery status
 │
-├─ For IMAP/SMTP mailbox
-│  ├─ Is email_connections.status active?
-│  ├─ Are inbound_enabled/outbound_enabled true for the failing direction?
-│  ├─ Does /api/email/mailbox/diagnostics show env, auth, TLS, or provider guidance errors?
-│  ├─ If inbound is stale, run /api/email/mailbox/sync for the connection
-│  └─ If outbound fails, check SMTP host/port/TLS, sender identity, and app-password requirements
-│
-├─ For custom inbound
-│  ├─ Is the channel active in Settings → Channels?
-│  ├─ Is the provider posting to /api/inbound/email?channelId=<channel_id>?
-│  ├─ Does the request include the current channel token?
-│  ├─ Are duplicate deliveries being deduped in inbound_email_events?
-│  └─ Is last_error_message populated on the channel?
+├─ Non-Gmail paths
+│  └─ IMAP/SMTP, app password, mailbox password, custom inbound, and manual demo inbox are not MVP readiness paths. Hide from self-serve setup and use only for controlled internal debugging.
 │
 ├─ Check audit logs:
 │  curl https://api.workhat.app/api/audit-logs?action=security.suspicious_request

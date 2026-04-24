@@ -223,7 +223,7 @@ Work Hat account identity and connected mailbox identity are intentionally separ
 
 ### Mailbox Setup Readiness
 
-Onboarding and Settings call `/api/email/setup/readiness` before rendering mailbox connection methods. The response reports user-safe availability for OAuth/xOAuth, mailbox password, app password, IMAP/SMTP, and advanced custom inbound. Admin-capable users also receive setup details; non-admins receive only actionable messages such as asking a workspace administrator to finish setup.
+Onboarding and Settings call `/api/email/setup/readiness` before rendering mailbox connection methods. During the MVP, the response exposes Gmail OAuth as the only self-serve mailbox path. Admin-capable users also receive setup details; non-admins receive only actionable messages such as asking a workspace administrator to finish setup.
 
 `/api/system/setup-health` requires `settings.manage` and returns the full setup-health model:
 
@@ -236,9 +236,9 @@ Onboarding and Settings call `/api/email/setup/readiness` before rendering mailb
 - Missing required environment variables
 - Recommended next action
 
-UI code must gate connection methods from this model. A saved record in `email_connections` is not treated as connected unless the runtime status is `active` for the relevant direction.
+UI code must gate connection methods from this model. A saved record in `email_connections` is not treated as connected unless it is an active Gmail OAuth connection for the relevant direction.
 
-If no email adapter is operational, onboarding does not render mailbox connection choices. It renders test inbox / demo mode, which creates a manual inbound conversation through `/api/conversations` so the user can test the inbox, SLA, workflow, and AI draft loop without an email integration.
+If Gmail OAuth is not operational, onboarding does not render alternate mailbox methods or a fake connected state. It shows an admin setup requirement and blocks completion until Gmail OAuth is active.
 
 Session validation in `proxy.ts` uses `supabase.auth.getUser()` — this validates the JWT against the Supabase server on every protected request, not just locally.
 
@@ -335,9 +335,9 @@ The public custom webhook route is `POST /api/inbound/email`. It verifies a per-
 
 Supported V1 payloads are intentionally generic and Postmark-compatible enough for internal relays, SMTP parsing services, and future Postmark-style providers. The route is not a visual marketplace or arbitrary integration runtime.
 
-Onboarding and Settings present mailbox setup in four buyer-friendly choices: OAuth/xOAuth, mailbox login and password, app password, and IMAP/SMTP. Custom inbound remains available under Advanced developer setup for relays, webhook parsers, and internal demo senders.
+Onboarding and Settings present Gmail OAuth as the only self-serve MVP mailbox path. IMAP/SMTP, app password, mailbox password, and custom inbound are not primary setup options and do not count toward onboarding readiness.
 
-Credential-based mailbox setup is live. The shared mailbox adapter interface in `lib/email-connector/adapters/` exposes `validateConnection`, `activateConnection`, `fetchInbound`, `sendOutbound`, `refreshCredentials`, and `getDiagnostics`. Gmail OAuth uses the Gmail adapter. Mailbox password, app password, and IMAP/SMTP use the IMAP/SMTP adapter with `imapflow`, `mailparser`, and `nodemailer`.
+The shared mailbox adapter interface in `lib/email-connector/adapters/` exposes `validateConnection`, `activateConnection`, `fetchInbound`, `sendOutbound`, `refreshCredentials`, and `getDiagnostics`. Gmail OAuth is the active MVP adapter. Credential-based adapter code remains isolated for future work, but self-serve setup and runtime selection are constrained to active Gmail OAuth records.
 
 The IMAP/SMTP adapter:
 
@@ -347,7 +347,7 @@ The IMAP/SMTP adapter:
 - Dedupe-imports messages through the same `processInboundEmail()` path as Gmail and custom inbound.
 - Sends approved replies over SMTP and records outbound send timestamps and diagnostics.
 
-Onboarding readiness, Settings channel status, and inbox setup checks depend on an active inbound-capable mailbox or a configured custom inbound channel. A saved-but-unvalidated connection is not considered ready.
+Onboarding readiness, Settings channel status, and inbox setup checks depend on an active Gmail OAuth mailbox. A saved-but-unvalidated connection, legacy forwarding address, custom inbound channel, or manually created test conversation is not considered ready.
 
 Downstream effects after successful inbound processing:
 
@@ -366,9 +366,9 @@ Real-time sync: Google Cloud Pub/Sub pushes new message notifications to `/api/e
 
 Inbound processing: `lib/email-connector/gmail-importer.ts` is now a Gmail adapter. It fetches Gmail payloads, normalizes them into the same inbound message shape used by custom webhook sources, and calls the shared inbound processor. The OAuth callback runs a bounded initial import of recent inbox messages after token persistence; manual sync and Pub/Sub push use the same importer afterward. Threading still uses Gmail `threadId` plus standard `In-Reply-To` / `References` headers.
 
-Credential-based inbound: `POST /api/email/mailbox/sync` manually polls one active connection or the next active inbound connection for the org. `GET /api/email/mailbox/poll` is a cron/external-scheduler endpoint protected by `CRON_SECRET` that polls active inbound-enabled connections. IMAP UIDs are stored in `provider_metadata.imap_state.last_uid` for explainable incremental fetches.
+MVP inbound sync: `POST /api/email/gmail/sync` imports Gmail mail for the active OAuth connection. Generic mailbox sync/poll endpoints are constrained to Gmail OAuth records during the MVP.
 
-Outbound: `lib/email-connector/outbound.ts` selects the active outbound-capable mailbox. Gmail OAuth sends through the Gmail API. Password/app-password/IMAP-SMTP connections send through SMTP. All customer replies still pass through `/api/conversations/[conversationId]/reply`, require `conversations.reply`, and preserve the human approval rule.
+Outbound: `lib/email-connector/outbound.ts` selects the active Gmail OAuth mailbox during the MVP. All customer replies still pass through `/api/conversations/[conversationId]/reply`, require `conversations.reply`, and preserve the human approval rule. If no active Gmail connection exists, the route returns a visible setup error instead of simulating a send.
 
 Diagnostics: `GET /api/email/mailbox/diagnostics` reports environment readiness, adapter status, last validation/sync/send timestamps, provider/type, and next-action recommendations for each connection.
 

@@ -675,8 +675,37 @@ Self-serve product behavior should be based on what the deployment can actually 
 - Signup, login, forgot-password, and reset-password use user-facing validation and Supabase Auth messages.
 - Gmail OAuth is unavailable in the UI until Google OAuth credentials, mailbox-token encryption, and a canonical app base URL are configured. Admin diagnostics expose the exact redirect URI to register in Google Cloud.
 - Password, app-password, and IMAP/SMTP methods are unavailable until secure credential storage and server database access are configured.
-- Non-operational email methods are hidden. When no adapter is operational, onboarding offers test inbox / demo mode for manual inbound conversations and AI testing.
+- Non-operational email methods are hidden. Superseded by ADR-026: manual demo/test inbox does not complete MVP onboarding.
 - A saved mailbox row never counts as connected unless runtime status is `active`.
 - Raw environment-variable names and database/provider internals are limited to admin diagnostics and logs.
+
+---
+
+## ADR-026 — Gmail OAuth Only for the MVP Self-Serve Path
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+The only accepted MVP self-serve email path is Gmail OAuth. IMAP/SMTP, app password, mailbox password, custom inbound, and manual test conversations must not count as completed onboarding.
+
+### Context
+
+Earlier decisions introduced multiple setup methods and adapter scaffolding. In practice, that created confusing product states: users could see unavailable methods, save non-Gmail records, or create manual conversations while the core path from account creation to Gmail import to AI-assisted reply was still not reliable enough.
+
+### Rationale
+
+A narrow, working path is more valuable than several partially exposed paths. Gmail OAuth has a clear external configuration model, deterministic callback URI, token persistence, Gmail import, and Gmail send. The self-serve experience should only expose paths that complete the operational loop and produce audit evidence.
+
+### Consequences
+
+- Onboarding and Settings show Gmail OAuth as the only self-serve mailbox connection.
+- `email_connections` readiness requires `provider = 'gmail'`, `connection_type = 'oauth'`, and `status = 'active'` or legacy `connected`.
+- Generic mailbox sync/poll and outbound selection are constrained to active Gmail OAuth records.
+- Reply sending fails with a visible setup error if Gmail OAuth is missing; simulated sends are disabled.
+- Admin setup health exposes the exact Google callback URI and missing environment variables.
+- Non-Gmail adapter code can remain isolated for future work but must not be presented as live MVP functionality.
+- This decision supersedes ADR-023 and ADR-024 for the current MVP release.
 
 *Last updated: April 2026*
