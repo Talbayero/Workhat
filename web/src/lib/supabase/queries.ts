@@ -111,6 +111,7 @@ function dbConvToFrontend(row: DbConversation): InboxConversation {
     customerName: row.contacts?.full_name ?? "Unknown",
     companyId: row.company_id ?? "",
     companyName: row.companies?.name ?? "",
+    assignedUserId: row.assigned_user_id ?? null,
     subject: row.subject,
     preview: row.preview,
     status: row.status as InboxConversation["status"],

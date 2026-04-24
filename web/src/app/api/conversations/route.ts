@@ -125,6 +125,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Routing: look up the intent's required skill and find the best agent
+  let assignedUserId: string | null = null;
   let assignedToName = "";
   try {
     const { data: intentRow } = await admin
@@ -136,7 +137,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (intentRow?.skill_required) {
-      const assignedUserId = await routeBySkill(orgId, intentRow.skill_required);
+      assignedUserId = await routeBySkill(orgId, intentRow.skill_required);
       if (assignedUserId) {
         const { data: agentRow } = await admin
           .from("users")
@@ -285,6 +286,7 @@ export async function POST(req: NextRequest) {
       ai_confidence: "yellow",
       intent,
       preview,
+      assigned_user_id: assignedUserId,
       assigned_to_name: assignedToName,
       last_message_at: new Date().toISOString(),
     })
@@ -357,6 +359,7 @@ export async function POST(req: NextRequest) {
         priority: "normal",
         contactId,
         companyId,
+        assignedUserId,
         assignedToName,
       },
     });

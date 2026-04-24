@@ -7,6 +7,7 @@ export type InboxConversation = {
   customerName: string;
   companyId: string;
   companyName: string;
+  assignedUserId?: string | null;
   subject: string;
   preview: string;
   status: "open" | "waiting_on_customer" | "waiting_on_internal" | "closed";

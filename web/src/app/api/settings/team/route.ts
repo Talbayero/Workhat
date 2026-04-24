@@ -61,7 +61,7 @@ export async function GET() {
     canViewEmails ? m : { ...m, email: undefined }
   );
 
-  return NextResponse.json({ members: sanitized });
+  return NextResponse.json({ members: sanitized, currentUserId: caller.id });
 }
 
 // ── PATCH — update role or skills ─────────────────────────────────────────────

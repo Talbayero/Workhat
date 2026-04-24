@@ -25,6 +25,14 @@ type LiveDraft = {
   latencyMs: number;
 };
 
+type TeamMember = {
+  id: string;
+  full_name: string;
+  email?: string;
+  role: string;
+  status: string;
+};
+
 const confidenceLabel: Record<RiskLevel, string> = {
   green: "High confidence",
   yellow: "Review recommended",
@@ -78,9 +86,13 @@ export function ThreadWorkspace({
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>(conversation.messages);
   const [status, setStatus] = useState<ConversationStatus>(conversation.status);
   const [assignee, setAssignee] = useState(conversation.assignee);
+  const [assignedUserId, setAssignedUserId] = useState<string | null>(conversation.assignedUserId ?? null);
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [editingAssignee, setEditingAssignee] = useState(false);
-  const [assigneeInput, setAssigneeInput] = useState(conversation.assignee);
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState(conversation.assignedUserId ?? "");
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [teamLoading, setTeamLoading] = useState(false);
   const [threadError, setThreadError] = useState<string | null>(null);
 
   // Live AI draft state
@@ -135,6 +147,49 @@ export function ThreadWorkspace({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [localMessages]);
+
+  useEffect(() => {
+    if (isDemo) return;
+
+    let cancelled = false;
+    setTeamLoading(true);
+
+    fetch("/api/settings/team")
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({})) as {
+          error?: string;
+          members?: TeamMember[];
+          currentUserId?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? `Unable to load team members (HTTP ${response.status})`);
+        }
+
+        if (cancelled) return;
+
+        const activeMembers = (payload.members ?? [])
+          .filter((member) => member.status !== "disabled")
+          .sort((a, b) => a.full_name.localeCompare(b.full_name));
+
+        setTeamMembers(activeMembers);
+        setCurrentUserId(payload.currentUserId ?? null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setThreadError(error instanceof Error ? error.message : "Unable to load team members.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setTeamLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemo]);
 
   // Call the real API to generate a draft
   const generateDraft = useCallback(async () => {
@@ -289,35 +344,80 @@ export function ThreadWorkspace({
   }
 
   async function handleClaim() {
-    const name = "You";
+    if (!currentUserId) {
+      setThreadError("Unable to determine your user identity for assignment.");
+      return;
+    }
+
+    const currentMember = teamMembers.find((member) => member.id === currentUserId);
+    if (!currentMember) {
+      setThreadError("Unable to find your user record in this workspace.");
+      return;
+    }
+
     const previousAssignee = assignee;
-    const previousAssigneeInput = assigneeInput;
-    setAssignee(name);
-    setAssigneeInput(name);
+    const previousAssignedUserId = assignedUserId;
+    const previousSelectedAssigneeId = selectedAssigneeId;
+    setAssignee(currentMember.full_name);
+    setAssignedUserId(currentUserId);
+    setSelectedAssigneeId(currentUserId);
     setThreadError(null);
 
     try {
-      await updateConversation({ assigned_to_name: name });
+      await updateConversation({ assigned_user_id: currentUserId });
     } catch (error) {
       setAssignee(previousAssignee);
-      setAssigneeInput(previousAssigneeInput);
+      setAssignedUserId(previousAssignedUserId);
+      setSelectedAssigneeId(previousSelectedAssigneeId);
       setThreadError(error instanceof Error ? error.message : "Unable to claim conversation.");
     }
   }
 
-  async function handleAssigneeSave() {
-    const name = assigneeInput.trim();
+  async function handleAssigneeSave(nextAssigneeId: string) {
     const previousAssignee = assignee;
+    const previousAssignedUserId = assignedUserId;
+    const previousSelectedAssigneeId = selectedAssigneeId;
     setEditingAssignee(false);
-    if (name === assignee) return;
-    setAssignee(name);
+
+    if (!nextAssigneeId) {
+      if (!assignedUserId && !assignee) return;
+
+      setAssignee("");
+      setAssignedUserId(null);
+      setSelectedAssigneeId("");
+      setThreadError(null);
+
+      try {
+        await updateConversation({ assigned_user_id: null, assigned_to_name: "" });
+      } catch (error) {
+        setAssignee(previousAssignee);
+        setAssignedUserId(previousAssignedUserId);
+        setSelectedAssigneeId(previousSelectedAssigneeId);
+        setThreadError(error instanceof Error ? error.message : "Unable to update assignee.");
+      }
+      return;
+    }
+
+    if (nextAssigneeId === assignedUserId) return;
+
+    const nextMember = teamMembers.find((member) => member.id === nextAssigneeId);
+    if (!nextMember) {
+      setSelectedAssigneeId(previousSelectedAssigneeId);
+      setThreadError("Unable to find the selected teammate.");
+      return;
+    }
+
+    setAssignee(nextMember.full_name);
+    setAssignedUserId(nextAssigneeId);
+    setSelectedAssigneeId(nextAssigneeId);
     setThreadError(null);
 
     try {
-      await updateConversation({ assigned_to_name: name });
+      await updateConversation({ assigned_user_id: nextAssigneeId });
     } catch (error) {
       setAssignee(previousAssignee);
-      setAssigneeInput(previousAssignee);
+      setAssignedUserId(previousAssignedUserId);
+      setSelectedAssigneeId(previousSelectedAssigneeId);
       setThreadError(error instanceof Error ? error.message : "Unable to update assignee.");
     }
   }
@@ -538,18 +638,31 @@ export function ThreadWorkspace({
 
                 {/* Assignee */}
                 {editingAssignee ? (
-                  <input
+                  <select
                     autoFocus
-                    value={assigneeInput}
-                    onChange={(e) => setAssigneeInput(e.target.value)}
-                    onBlur={handleAssigneeSave}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleAssigneeSave(); if (e.key === "Escape") setEditingAssignee(false); }}
-                    placeholder="Assign to…"
-                    className="rounded-full border border-[var(--moss)] bg-transparent px-2.5 py-1 text-[10px] outline-none text-[var(--foreground)] w-28"
-                  />
+                    value={selectedAssigneeId}
+                    disabled={teamLoading}
+                    onChange={(e) => {
+                      const nextAssigneeId = e.target.value;
+                      setSelectedAssigneeId(nextAssigneeId);
+                      void handleAssigneeSave(nextAssigneeId);
+                    }}
+                    onBlur={() => setEditingAssignee(false)}
+                    className="rounded-full border border-[var(--moss)] bg-transparent px-2.5 py-1 text-[10px] outline-none text-[var(--foreground)] w-32 disabled:opacity-50"
+                  >
+                    <option value="">Unassigned</option>
+                    {teamMembers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.full_name}
+                      </option>
+                    ))}
+                  </select>
                 ) : assignee ? (
                   <button
-                    onClick={() => { setAssigneeInput(assignee); setEditingAssignee(true); }}
+                    onClick={() => {
+                      setSelectedAssigneeId(assignedUserId ?? "");
+                      setEditingAssignee(true);
+                    }}
                     aria-label={`Assigned to ${assignee} — click to edit`}
                     className="text-[10px] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
                   >
@@ -562,12 +675,16 @@ export function ThreadWorkspace({
                     </span>
                     <button
                       onClick={handleClaim}
+                      disabled={teamLoading || !currentUserId}
                       className="rounded-full border border-[var(--moss)] px-2.5 py-1 text-[10px] font-medium text-[var(--moss)] transition-colors hover:bg-[var(--moss)] hover:text-white"
                     >
                       Claim
                     </button>
                     <button
-                      onClick={() => { setAssigneeInput(""); setEditingAssignee(true); }}
+                      onClick={() => {
+                        setSelectedAssigneeId("");
+                        setEditingAssignee(true);
+                      }}
                       className="rounded-full border border-[var(--line-strong)] px-2.5 py-1 text-[10px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
                     >
                       Assign
