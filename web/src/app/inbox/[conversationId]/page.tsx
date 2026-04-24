@@ -1,6 +1,9 @@
 import { InboxWorkspace } from "@/components/inbox/inbox-workspace";
 import type { InboxViewId } from "@/lib/inbox/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type Props = {
   params: Promise<{ conversationId: string }>;
   searchParams: Promise<{ view?: string }>;

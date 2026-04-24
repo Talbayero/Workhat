@@ -9,6 +9,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { buildAiImprovementInsights } from "@/lib/ai-improvement-engine/insights";
 import type {
   AiImprovementInsights,
@@ -66,15 +67,43 @@ async function getCurrentOrgId(
   supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) {
+    console.warn("[queries] getCurrentOrgId: no authenticated Supabase user in server component");
+    return null;
+  }
 
-  const { data: appUser } = await supabase
+  const { data: appUser, error } = await supabase
     .from("users")
     .select("org_id")
     .eq("auth_user_id", user.id)
     .single();
 
-  return (appUser as { org_id?: string } | null)?.org_id ?? null;
+  if (!error && appUser) {
+    return (appUser as { org_id?: string } | null)?.org_id ?? null;
+  }
+
+  if (error) {
+    console.warn("[queries] getCurrentOrgId RLS lookup failed:", error.message);
+  }
+
+  const adminState = createOptionalAdminClient();
+  if (!adminState.client) {
+    console.error("[queries] getCurrentOrgId admin fallback unavailable:", adminState.reason);
+    return null;
+  }
+
+  const { data: adminAppUser, error: adminError } = await adminState.client
+    .from("users")
+    .select("org_id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+
+  if (adminError) {
+    console.error("[queries] getCurrentOrgId admin fallback failed:", adminError.message);
+    return null;
+  }
+
+  return (adminAppUser as { org_id?: string } | null)?.org_id ?? null;
 }
 
 // ── Conversations ─────────────────────────────────────────────────────────────
@@ -174,7 +203,10 @@ export async function getConversations(
 ): Promise<InboxConversation[]> {
   const supabase = await createClient();
   const orgId = await getCurrentOrgId(supabase);
-  if (!orgId) return [];
+  if (!orgId) {
+    console.warn("[queries] getConversations: current org could not be resolved");
+    return [];
+  }
 
   const buildConversationQuery = (selectClause: string) => {
     let query = supabase
@@ -209,10 +241,12 @@ export async function getConversations(
   }
   if (error) {
     console.error("[queries] getConversations error:", error.message);
-    return [];
+    throw new Error("Unable to load inbox conversations.");
   }
 
-  return ((data ?? []) as unknown as DbConversation[]).map(dbConvToFrontend);
+  const conversations = ((data ?? []) as unknown as DbConversation[]).map(dbConvToFrontend);
+  console.info("[queries] getConversations loaded:", { orgId, view: view ?? "all", count: conversations.length });
+  return conversations;
 }
 
 export async function getConversationById(

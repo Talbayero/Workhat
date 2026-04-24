@@ -33,8 +33,19 @@ export async function InboxWorkspace({
     isDemo && staticConversations ? Promise.resolve(staticConversations) : getConversations(),
     isDemo ? Promise.resolve({} as Record<string, string>) : getOrgIntentColors(),
   ]);
+
+  console.info("[inbox] InboxWorkspace loaded conversations:", {
+    activeView,
+    selectedConversationId: selectedConversationId ?? null,
+    isDemo,
+    count: allConversations.length,
+  });
     
   const filtered = filterConversations(allConversations, activeView);
+  console.info("[inbox] InboxWorkspace filtered conversations:", {
+    activeView,
+    count: filtered.length,
+  });
 
   // Determine which conversation to show in the thread pane
   const targetId = selectedConversationId ?? filtered[0]?.id;
