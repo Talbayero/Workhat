@@ -3,6 +3,8 @@
  * Used by API routes, provider implementations, and the analysis pipeline.
  */
 
+import type { ContextDefinition, ContextKnowledgeSummary } from "@/lib/context/types";
+
 export type ConfidenceLevel = "green" | "yellow" | "red";
 
 // ── Draft generation ──────────────────────────────────────────────────────────
@@ -52,6 +54,18 @@ export type OrgPolicyEntry = {
   category: string;
 };
 
+export type SelectedContextObject = {
+  id: string;
+  versionId: string;
+  title: string;
+  description: string;
+  category: string;
+  companyName: string | null;
+  versionNumber: number;
+  contextDefinition: ContextDefinition;
+  linkedKnowledgeEntries: ContextKnowledgeSummary[];
+};
+
 export type ConversationContext = {
   conversationId: string;
   subject: string;
@@ -71,6 +85,7 @@ export type ConversationContext = {
   knowledgeSnippets: KnowledgeSnippet[];
   /** Org-specific tone guides and SOPs, used to build the Layer 2 policy prompt. */
   orgPolicyEntries: OrgPolicyEntry[];
+  selectedContext: SelectedContextObject | null;
 };
 
 // ── Provider abstraction ──────────────────────────────────────────────────────

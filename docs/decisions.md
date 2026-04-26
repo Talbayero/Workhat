@@ -767,4 +767,32 @@ Centralizing OAuth ownership keeps onboarding simple and reduces support burden.
 - Gmail import and send continue through the normalized email connector runtime and preserve human approval plus audit evidence.
 - Non-Gmail setup methods remain hidden until a future ADR accepts them as fully supported self-serve paths.
 
+---
+
+## ADR-029 — Lean Context Engine V1
+
+**Date:** 2026-04
+**Status:** Accepted
+
+### Decision
+
+Work Hat adds a lean Context Engine V1 based on org-scoped `context_objects`, immutable `context_object_versions`, manual context selection during AI draft generation, and persisted context provenance on `ai_drafts` and `edit_analyses`.
+
+### Context
+
+Work Hat's product direction is toward becoming an operational context engine, but the current MVP is still a conversation-first CRM loop: conversation -> AI draft -> human edit -> send -> edit analysis -> improvement. A full workflow builder, rule engine, or autonomous agent layer would overrun that scope and blur product boundaries.
+
+### Rationale
+
+The smallest useful step is to let operators define reusable operational guidance that can be selected at draft time and traced through the downstream edit-analysis loop. Versioned context records provide auditability without introducing a second knowledge base or a general-purpose automation system. `knowledge_entries` remain the factual content layer; context objects remain the operational framing layer.
+
+### Consequences
+
+- Context Engine V1 uses `context_definition_json` on immutable version rows instead of many fragmented schema tables.
+- Published context versions are what AI drafts may use; `prompt_version` remains mandatory.
+- Human approval remains mandatory for every customer reply.
+- Context selection is explicit and explainable; V1 does not add autonomous actions, arbitrary scripting, or a visual builder.
+- New writes require narrow capabilities: `context.read`, `context.edit`, and `context.publish`.
+- Future context-gap analytics, test panels, and change-request workflows remain separate follow-on work instead of being bundled into V1.
+
 *Last updated: April 2026*

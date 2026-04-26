@@ -62,6 +62,11 @@ export type AuditAction =
   | "knowledge.created"
   | "knowledge.updated"
   | "knowledge.deleted"
+  // Context engine
+  | "context.created"
+  | "context.updated"
+  | "context.published"
+  | "context.archived"
   // Conversations
   | "conversation.created"
   | "conversation.updated"

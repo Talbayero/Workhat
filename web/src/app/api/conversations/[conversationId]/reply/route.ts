@@ -68,7 +68,7 @@ async function triggerEditAnalysis(
     // Fetch the original AI draft text
     const { data: draft, error } = await supabase
       .from("ai_drafts")
-      .select("id, draft_text")
+      .select("id, draft_text, context_object_id, context_object_version_id")
       .eq("id", aiDraftId)
       .eq("org_id", orgId)
       .eq("conversation_id", conversationId)
@@ -89,6 +89,8 @@ async function triggerEditAnalysis(
       conversation_id: conversationId,
       ai_draft_id: aiDraftId,
       sent_reply_id: sentReplyId,
+      context_object_id: (draft as { context_object_id?: string | null }).context_object_id ?? null,
+      context_object_version_id: (draft as { context_object_version_id?: string | null }).context_object_version_id ?? null,
       edit_distance_score: analysis.editDistanceScore,
       change_percent: analysis.changePercent,
       categories: analysis.categories,

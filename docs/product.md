@@ -55,6 +55,7 @@ Do not claim onboarding is complete unless this path works.
 | Execution | Contacts / Companies | CRM context linked to conversations |
 | AI | Draft Generation | Human-approved suggested replies with prompt versioning |
 | AI | Knowledge | Operator-managed policies, SOPs, tone guides, and product facts |
+| AI | Context Engine V1 | Operator-managed operational context objects selected during draft generation |
 | Feedback | Edit Analysis | Measures what humans changed from the AI draft |
 | Feedback | AI Improvement | Acceptance rate, edit distance, repeated correction patterns, likely knowledge gaps |
 | Control | QA | Review layer for quality, risk, and coaching |
@@ -87,6 +88,34 @@ Work Hat should optimize for operational outcomes, not vanity metrics:
 - AI recommendations must remain explainable and traceable.
 - Multi-tenant org isolation is mandatory.
 - Security and privacy controls must be evidence-backed for SOC 2, ISO 27001, and ISO 27701 readiness.
+
+## Context Engine V1
+
+Work Hat's first context-engine layer is intentionally lean.
+
+It adds:
+
+- org-scoped context objects
+- immutable context versions
+- manual context selection during AI draft generation
+- exact context object and version provenance stored on `ai_drafts`
+- context provenance propagated into `edit_analyses` when a draft becomes a sent reply
+
+It does not add:
+
+- autonomous actions
+- a visual workflow builder
+- arbitrary rules scripting
+- a second knowledge base
+- autonomous reply sending
+
+The purpose of Context Engine V1 is to improve the existing loop:
+
+```text
+conversation -> AI draft -> human edit -> send -> edit analysis -> improvement
+```
+
+Context objects should capture operational guidance and decision framing. Factual SOP content should still live in `knowledge_entries`, which context objects may reference.
 
 ## Out Of Scope
 

@@ -89,6 +89,28 @@ Prompt experimentation must:
 - Support rollback.
 - Keep human approval in place.
 
+## Context Engine V1 Standard
+
+Context Engine V1 must stay lean:
+
+- Context objects are org-scoped operational guidance records.
+- Context versions are immutable snapshots used for AI traceability.
+- Routes stay thin; context domain logic belongs in `web/src/lib/context`.
+- Prompt rendering changes belong in `web/src/ai`.
+- Context selection may influence draft generation, but it must never bypass human approval.
+- `prompt_version` remains mandatory even when a context object is selected.
+- `ai_drafts` must store the exact `context_object_id` and `context_object_version_id` used.
+- `edit_analyses` should inherit context provenance from the source `ai_draft` when available.
+- Context objects may reference `knowledge_entries`, but they must not duplicate the knowledge base into a parallel content system.
+
+Required write capabilities:
+
+- `context.read`
+- `context.edit`
+- `context.publish`
+
+Publishing or archiving a context object requires a narrower permission than general editing.
+
 ## Workflow Standard
 
 Workflow rules are deterministic and auditable.
@@ -139,6 +161,7 @@ For schema changes:
 - Make migrations idempotent where practical.
 - Backfill before applying stricter constraints.
 - Verify production-like existing values before adding checks.
+- Ensure every new org-owned table includes `org_id`, authenticated grants, and RLS policies before relying on it in production.
 
 For security or compliance-sensitive changes:
 

@@ -66,6 +66,16 @@ const navItems = [
     ),
   },
   {
+    href: "/contexts",
+    label: "Contexts",
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+        <rect x="2" y="3" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M5 6h7M5 8.5h5.5M5 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/dashboard",
     label: "Dashboard",
     icon: (
@@ -103,8 +113,8 @@ const navItems = [
   },
 ];
 
-const primaryItems = navItems.slice(0, 6);
-const configItems = navItems.slice(6);
+const primaryItems = navItems.slice(0, 7);
+const configItems = navItems.slice(7);
 
 const demoUser: AuthUser = {
   id: "demo-user",

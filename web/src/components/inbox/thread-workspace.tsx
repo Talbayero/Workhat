@@ -23,6 +23,13 @@ type LiveDraft = {
   missingContext: string[];
   recommendedTags: string[];
   latencyMs: number;
+  selectedContext: {
+    id: string;
+    versionId: string;
+    title: string;
+    versionNumber: number;
+    category: string;
+  } | null;
 };
 
 type TeamMember = {
@@ -31,6 +38,15 @@ type TeamMember = {
   email?: string;
   role: string;
   status: string;
+};
+
+type ContextOption = {
+  id: string;
+  title: string;
+  category: string;
+  companyId: string | null;
+  companyName: string | null;
+  activeVersionNumber: number | null;
 };
 
 const confidenceLabel: Record<RiskLevel, string> = {
@@ -100,6 +116,9 @@ export function ThreadWorkspace({
   const [appliedDraft, setAppliedDraft] = useState<{ id: string; draftText: string } | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [contextOptions, setContextOptions] = useState<ContextOption[]>([]);
+  const [contextsLoading, setContextsLoading] = useState(false);
+  const [selectedContextId, setSelectedContextId] = useState("");
 
   // Self-learning: "Save correction?" banner
   const [correctionBanner, setCorrectionBanner] = useState<{
@@ -191,6 +210,30 @@ export function ThreadWorkspace({
     };
   }, [isDemo]);
 
+  const loadContextOptions = useCallback(async () => {
+    if (isDemo || contextsLoading || contextOptions.length > 0) return;
+    setContextsLoading(true);
+    try {
+      const response = await fetch("/api/context-objects?status=active");
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        contexts?: ContextOption[];
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Unable to load contexts (HTTP ${response.status})`);
+      }
+
+      setContextOptions(payload.contexts ?? []);
+    } catch (error) {
+      setDraftError(error instanceof Error ? error.message : "Unable to load active contexts.");
+    } finally {
+      setContextsLoading(false);
+    }
+  }, [contextOptions.length, contextsLoading, isDemo]);
+
+  const selectedContextOption = contextOptions.find((option) => option.id === selectedContextId) ?? null;
+
   // Call the real API to generate a draft
   const generateDraft = useCallback(async () => {
     if (draftLoading) return;
@@ -209,12 +252,24 @@ export function ThreadWorkspace({
           missingContext: conversation.aiDraft.missingContext,
           recommendedTags: conversation.tags,
           latencyMs: 800,
+          selectedContext: selectedContextOption
+            ? {
+                id: selectedContextOption.id,
+                versionId: "demo-context-version",
+                title: selectedContextOption.title,
+                versionNumber: selectedContextOption.activeVersionNumber ?? 1,
+                category: selectedContextOption.category,
+              }
+            : null,
         });
       } else {
         const res = await fetch(`/api/ai/draft`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ conversationId: conversation.id }),
+          body: JSON.stringify({
+            conversationId: conversation.id,
+            contextObjectId: selectedContextId || undefined,
+          }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: "Unknown error" }));
@@ -228,7 +283,16 @@ export function ThreadWorkspace({
     } finally {
       setDraftLoading(false);
     }
-  }, [conversation.id, draftLoading, isDemo, conversation.aiDraft, conversation.aiConfidence, conversation.tags]);
+  }, [
+    conversation.id,
+    draftLoading,
+    isDemo,
+    conversation.aiDraft,
+    conversation.aiConfidence,
+    conversation.tags,
+    selectedContextId,
+    selectedContextOption,
+  ]);
 
   function togglePanel(panel: ActivePanel) {
     setActivePanel((prev) => (prev === panel ? null : panel));
@@ -237,9 +301,7 @@ export function ThreadWorkspace({
   // Open AI panel and auto-generate if no draft yet
   function openAIPanel() {
     setActivePanel("ai");
-    if (!liveDraft && !draftLoading) {
-      generateDraft();
-    }
+    void loadContextOptions();
   }
 
   function useDraft() {
@@ -1049,6 +1111,12 @@ export function ThreadWorkspace({
                 >
                   {draftLoading ? "Drafting…" : appliedDraft ? "Draft applied ✓" : liveDraft ? "AI Draft ✓" : "AI Draft"}
                 </button>
+                {(liveDraft?.selectedContext || selectedContextOption) && (
+                  <span className="truncate rounded-full border border-[var(--line)] px-3 py-1 text-[10px] text-[var(--muted)]">
+                    Context: {(liveDraft?.selectedContext?.title ?? selectedContextOption?.title) || "Selected"}{" "}
+                    v{liveDraft?.selectedContext?.versionNumber ?? selectedContextOption?.activeVersionNumber ?? 1}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -1067,22 +1135,46 @@ export function ThreadWorkspace({
           <ErrorBoundary title="AI Draft panel error" inline>
           <div className="flex h-full w-[320px] flex-col overflow-hidden">
             {/* Panel header */}
-            <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
-              <div className="flex items-center justify-between">
-                <p className="eyebrow text-[10px] text-[var(--muted)]">AI Draft</p>
-                <button
-                  onClick={() => setActivePanel(null)}
+              <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
+                <div className="flex items-center justify-between">
+                  <p className="eyebrow text-[10px] text-[var(--muted)]">AI Draft</p>
+                  <button
+                    onClick={() => setActivePanel(null)}
                   className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
                   aria-label="Close AI draft panel"
                 >
-                  <CloseIcon />
-                </button>
-              </div>
-              {liveDraft && (
-                <div className="mt-2 flex items-center gap-2">
-                  <span className={`status-dot ${confidenceDot[liveDraft.confidenceLevel]}`} />
-                  <span className="text-xs text-[var(--muted)] capitalize">
-                    {liveDraft.confidenceLevel} confidence
+                    <CloseIcon />
+                  </button>
+                </div>
+                {!isDemo && (
+                  <div className="mt-3">
+                    <label className="eyebrow text-[9px] text-[var(--muted)]">Operational context</label>
+                    <select
+                      value={selectedContextId}
+                      onChange={(event) => {
+                        setSelectedContextId(event.target.value);
+                        setLiveDraft(null);
+                        setAppliedDraft(null);
+                      }}
+                      disabled={contextsLoading}
+                      className="mt-1.5 w-full rounded-[12px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--moss)]"
+                    >
+                      <option value="">No extra context</option>
+                      {contextOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.title}
+                          {option.activeVersionNumber ? ` (v${option.activeVersionNumber})` : ""}
+                          {option.companyName ? ` — ${option.companyName}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {liveDraft && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`status-dot ${confidenceDot[liveDraft.confidenceLevel]}`} />
+                    <span className="text-xs text-[var(--muted)] capitalize">
+                      {liveDraft.confidenceLevel} confidence
                   </span>
                   <span className="ml-auto text-[9px] text-[var(--muted)]">
                     {liveDraft.latencyMs}ms
@@ -1161,17 +1253,27 @@ export function ThreadWorkspace({
                   )}
 
                   {/* Missing context */}
-                  {liveDraft.missingContext.length > 0 && (
-                    <div className="rounded-[16px] border border-[rgba(169,146,125,0.25)] bg-[rgba(169,146,125,0.05)] p-4">
-                      <p className="eyebrow text-[9px] text-[var(--amber)]">Missing context</p>
-                      <ul className="mt-2 space-y-1.5">
-                        {liveDraft.missingContext.map((item) => (
+                    {liveDraft.missingContext.length > 0 && (
+                      <div className="rounded-[16px] border border-[rgba(169,146,125,0.25)] bg-[rgba(169,146,125,0.05)] p-4">
+                        <p className="eyebrow text-[9px] text-[var(--amber)]">Missing context</p>
+                        <ul className="mt-2 space-y-1.5">
+                          {liveDraft.missingContext.map((item) => (
                           <li key={item} className="flex gap-2 text-sm leading-5">
                             <span className="shrink-0 text-[var(--muted)]">·</span>
                             {item}
                           </li>
                         ))}
-                      </ul>
+                        </ul>
+                      </div>
+                    )}
+
+                  {liveDraft.selectedContext && (
+                    <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                      <p className="eyebrow text-[9px] text-[var(--muted)]">Selected context</p>
+                      <p className="mt-2 text-sm font-medium">{liveDraft.selectedContext.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                        Version v{liveDraft.selectedContext.versionNumber} • {liveDraft.selectedContext.category}
+                      </p>
                     </div>
                   )}
 

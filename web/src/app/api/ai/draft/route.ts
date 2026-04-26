@@ -27,12 +27,14 @@ import { generateEmbedding } from "@/lib/embeddings";
 import type { ConversationContext, MessageContext, KnowledgeSnippet } from "@/ai/types";
 import { assignPromptVersion, linkPromptAssignmentToDraft } from "@/ai/prompts/experiments";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
+import { resolveDraftContextSelection } from "@/lib/context/context-objects";
 
 // ── Request validation ────────────────────────────────────────────────────────
 
 type DraftRequestBody = {
   conversationId: string;
   sourceMessageId?: string;
+  contextObjectId?: string;
 };
 
 function validateBody(raw: unknown): DraftRequestBody | null {
@@ -44,6 +46,10 @@ function validateBody(raw: unknown): DraftRequestBody | null {
     sourceMessageId:
       typeof obj.sourceMessageId === "string" && obj.sourceMessageId.trim()
         ? obj.sourceMessageId.trim()
+        : undefined,
+    contextObjectId:
+      typeof obj.contextObjectId === "string" && obj.contextObjectId.trim()
+        ? obj.contextObjectId.trim()
         : undefined,
   };
 }
@@ -214,7 +220,8 @@ function senderTypeToRole(senderType: string): MessageContext["role"] {
 async function assembleContext(
   supabase: Awaited<ReturnType<typeof createClient>>,
   conversationId: string,
-  orgId: string
+  orgId: string,
+  selectedContext: ConversationContext["selectedContext"]
 ): Promise<ConversationContext> {
   // Fetch conversation + contact + company in one call.
   // org_id filter is applied at the application layer (in addition to RLS)
@@ -290,6 +297,7 @@ async function assembleContext(
     messages,
     knowledgeSnippets,
     orgPolicyEntries,
+    selectedContext,
   };
 }
 
@@ -301,7 +309,8 @@ async function persistDraft(
   sourceMessageId: string | undefined,
   userId: string,
   orgId: string,
-  result: Awaited<ReturnType<typeof generateDraft>>
+  result: Awaited<ReturnType<typeof generateDraft>>,
+  selectedContext: ConversationContext["selectedContext"]
 ): Promise<string | null> {
   const { data, error } = await supabase
     .from("ai_drafts")
@@ -319,6 +328,8 @@ async function persistDraft(
       provider: result.provider,
       model: result.model,
       prompt_version: result.promptVersion,
+      context_object_id: selectedContext?.id ?? null,
+      context_object_version_id: selectedContext?.versionId ?? null,
       request_tokens: result.requestTokens,
       response_tokens: result.responseTokens,
       latency_ms: result.latencyMs,
@@ -439,7 +450,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { conversationId, sourceMessageId } = body;
+  const { conversationId, sourceMessageId, contextObjectId } = body;
 
   if (sourceMessageId) {
     const { data: sourceMessage, error: sourceMessageError } = await supabase
@@ -478,10 +489,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const selectedContext = contextObjectId
+    ? await resolveDraftContextSelection({
+        supabase,
+        orgId: appUser.org_id,
+        contextObjectId,
+      })
+    : null;
+
+  if (contextObjectId && !selectedContext) {
+    return NextResponse.json(
+      { error: "Selected context is not available for this workspace." },
+      { status: 404 }
+    );
+  }
+
   // Assemble context
   let context: ConversationContext;
   try {
-    context = await assembleContext(supabase, conversationId, appUser.org_id);
+    context = await assembleContext(supabase, conversationId, appUser.org_id, selectedContext);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load conversation";
     return NextResponse.json({ error: message }, { status: 404 });
@@ -517,7 +543,8 @@ export async function POST(req: NextRequest) {
     sourceMessageId,
     appUser.id,
     appUser.org_id,
-    result
+    result,
+    selectedContext
   );
 
   await linkPromptAssignmentToDraft({
@@ -579,6 +606,8 @@ export async function POST(req: NextRequest) {
         provider: result.provider,
         model: result.model,
         promptVersion: result.promptVersion,
+        contextObjectId: selectedContext?.id ?? null,
+        contextObjectVersionId: selectedContext?.versionId ?? null,
         promptExperiment: {
           experimentId: promptAssignment.experimentId,
           assignmentId: promptAssignment.assignmentId,
@@ -602,6 +631,15 @@ export async function POST(req: NextRequest) {
       provider: result.provider,
       model: result.model,
       promptVersion: result.promptVersion,
+      selectedContext: selectedContext
+        ? {
+            id: selectedContext.id,
+            versionId: selectedContext.versionId,
+            title: selectedContext.title,
+            versionNumber: selectedContext.versionNumber,
+            category: selectedContext.category,
+          }
+        : null,
       promptExperiment: {
         experimentId: promptAssignment.experimentId,
         assignmentId: promptAssignment.assignmentId,

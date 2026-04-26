@@ -12,7 +12,13 @@
  * or A/B tested without touching the others.
  */
 
-import type { ConversationContext, KnowledgeSnippet, OrgPolicyEntry, PromptConfig } from "@/ai/types";
+import type {
+  ConversationContext,
+  KnowledgeSnippet,
+  OrgPolicyEntry,
+  PromptConfig,
+  SelectedContextObject,
+} from "@/ai/types";
 import { DRAFT_JSON_SCHEMA } from "@/ai/schemas/draft";
 
 // ── Layer 1: System behavior ──────────────────────────────────────────────────
@@ -74,6 +80,43 @@ export function buildKnowledgeLayer(snippets: KnowledgeSnippet[]): string {
     .join("\n\n");
 
   return `## Relevant Knowledge\nThe following entries from the knowledge base are relevant to this conversation:\n\n${formatted}`;
+}
+
+function buildSelectedContextLayer(selectedContext: SelectedContextObject | null): string {
+  if (!selectedContext) {
+    return "## Selected Operational Context\nNo additional context object was selected for this draft.";
+  }
+
+  const definition = selectedContext.contextDefinition;
+  const listSection = (label: string, items: string[]) =>
+    items.length > 0 ? `### ${label}\n${items.map((item) => `- ${item}`).join("\n")}` : "";
+
+  const linkedKnowledge = selectedContext.linkedKnowledgeEntries.length > 0
+    ? `### Linked Knowledge Entries\n${selectedContext.linkedKnowledgeEntries
+        .map((entry) => `- ${entry.title} (${entry.category})${entry.summary ? `: ${entry.summary}` : ""}`)
+        .join("\n")}`
+    : "";
+
+  return [
+    "## Selected Operational Context",
+    `Title: ${selectedContext.title}`,
+    `Version: v${selectedContext.versionNumber}`,
+    `Category: ${selectedContext.category}`,
+    selectedContext.companyName ? `Linked company: ${selectedContext.companyName}` : "",
+    selectedContext.description ? `Description: ${selectedContext.description}` : "",
+    definition.when_to_use ? `### When to use\n${definition.when_to_use}` : "",
+    listSection("Required info", definition.required_info),
+    listSection("Decision rules", definition.decision_rules),
+    listSection("Allowed actions", definition.allowed_actions),
+    listSection("Prohibited actions", definition.prohibited_actions),
+    listSection("Escalation rules", definition.escalation_rules),
+    listSection("Risk flags", definition.risk_flags),
+    listSection("Output guidelines", definition.output_guidelines),
+    listSection("Tone guidelines", definition.tone_guidelines),
+    listSection("Known gaps", definition.known_gaps),
+    listSection("Success metrics", definition.success_metrics),
+    linkedKnowledge,
+  ].filter(Boolean).join("\n\n");
 }
 
 // ── Layer 4: Conversation context ─────────────────────────────────────────────
@@ -155,6 +198,7 @@ export type DraftPrompt = {
 export function buildDraftPrompt(ctx: ConversationContext, config: PromptConfig = {}): DraftPrompt {
   const userPrompt = [
     buildPolicyLayer(ctx.orgPolicyEntries),
+    buildSelectedContextLayer(ctx.selectedContext),
     buildKnowledgeLayer(ctx.knowledgeSnippets),
     buildConversationLayer(ctx),
     buildOutputLayer(),

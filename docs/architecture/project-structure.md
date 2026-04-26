@@ -64,6 +64,7 @@ Current grouping:
 - `components/inbox`
 - `components/companies`
 - `components/contacts`
+- `components/context`
 - `components/settings`
 - `components/marketing`
 - `components/layout`
@@ -85,6 +86,7 @@ Current important areas:
 - `lib/sla`
 - `lib/workflow-engine`
 - `lib/email`
+- `lib/context`
 - `lib/data`
 - `lib/analytics`
 
@@ -94,6 +96,7 @@ Rules:
 - `lib/data` is the stable entrypoint for product-domain data loaders used by pages/components.
 - `lib/analytics` is the stable entrypoint for reporting and analytics helpers.
 - `lib/email` owns mailbox integrations, Gmail OAuth helpers, token encryption, inbound processing, and outbound send logic.
+- `lib/context` owns context object CRUD, versioning, selection, and validation rules.
 
 ### `web/src/ai`
 
@@ -151,10 +154,15 @@ Rules:
 
 Only keep route-local code in the route file if it is truly single-use and small.
 
+Current context routes:
+- `web/src/app/contexts`
+- `web/src/app/api/context-objects`
+
 ### Components
 
 - Shared primitive: `web/src/components/ui`
 - Inbox UI: `web/src/components/inbox`
+- Context UI: `web/src/components/context`
 - Dashboard/reporting UI: `web/src/components/dashboard`
 - Settings/team/admin UI: `web/src/components/settings`
 
@@ -215,6 +223,22 @@ Rules:
 - Dashboard aggregation belongs in analytics helpers, not inside page files.
 - Domain data loaders belong in `lib/data`, not as ad hoc Supabase reads in many pages.
 
+### Context Engine
+
+Current context runtime:
+
+- Context object services: `web/src/lib/context`
+- Context data loaders: `web/src/lib/data/context.ts`
+- Context pages: `web/src/app/contexts`
+- Context-aware draft rendering: `web/src/ai`
+
+Rules:
+- Context objects are an operational guidance layer, not a second CRM model.
+- Use one structured `context_definition_json` on versions; do not introduce a parallel rules engine in routes.
+- Store exact context object and version provenance on `ai_drafts`.
+- Keep `knowledge_entries` as the source of factual reusable content; contexts may reference them but should not duplicate them.
+- Publish/archive flows must stay auditable through versioned records and audit logs.
+
 ### AI workflows, prompts, providers, telemetry, and evals
 
 Rules:
@@ -235,6 +259,7 @@ Rules:
 - Do not expose OAuth credentials, service-role keys, refresh tokens, or encrypted secrets to the client.
 - Do not move public routes just for aesthetics when they are part of an external integration contract.
 - Do not add empty enterprise folders unless they immediately hold real code.
+- Do not place context-definition JSON shaping or prompt strings inside route handlers or React components.
 
 ## Current Transitional Boundaries
 
