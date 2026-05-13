@@ -45,6 +45,13 @@ export const Footer = ({ dict, lang }: { dict: Dictionary; lang: Locale }) => {
               <a href="mailto:info@work-hat.com?subject=Work Hat demo request" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">{dict.footer.bookDemo}</a>
             </nav>
           </div>
+          <div>
+            <p className="mb-3 text-[10px] font-medium tracking-widest text-[var(--muted)] uppercase">Privacy</p>
+            <nav className="flex flex-col gap-2">
+              <Link href="/privacy" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Privacy policy</Link>
+              <Link href="/account-deletion" className="text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">Account deletion</Link>
+            </nav>
+          </div>
         </div>
       </div>
 

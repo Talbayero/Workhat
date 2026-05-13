@@ -4,7 +4,18 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
-const NO_SIDEBAR_ROUTES = ["/login", "/signup", "/onboarding", "/pricing", "/auth", "/checkout", "/compare"];
+const NO_SIDEBAR_ROUTES = [
+  "/login",
+  "/signup",
+  "/onboarding",
+  "/pricing",
+  "/auth",
+  "/checkout",
+  "/compare",
+  "/privacy",
+  "/account-deletion",
+  "/delete-account",
+];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

@@ -1355,12 +1355,18 @@ export function ThreadWorkspace({
                   </p>
                   <p className="mt-1 text-sm">{conversation.profile.tier}</p>
                 </div>
-                <Link
-                  href={`${baseDir}/contacts/${conversation.contactId}`}
-                  className="inline-flex rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] hover:bg-[var(--moss)] hover:text-white"
-                >
-                  Open full contact record
-                </Link>
+                {conversation.contactId ? (
+                  <Link
+                    href={`${baseDir}/contacts/${conversation.contactId}`}
+                    className="inline-flex rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] hover:bg-[var(--moss)] hover:text-white"
+                  >
+                    Open full contact record
+                  </Link>
+                ) : (
+                  <p className="text-xs leading-5 text-[var(--muted)]">
+                    No contact record is linked to this imported conversation yet.
+                  </p>
+                )}
               </div>
 
               {/* Notes */}

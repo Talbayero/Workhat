@@ -63,6 +63,16 @@ The active policy set is consolidated here. Separate generated DOCX policy draft
 | Audit logs | Actor, action, IP/user agent where captured | Security evidence | Immutable append-only pattern |
 | Gmail tokens | OAuth tokens | Mail import/send | Encrypted storage |
 
+## Public Privacy Surfaces
+
+Work Hat maintains user-facing privacy and data-request pages in the web app:
+
+- `/privacy` explains what Work Hat collects, why Gmail OAuth is used, how AI drafts and edit analysis work, and that human approval is required before customer replies are sent.
+- `/account-deletion` explains how users can request account deletion, workspace data deletion, export, correction, or Gmail disconnection support.
+- `/delete-account` aliases the account deletion page for app store and marketplace review conventions.
+
+These pages are product notices. They must not claim SOC 2, ISO 27001, or ISO 27701 certification unless a formal certification has been completed and approved for publication.
+
 ## Security Control Matrix
 
 | Domain | Control | Implementation | Evidence |

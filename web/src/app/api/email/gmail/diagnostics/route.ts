@@ -48,16 +48,22 @@ type UserScopedReadDiagnostics = {
   tables: {
     users: UserScopedReadCheck;
     organizations: UserScopedReadCheck;
+    channels: UserScopedReadCheck;
+    companies: UserScopedReadCheck;
+    contacts: UserScopedReadCheck;
     conversations: UserScopedReadCheck;
     messages: UserScopedReadCheck;
+    knowledgeEntries: UserScopedReadCheck;
+    qaFollowUps: UserScopedReadCheck;
+    emailConnectionMetadata: UserScopedReadCheck;
   };
 };
 
 type RlsRepairStatus = {
   required: boolean;
   reason: string | null;
-  migration: string;
-  sqlPath: string;
+  migrations: string[];
+  sqlPaths: string[];
 };
 
 const SLA_COLUMNS = [
@@ -88,6 +94,25 @@ function checkEnv(name: string, label: string, missingMessage: string, validator
       key: name,
       label,
       status: "fail" as const,
+      message: missingMessage,
+    };
+  }
+
+  return validator?.(value) ?? {
+    key: name,
+    label,
+    status: "pass" as const,
+    message: "Configured.",
+  };
+}
+
+function checkOptionalEnv(name: string, label: string, missingMessage: string, validator?: (value: string) => DiagnosticCheck) {
+  const value = process.env[name];
+  if (!value) {
+    return {
+      key: name,
+      label,
+      status: "warn" as const,
       message: missingMessage,
     };
   }
@@ -157,6 +182,27 @@ function checkSupabaseAdmin(): DiagnosticCheck {
     label: "Supabase admin key",
     status: "fail",
     message: "Required for Gmail sync, push imports, and server-side mailbox operations.",
+  };
+}
+
+function checkCanonicalAppUrl(): DiagnosticCheck {
+  const configured = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
+  if (!configured) {
+    return {
+      key: "APP_BASE_URL",
+      label: "Canonical app URL",
+      status: "fail",
+      message: "Required so Google OAuth redirect URIs are stable in production. Set APP_BASE_URL or NEXT_PUBLIC_APP_URL.",
+    };
+  }
+
+  return {
+    key: process.env.APP_BASE_URL ? "APP_BASE_URL" : "NEXT_PUBLIC_APP_URL",
+    label: "Canonical app URL",
+    status: /^https:\/\/.+/.test(configured) ? "pass" : "warn",
+    message: /^https:\/\/.+/.test(configured)
+      ? `Configured. Google callback: ${configured.replace(/\/$/, "")}/api/oauth/google/callback`
+      : "Use your production HTTPS URL, for example https://work-hat.com.",
   };
 }
 
@@ -276,8 +322,14 @@ async function collectUserScopedReadDiagnostics(): Promise<UserScopedReadDiagnos
       tables: {
         users: { ok: false, message: "No authenticated Supabase user." },
         organizations: { ok: false, message: "No authenticated Supabase user." },
+        channels: { ok: false, message: "No authenticated Supabase user." },
+        companies: { ok: false, message: "No authenticated Supabase user." },
+        contacts: { ok: false, message: "No authenticated Supabase user." },
         conversations: { ok: false, message: "No authenticated Supabase user." },
         messages: { ok: false, message: "No authenticated Supabase user." },
+        knowledgeEntries: { ok: false, message: "No authenticated Supabase user." },
+        qaFollowUps: { ok: false, message: "No authenticated Supabase user." },
+        emailConnectionMetadata: { ok: false, message: "No authenticated Supabase user." },
       },
     };
   }
@@ -305,17 +357,35 @@ async function collectUserScopedReadDiagnostics(): Promise<UserScopedReadDiagnos
       tables: {
         users: usersCheck,
         organizations: { ok: false, message: "Skipped because org_id could not be resolved." },
+        channels: { ok: false, message: "Skipped because org_id could not be resolved." },
+        companies: { ok: false, message: "Skipped because org_id could not be resolved." },
+        contacts: { ok: false, message: "Skipped because org_id could not be resolved." },
         conversations: { ok: false, message: "Skipped because org_id could not be resolved." },
         messages: { ok: false, message: "Skipped because org_id could not be resolved." },
+        knowledgeEntries: { ok: false, message: "Skipped because org_id could not be resolved." },
+        qaFollowUps: { ok: false, message: "Skipped because org_id could not be resolved." },
+        emailConnectionMetadata: { ok: false, message: "Skipped because org_id could not be resolved." },
       },
     };
   }
 
-  const [orgRes, conversationsRes, messagesRes] = await Promise.all([
+  const [orgRes, channelsRes, companiesRes, contactsRes, conversationsRes, messagesRes, knowledgeEntriesRes, qaFollowUpsRes, emailConnectionMetadataRes] = await Promise.all([
     supabase
       .from("organizations")
       .select("id", { count: "exact", head: true })
       .eq("id", orgId),
+    supabase
+      .from("channels")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId),
+    supabase
+      .from("companies")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId),
+    supabase
+      .from("contacts")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId),
     supabase
       .from("conversations")
       .select("id", { count: "exact", head: true })
@@ -324,7 +394,24 @@ async function collectUserScopedReadDiagnostics(): Promise<UserScopedReadDiagnos
       .from("messages")
       .select("id", { count: "exact", head: true })
       .eq("org_id", orgId),
+    supabase
+      .from("knowledge_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId),
+    supabase
+      .from("qa_follow_ups")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId),
+    supabase
+      .from("email_connections")
+      .select("id, org_id, provider, provider_account_email, status, sync_status", { count: "exact", head: true })
+      .eq("org_id", orgId),
   ]);
+
+  const toCheck = (result: { error: { message: string } | null; count: number | null }, successMessage: string): UserScopedReadCheck =>
+    result.error
+      ? { ok: false, message: result.error.message }
+      : { ok: true, message: successMessage, count: result.count ?? 0 };
 
   return {
     authUserId: user.id,
@@ -335,12 +422,14 @@ async function collectUserScopedReadDiagnostics(): Promise<UserScopedReadDiagnos
       organizations: orgRes.error
         ? { ok: false, message: orgRes.error.message }
         : { ok: true, message: "Authenticated user can read their organization row.", count: orgRes.count ?? 0 },
-      conversations: conversationsRes.error
-        ? { ok: false, message: conversationsRes.error.message }
-        : { ok: true, message: "Authenticated user can read org-scoped conversations.", count: conversationsRes.count ?? 0 },
-      messages: messagesRes.error
-        ? { ok: false, message: messagesRes.error.message }
-        : { ok: true, message: "Authenticated user can read org-scoped messages.", count: messagesRes.count ?? 0 },
+      channels: toCheck(channelsRes, "Authenticated user can read org-scoped channel metadata."),
+      companies: toCheck(companiesRes, "Authenticated user can read org-scoped companies."),
+      contacts: toCheck(contactsRes, "Authenticated user can read org-scoped contacts."),
+      conversations: toCheck(conversationsRes, "Authenticated user can read org-scoped conversations."),
+      messages: toCheck(messagesRes, "Authenticated user can read org-scoped messages."),
+      knowledgeEntries: toCheck(knowledgeEntriesRes, "Authenticated user can read org-scoped knowledge entries."),
+      qaFollowUps: toCheck(qaFollowUpsRes, "Authenticated user can read org-scoped QA follow-ups."),
+      emailConnectionMetadata: toCheck(emailConnectionMetadataRes, "Authenticated user can read non-secret email connection metadata."),
     },
   };
 }
@@ -367,6 +456,7 @@ export async function GET() {
     })),
     checkEnv("GOOGLE_CLIENT_SECRET", "Google OAuth client secret", "Required for OAuth token exchange."),
     checkEnv("EMAIL_TOKEN_ENCRYPTION_KEY", "Token encryption key", "Required to encrypt Gmail access and refresh tokens.", checkEncryptionKey),
+    checkCanonicalAppUrl(),
     checkEnv("GOOGLE_PUBSUB_TOPIC", "Google Pub/Sub topic", "Required before Gmail live watch can be enabled.", (value) => ({
       key: "GOOGLE_PUBSUB_TOPIC",
       label: "Google Pub/Sub topic",
@@ -387,13 +477,17 @@ export async function GET() {
       status: value.length >= 24 ? "pass" : "warn",
       message: value.length >= 24 ? "Configured." : "Configured, but short. Use a long random value.",
     })),
-    checkEnv("NEXT_PUBLIC_APP_URL", "Public app URL", "Recommended so Google OAuth redirect URIs are stable in production.", (value) => ({
-      key: "NEXT_PUBLIC_APP_URL",
-      label: "Public app URL",
+    checkOptionalEnv("UPSTASH_REDIS_REST_URL", "Rate limit Redis URL", "Recommended for production request protection.", (value) => ({
+      key: "UPSTASH_REDIS_REST_URL",
+      label: "Rate limit Redis URL",
       status: /^https:\/\/.+/.test(value) ? "pass" : "warn",
-      message: /^https:\/\/.+/.test(value)
-        ? "Configured."
-        : "Use your production HTTPS URL, for example https://work-hat.com.",
+      message: /^https:\/\/.+/.test(value) ? "Configured." : "Expected an HTTPS Upstash REST URL.",
+    })),
+    checkOptionalEnv("UPSTASH_REDIS_REST_TOKEN", "Rate limit Redis token", "Recommended for production request protection.", (value) => ({
+      key: "UPSTASH_REDIS_REST_TOKEN",
+      label: "Rate limit Redis token",
+      status: value.length >= 24 ? "pass" : "warn",
+      message: value.length >= 24 ? "Configured." : "Configured, but short. Use the Upstash REST token from Vercel env.",
     })),
   ];
 
@@ -425,8 +519,14 @@ export async function GET() {
       (
         !userScopedReadDiagnostics.tables.users.ok ||
         !userScopedReadDiagnostics.tables.organizations.ok ||
+        !userScopedReadDiagnostics.tables.channels.ok ||
+        !userScopedReadDiagnostics.tables.companies.ok ||
+        !userScopedReadDiagnostics.tables.contacts.ok ||
         !userScopedReadDiagnostics.tables.conversations.ok ||
-        !userScopedReadDiagnostics.tables.messages.ok
+        !userScopedReadDiagnostics.tables.messages.ok ||
+        !userScopedReadDiagnostics.tables.knowledgeEntries.ok ||
+        !userScopedReadDiagnostics.tables.qaFollowUps.ok ||
+        !userScopedReadDiagnostics.tables.emailConnectionMetadata.ok
       )
   );
 
@@ -435,8 +535,14 @@ export async function GET() {
     reason: rlsRepairRequired
       ? "Authenticated Supabase reads are still failing for one or more org-scoped tables. Production is still relying on tenant-scoped admin fallbacks."
       : null,
-    migration: "0042_rls_inbox_read_repair.sql",
-    sqlPath: "supabase/migrations/0042_rls_inbox_read_repair.sql",
+    migrations: [
+      "0042_rls_inbox_read_repair.sql",
+      "0047_email_connection_metadata_grants.sql",
+    ],
+    sqlPaths: [
+      "supabase/migrations/0042_rls_inbox_read_repair.sql",
+      "supabase/migrations/0047_email_connection_metadata_grants.sql",
+    ],
   };
 
   return NextResponse.json({

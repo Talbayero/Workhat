@@ -32,6 +32,11 @@ export type SetupReadiness = {
     credentialMailboxConfigured: boolean;
     customInboundConfigured: boolean;
     redisConfigured: boolean;
+    manualImportReady: boolean;
+    gmailWatchReady: boolean;
+    watchRenewalReady: boolean;
+    rateLimitReady: boolean;
+    productionUrlReady: boolean;
     gmailApiEnabledExpectation: string;
     activeInboundAdapterAvailable: boolean;
     activeOutboundAdapterAvailable: boolean;
@@ -62,6 +67,9 @@ export function getEmailSetupReadiness(): SetupReadiness {
   const encryptionConfigured = hasEnv("EMAIL_TOKEN_ENCRYPTION_KEY");
   const googleClientConfigured = hasEnv("GOOGLE_CLIENT_ID");
   const googleSecretConfigured = hasEnv("GOOGLE_CLIENT_SECRET");
+  const pubSubTopicConfigured = hasEnv("GOOGLE_PUBSUB_TOPIC");
+  const gmailPushTokenConfigured = hasEnv("GMAIL_PUSH_TOKEN");
+  const cronSecretConfigured = hasEnv("CRON_SECRET");
   const canonicalBaseUrl = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
   const canonicalBaseUrlConfigured = Boolean(canonicalBaseUrl);
   const googleRedirectUri = canonicalBaseUrl
@@ -77,6 +85,8 @@ export function getEmailSetupReadiness(): SetupReadiness {
     adminConfigured &&
     canonicalBaseUrlConfigured &&
     googleOAuthRoutesAvailable;
+  const gmailWatchReady = googleOAuthConfigured && pubSubTopicConfigured && gmailPushTokenConfigured;
+  const watchRenewalReady = gmailWatchReady && cronSecretConfigured;
   const credentialMailboxConfigured = false;
   const customInboundConfigured = false;
 
@@ -113,6 +123,7 @@ export function getEmailSetupReadiness(): SetupReadiness {
     },
     check("GOOGLE_PUBSUB_TOPIC", "Gmail live update topic", "Optional. Without it, Gmail still supports manual import but not live watch.", false),
     check("GMAIL_PUSH_TOKEN", "Gmail push token", "Optional unless Gmail live watch is enabled.", false),
+    check("CRON_SECRET", "Watch renewal cron secret", "Required before scheduled Gmail watch renewal can run safely.", false),
   ];
 
   const missingRequiredEnv = checks
@@ -158,6 +169,11 @@ export function getEmailSetupReadiness(): SetupReadiness {
       credentialMailboxConfigured,
       customInboundConfigured,
       redisConfigured,
+      manualImportReady: googleOAuthConfigured,
+      gmailWatchReady,
+      watchRenewalReady,
+      rateLimitReady: redisConfigured,
+      productionUrlReady: canonicalBaseUrlConfigured,
       gmailApiEnabledExpectation: "The Work Hat-owned Google Cloud project must have Gmail API enabled.",
       activeInboundAdapterAvailable,
       activeOutboundAdapterAvailable,

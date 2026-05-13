@@ -6,16 +6,17 @@ export const revalidate = 0;
 
 type Props = {
   params: Promise<{ conversationId: string }>;
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ q?: string; view?: string }>;
 };
 
 export default async function InboxConversationPage({ params, searchParams }: Props) {
   const { conversationId } = await params;
-  const { view } = await searchParams;
+  const { q, view } = await searchParams;
   return (
     <InboxWorkspace
       selectedConversationId={conversationId}
       activeView={(view as InboxViewId) ?? "all"}
+      searchQuery={q ?? ""}
     />
   );
 }

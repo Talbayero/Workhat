@@ -7,6 +7,7 @@ import {
   inboxViews,
 } from "@/lib/inbox/filters";
 import type { InboxConversation, InboxViewId, RiskLevel } from "@/lib/inbox/types";
+import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { getConversations, getConversationById, getOrgIntentColors } from "@/lib/data/inbox";
 import { ThreadWorkspace } from "./thread-workspace";
 import { NewConversationButton } from "./new-conversation-button";
@@ -14,6 +15,7 @@ import { NewConversationButton } from "./new-conversation-button";
 type InboxWorkspaceProps = {
   selectedConversationId?: string;
   activeView?: InboxViewId;
+  searchQuery?: string;
 };
 
 const riskDot: Record<RiskLevel, string> = {
@@ -25,14 +27,27 @@ const riskDot: Record<RiskLevel, string> = {
 export async function InboxWorkspace({
   selectedConversationId,
   activeView = "all",
+  searchQuery = "",
   isDemo = false,
   staticConversations,
 }: InboxWorkspaceProps & { isDemo?: boolean; staticConversations?: InboxConversation[] }) {
   // Fetch all conversations for sidebar list + view counts + intent colors
-  const [allConversations, intentColors] = await Promise.all([
+  const [allConversations, intentColors, currentUser] = await Promise.all([
     isDemo && staticConversations ? Promise.resolve(staticConversations) : getConversations(),
     isDemo ? Promise.resolve({} as Record<string, string>) : getOrgIntentColors(),
+    isDemo
+      ? Promise.resolve({ id: null, full_name: "Marcos" })
+      : getCurrentAppUser<{ id: string; org_id: string; role: string; full_name?: string }>({
+          label: "inbox/workspace",
+          select: "id, org_id, role, full_name",
+        }),
   ]);
+
+  const filterOptions = {
+    currentUserId: currentUser?.id ?? null,
+    currentAgentName: currentUser?.full_name ?? null,
+    searchQuery,
+  };
 
   console.info("[inbox] InboxWorkspace loaded conversations:", {
     activeView,
@@ -41,9 +56,10 @@ export async function InboxWorkspace({
     count: allConversations.length,
   });
     
-  const filtered = filterConversations(allConversations, activeView);
+  const filtered = filterConversations(allConversations, activeView, filterOptions);
   console.info("[inbox] InboxWorkspace filtered conversations:", {
     activeView,
+    searchQuery: searchQuery || null,
     count: filtered.length,
   });
 
@@ -65,10 +81,19 @@ export async function InboxWorkspace({
 
   // Compute real counts from actual data
   const viewCounts = Object.fromEntries(
-    inboxViews.map((v) => [v.id, filterConversations(allConversations, v.id).length])
+    inboxViews.map((v) => [v.id, filterConversations(allConversations, v.id, {
+      currentUserId: filterOptions.currentUserId,
+      currentAgentName: filterOptions.currentAgentName,
+    }).length])
   ) as Record<InboxViewId, number>;
 
   const baseDir = isDemo ? "/demo" : "";
+  const buildInboxHref = (viewId: InboxViewId, conversationId?: string) => {
+    const params = new URLSearchParams({ view: viewId });
+    if (searchQuery.trim()) params.set("q", searchQuery.trim());
+    const path = conversationId ? `${baseDir}/inbox/${conversationId}` : `${baseDir}/inbox`;
+    return `${path}?${params.toString()}`;
+  };
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -95,7 +120,7 @@ export async function InboxWorkspace({
               return (
                 <Link
                   key={view.id}
-                  href={`${baseDir}/inbox?view=${view.id}`}
+                  href={buildInboxHref(view.id)}
                   className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors ${
                     isActive
                       ? "bg-[var(--sage)] text-[var(--foreground)]"
@@ -111,13 +136,15 @@ export async function InboxWorkspace({
         </div>
 
         <div className="shrink-0 border-b border-[var(--line)] px-3 py-3">
-          {/* Submitting navigates to the full search page — keeps search logic in one place */}
-          <form role="search" aria-label="Search conversations" action={`${baseDir}/search`} method="get">
+          {/* Keep search scoped to the current inbox view. */}
+          <form role="search" aria-label="Search conversations" action={`${baseDir}/inbox`} method="get">
+            <input type="hidden" name="view" value={activeView} />
             <input
               type="search"
               name="q"
               aria-label="Search conversations"
               placeholder="Search conversations…"
+              defaultValue={searchQuery}
               className="w-full rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-xs text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors"
             />
           </form>
@@ -147,7 +174,7 @@ export async function InboxWorkspace({
             return (
               <Link
                 key={conversation.id}
-                href={`${baseDir}/inbox/${conversation.id}?view=${activeView}`}
+                href={buildInboxHref(activeView, conversation.id)}
                 className={`block border-b px-2 py-3 transition-colors ${
                   isSelected
                     ? "rounded-[18px] border-[var(--moss)] bg-[rgba(144,50,61,0.1)]"

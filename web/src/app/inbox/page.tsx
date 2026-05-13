@@ -7,10 +7,10 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type Props = {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ q?: string; view?: string }>;
 };
 
 export default async function InboxPage({ searchParams }: Props) {
-  const { view } = await searchParams;
-  return <InboxWorkspace activeView={(view as InboxViewId) ?? "all"} />;
+  const { q, view } = await searchParams;
+  return <InboxWorkspace activeView={(view as InboxViewId) ?? "all"} searchQuery={q ?? ""} />;
 }

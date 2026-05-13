@@ -18,6 +18,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   let slaPolicy = null;
   let teamData: unknown[] = [];
   let mailboxReady = false;
+  let knowledgeEntryCount = 0;
   let callerRole = "admin";
   let callerId = "";
 
@@ -75,6 +76,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         .maybeSingle();
       mailboxReady = Boolean(activeMailbox);
 
+      const { count: activeKnowledgeCount } = await supabase
+        .from("knowledge_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId)
+        .eq("is_active", true);
+      knowledgeEntryCount = activeKnowledgeCount ?? 0;
+
       const { data: policy } = await supabase
         .from("org_sla_policies")
         .select("enabled, first_response_minutes, next_response_minutes, at_risk_threshold_minutes, business_hours_json")
@@ -101,6 +109,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       callerId={callerId}
       initialTab={tab}
       mailboxReady={mailboxReady}
+      knowledgeEntryCount={knowledgeEntryCount}
     />
   );
 }

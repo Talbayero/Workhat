@@ -115,19 +115,19 @@ async function getCurrentOrgId(
 
 type DbConversation = {
   id: string;
-  subject: string;
-  status: string;
+  subject: string | null;
+  status: string | null;
   priority: string;
   contact_id: string | null;
   company_id: string | null;
   assigned_user_id?: string | null;
-  assigned_to_name: string;
-  risk_level: string;
-  ai_confidence: string;
-  preview: string;
-  intent: string;
-  tags: string[];
-  last_message_at: string;
+  assigned_to_name: string | null;
+  risk_level: string | null;
+  ai_confidence: string | null;
+  preview: string | null;
+  intent: string | null;
+  tags: string[] | null;
+  last_message_at: string | null;
   sla_status?: string | null;
   sla_target?: string | null;
   sla_due_at?: string | null;
@@ -182,25 +182,35 @@ function logSupabaseError(label: string, error: SupabaseErrorLike | null | undef
   });
 }
 
+function normalizeConversationStatus(value: string | null): InboxConversation["status"] {
+  if (value === "waiting_on_customer" || value === "waiting_on_internal" || value === "closed") return value;
+  return "open";
+}
+
+function normalizeRiskLevel(value: string | null, fallback: RiskLevel): RiskLevel {
+  if (value === "green" || value === "yellow" || value === "red") return value;
+  return fallback;
+}
+
 function dbConvToFrontend(row: DbConversation): InboxConversation {
   return {
     id: row.id,
     contactId: row.contact_id ?? "",
-    customerName: row.contacts?.full_name ?? "Unknown",
+    customerName: row.contacts?.full_name || row.contacts?.email || "Unknown contact",
     companyId: row.company_id ?? "",
-    companyName: row.companies?.name ?? "",
+    companyName: row.companies?.name || "No company",
     assignedUserId: row.assigned_user_id ?? null,
-    subject: row.subject,
-    preview: row.preview,
-    status: row.status as InboxConversation["status"],
+    subject: row.subject || "(no subject)",
+    preview: row.preview || "No preview available.",
+    status: normalizeConversationStatus(row.status),
     channel: "email",
-    riskLevel: row.risk_level as RiskLevel,
-    aiConfidence: row.ai_confidence as RiskLevel,
-    assignee: row.assigned_to_name,
+    riskLevel: normalizeRiskLevel(row.risk_level, "green"),
+    aiConfidence: normalizeRiskLevel(row.ai_confidence, "yellow"),
+    assignee: row.assigned_to_name ?? "",
     lastSeen: relativeTime(row.last_message_at),
-    lastMessageAt: row.last_message_at,
+    lastMessageAt: row.last_message_at ?? undefined,
     tags: row.tags ?? [],
-    intent: row.intent,
+    intent: row.intent || "unclassified",
     sla: {
       status: (row.sla_status ?? "not_applicable") as SlaStatus,
       target: row.sla_target as NonNullable<InboxConversation["sla"]>["target"],
@@ -424,10 +434,10 @@ export async function getConversationById(
   const conv = dbConvToFrontend(convRes.data as unknown as DbConversation);
   conv.messages = (msgRes.data ?? []).map((m) => ({
     id: m.id,
-    sender: m.author_name,
+    sender: m.author_name || (m.sender_type === "customer" ? "Customer" : "Work Hat user"),
     senderType: m.sender_type as InboxConversation["messages"][number]["senderType"],
     timestamp: relativeTime(m.created_at),
-    body: m.body_text,
+    body: m.body_text?.trim() || "No readable message body was imported for this email.",
   }));
 
   return conv;

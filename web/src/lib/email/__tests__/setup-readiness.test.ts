@@ -14,6 +14,7 @@ const TRACKED_ENV = [
   "UPSTASH_REDIS_REST_TOKEN",
   "GOOGLE_PUBSUB_TOPIC",
   "GMAIL_PUSH_TOKEN",
+  "CRON_SECRET",
 ] as const;
 
 const originalEnv = Object.fromEntries(TRACKED_ENV.map((key) => [key, process.env[key]]));
@@ -65,6 +66,9 @@ describe("email setup readiness", () => {
     expect(readiness.summary.googleRedirectUri).toBe("https://work-hat.com/api/oauth/google/callback");
     expect(readiness.summary.gmailApiEnabledExpectation).toBe("The Work Hat-owned Google Cloud project must have Gmail API enabled.");
     expect(readiness.summary.gmailOAuthState).toBe("ready");
+    expect(readiness.summary.manualImportReady).toBe(true);
+    expect(readiness.summary.gmailWatchReady).toBe(false);
+    expect(readiness.summary.watchRenewalReady).toBe(false);
     expect(readiness.methods.oauth.status).toBe("ready");
     expect(Object.keys(readiness.methods)).toEqual(["oauth"]);
   });

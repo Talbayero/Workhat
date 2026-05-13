@@ -54,5 +54,11 @@ export async function GET() {
     return NextResponse.json({ error: "Unable to fetch conversation count." }, { status: 500 });
   }
 
+  console.info("[conversations/count] loaded:", {
+    orgId: appUser.org_id,
+    count: count ?? 0,
+    querySource,
+  });
+
   return NextResponse.json({ open: count ?? 0 });
 }

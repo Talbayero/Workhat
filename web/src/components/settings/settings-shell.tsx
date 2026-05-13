@@ -392,18 +392,20 @@ function SetupTab({
   org,
   team,
   mailboxReady,
+  knowledgeEntryCount,
   onOpenTab,
   baseDir = "",
 }: {
   org: OrgRecord | null;
   team: TeamMember[];
   mailboxReady: boolean;
+  knowledgeEntryCount: number;
   onOpenTab: (tab: SettingsTab) => void;
   baseDir?: string;
 }) {
   const hasOrg = Boolean(org);
   const hasInboundMailbox = mailboxReady;
-  const hasKnowledgePath = true;
+  const hasKnowledgePath = knowledgeEntryCount > 0;
   const hasTeam = team.length > 0;
 
   const steps = [
@@ -427,7 +429,9 @@ function SetupTab({
     },
     {
       label: "Add knowledge",
-      description: "Upload SOPs, tone rules, and policies so AI drafts have useful context.",
+      description: hasKnowledgePath
+        ? `${knowledgeEntryCount} active knowledge entr${knowledgeEntryCount === 1 ? "y" : "ies"} ready for AI draft context.`
+        : "Upload SOPs, tone rules, and policies so AI drafts have useful context.",
       complete: hasKnowledgePath,
       href: `${baseDir}/knowledge`,
       actionLabel: "Open knowledge",
@@ -2062,12 +2066,12 @@ function BillingTab({ org }: { org: OrgRecord | null }) {
           <div>
             <p className="text-xl font-semibold capitalize">{org?.crm_plan ?? "Starter"}</p>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              Manage your plan and billing in the billing portal.
+              Billing portal access is not configured yet. Current plan details are shown here for reference.
             </p>
           </div>
-          <button className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--moss)]">
-            Manage billing
-          </button>
+          <span className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium text-[var(--muted)]">
+            Portal unavailable
+          </span>
         </div>
       </SectionCard>
     </div>
@@ -2089,6 +2093,7 @@ export function SettingsShell({
   isDemo = false,
   baseDir = "",
   mailboxReady = false,
+  knowledgeEntryCount = 0,
 }: {
   org: OrgRecord | null;
   channel: ChannelRecord | null;
@@ -2100,6 +2105,7 @@ export function SettingsShell({
   isDemo?: boolean;
   baseDir?: string;
   mailboxReady?: boolean;
+  knowledgeEntryCount?: number;
 }) {
   const resolvedInitialTab: SettingsTab =
     initialTab && VALID_TABS.has(initialTab as SettingsTab)
@@ -2148,6 +2154,7 @@ export function SettingsShell({
         org={org}
         team={team}
         mailboxReady={mailboxReady}
+        knowledgeEntryCount={knowledgeEntryCount}
         onOpenTab={setActiveTab}
         baseDir={baseDir}
       />
