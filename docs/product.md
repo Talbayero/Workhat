@@ -50,11 +50,14 @@ Do not claim onboarding is complete unless this path works.
 
 The Inbox is the primary Work Hat workspace. A usable conversation must make the current reply target obvious:
 
-- The thread workspace shows a "Replying to" card above the composer with the latest inbound customer message, sender, subject, timestamp, and message body preview.
+- The thread workspace shows an "Active customer message" panel under the conversation header with the latest inbound customer message, sender, subject, timestamp, and message body preview.
+- The composer stays focused on writing and approval, without duplicating customer message context.
+- A collapsible customer details panel shows identity, email, company, tags, prior conversation count, last activity, and notes when available.
 - Customer messages, agent replies, internal notes, and activity/system events use distinct visual treatments.
 - Internal notes are team-only and must never look like outbound customer replies.
 - The default operational queue prioritizes `human_customer` and `unknown` imported Gmail conversations.
 - System notifications, auth emails, and newsletters are retained but shown through an automated/system filter instead of cluttering the default queue.
+- If automated/system mail is hidden from the default queue, the Inbox should show a small count so users know those messages still exist.
 - AI Draft and Send controls must be disabled with visible reasons when there is no latest inbound customer message, the reply is empty, or the conversation is closed.
 
 ## Modules

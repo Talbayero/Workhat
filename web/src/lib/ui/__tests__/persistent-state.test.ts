@@ -1,8 +1,10 @@
 import {
   readStoredBoolean,
   readStoredNumber,
+  readStoredString,
   writeStoredBoolean,
   writeStoredNumber,
+  writeStoredString,
 } from "@/lib/ui/persistent-state";
 
 function createMemoryStorage() {
@@ -32,5 +34,17 @@ describe("persistent UI state helpers", () => {
 
     writeStoredNumber(storage, "width", 240);
     expect(readStoredNumber(storage, "width", { fallback: 320, min: 260, max: 420 })).toBe(260);
+  });
+
+  it("persists allowed string values only", () => {
+    const storage = createMemoryStorage();
+
+    writeStoredString(storage, "preset", "wide");
+    expect(readStoredString(storage, "preset", ["compact", "comfortable", "wide"] as const, "comfortable"))
+      .toBe("wide");
+
+    writeStoredString(storage, "preset", "surprising");
+    expect(readStoredString(storage, "preset", ["compact", "comfortable", "wide"] as const, "comfortable"))
+      .toBe("comfortable");
   });
 });

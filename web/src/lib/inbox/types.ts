@@ -53,6 +53,7 @@ export type InboxConversation = {
     notes: string[];
     openIssues: string[];
   };
+  previousConversationCount?: number;
 };
 
 export type InboxViewId =

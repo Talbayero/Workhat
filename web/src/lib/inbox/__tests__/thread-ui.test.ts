@@ -2,7 +2,9 @@ import {
   getAiDraftDisabledReason,
   getLatestInboundCustomerMessage,
   getMessagePresentation,
+  getReplyingToBody,
   getSendDisabledReason,
+  shouldOfferFullThread,
 } from "@/lib/inbox/thread-ui";
 import type { InboxConversation } from "@/lib/inbox/types";
 
@@ -17,7 +19,7 @@ const customerMessage: Message = {
 };
 
 describe("thread workspace helpers", () => {
-  it("finds the latest inbound customer message for the replying-to card", () => {
+  it("finds the latest inbound customer message for the active customer message panel", () => {
     const latest = {
       ...customerMessage,
       id: "customer-2",
@@ -29,6 +31,14 @@ describe("thread workspace helpers", () => {
       { id: "agent-1", sender: "Agent", senderType: "agent", timestamp: "10:02", body: "Sure." },
       latest,
     ])).toEqual(latest);
+  });
+
+  it("supports compact active-message previews with explicit expansion", () => {
+    const longBody = "A".repeat(600);
+
+    expect(shouldOfferFullThread(longBody)).toBe(true);
+    expect(getReplyingToBody(longBody, false)).toHaveLength(523);
+    expect(getReplyingToBody(longBody, true)).toBe(longBody);
   });
 
   it("separates internal notes and activity from outbound customer replies", () => {

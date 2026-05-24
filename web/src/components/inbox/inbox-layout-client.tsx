@@ -16,11 +16,18 @@ import {
 import type { InboxConversation, InboxViewId, RiskLevel } from "@/lib/inbox/types";
 import {
   readStoredBoolean,
-  readStoredNumber,
+  readStoredString,
   UI_STORAGE_KEYS,
   writeStoredBoolean,
-  writeStoredNumber,
+  writeStoredString,
 } from "@/lib/ui/persistent-state";
+import {
+  getQueueWidthForPreset,
+  QUEUE_WIDTH_PRESETS,
+  QUEUE_WIDTH_PRESET_VALUES,
+  shouldShowOpenQueue,
+  type QueueWidthPreset,
+} from "@/lib/inbox/layout";
 
 type InboxLayoutClientProps = {
   allConversations: InboxConversation[];
@@ -60,28 +67,42 @@ export function InboxLayoutClient({
   isDemo,
 }: InboxLayoutClientProps) {
   const [queueCollapsed, setQueueCollapsed] = useState(false);
-  const [queueWidth, setQueueWidth] = useState(320);
+  const [queuePreset, setQueuePreset] = useState<QueueWidthPreset>("comfortable");
+  const [layoutHydrated, setLayoutHydrated] = useState(false);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       setQueueCollapsed(readStoredBoolean(window.localStorage, UI_STORAGE_KEYS.inboxQueueCollapsed, false));
-      setQueueWidth(readStoredNumber(window.localStorage, UI_STORAGE_KEYS.inboxQueueWidth, {
-        fallback: 320,
-        min: 260,
-        max: 440,
-      }));
+      setQueuePreset(readStoredString(
+        window.localStorage,
+        UI_STORAGE_KEYS.inboxQueueWidthPreset,
+        QUEUE_WIDTH_PRESET_VALUES,
+        "comfortable",
+      ));
+      setLayoutHydrated(true);
     });
 
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
+    if (!layoutHydrated) return;
     writeStoredBoolean(window.localStorage, UI_STORAGE_KEYS.inboxQueueCollapsed, queueCollapsed);
-  }, [queueCollapsed]);
+  }, [layoutHydrated, queueCollapsed]);
 
   useEffect(() => {
-    writeStoredNumber(window.localStorage, UI_STORAGE_KEYS.inboxQueueWidth, queueWidth);
-  }, [queueWidth]);
+    if (!layoutHydrated) return;
+    writeStoredString(window.localStorage, UI_STORAGE_KEYS.inboxQueueWidthPreset, queuePreset);
+  }, [layoutHydrated, queuePreset]);
+
+  const queueWidth = getQueueWidthForPreset(queuePreset);
+  const hiddenAutomatedCount = allConversations.filter((conversation) => !isDefaultOperationalConversation(conversation)).length;
+  const selectedWithContext = selected ? {
+    ...selected,
+    previousConversationCount: selected.contactId
+      ? allConversations.filter((conversation) => conversation.contactId === selected.contactId && conversation.id !== selected.id).length
+      : 0,
+  } satisfies InboxConversation : null;
 
   const buildInboxHref = (viewId: InboxViewId, conversationId?: string) => {
     const params = new URLSearchParams({ view: viewId });
@@ -92,11 +113,12 @@ export function InboxLayoutClient({
 
   return (
     <div className="flex h-full overflow-hidden">
-      {queueCollapsed ? (
+      {shouldShowOpenQueue(queueCollapsed) ? (
         <aside aria-label="Collapsed conversation list" className="flex h-full w-[54px] shrink-0 flex-col items-center border-r border-[var(--line)] bg-[var(--panel)] px-2 py-3">
           <button
             type="button"
             onClick={() => setQueueCollapsed(false)}
+            aria-label="Open queue"
             className="rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-2 py-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)]"
             style={{ writingMode: "vertical-rl" }}
             title="Open queue"
@@ -120,9 +142,15 @@ export function InboxLayoutClient({
                 <span className="rounded-full bg-[var(--sage)] px-2.5 py-1 text-[11px] font-medium">
                   {filtered.length} {activeView === "all" ? "active" : "filtered"}
                 </span>
+                {activeView === "all" && hiddenAutomatedCount > 0 && (
+                  <span className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[11px] text-[var(--muted)]" title="Automated/system mail is available in its own filter.">
+                    {hiddenAutomatedCount} automated hidden
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => setQueueCollapsed(true)}
+                  aria-label="Collapse queue"
                   className="rounded-full border border-[var(--line)] px-2.5 py-1 text-[11px] text-[var(--muted)] transition-colors hover:border-[var(--moss)] hover:text-[var(--foreground)]"
                   title="Collapse queue"
                 >
@@ -134,19 +162,27 @@ export function InboxLayoutClient({
             <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
               The default queue prioritizes customer and unknown Gmail conversations. Automated mail stays available in its own filter.
             </p>
-            <div className="mt-3 flex items-center gap-2 text-[10px] text-[var(--muted)]">
-              <label htmlFor="queue-width" className="shrink-0">Queue width</label>
-              <input
-                id="queue-width"
-                type="range"
-                min={260}
-                max={440}
-                step={20}
-                value={queueWidth}
-                onChange={(event) => setQueueWidth(Number(event.target.value))}
-                className="min-w-0 flex-1 accent-[var(--moss)]"
-              />
-              <span className="w-9 text-right">{queueWidth}px</span>
+            <div className="mt-3 grid grid-cols-3 gap-1 rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] p-1">
+              {QUEUE_WIDTH_PRESET_VALUES.map((preset) => {
+                const option = QUEUE_WIDTH_PRESETS[preset];
+                const isActive = queuePreset === preset;
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setQueuePreset(preset)}
+                    aria-pressed={isActive}
+                    className={`rounded-[11px] px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                      isActive
+                        ? "bg-[var(--moss)] text-white"
+                        : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
+                    }`}
+                    title={option.description}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
             <div className="mt-3 flex flex-col gap-0.5">
               {inboxViews.map((view) => {
@@ -277,8 +313,8 @@ export function InboxLayoutClient({
       )}
 
       <div className="min-w-0 flex-1 overflow-hidden">
-        {selected ? (
-          <ThreadWorkspace key={selected.id} conversation={selected} isDemo={isDemo} intentColors={intentColors} />
+        {selectedWithContext ? (
+          <ThreadWorkspace key={selectedWithContext.id} conversation={selectedWithContext} isDemo={isDemo} intentColors={intentColors} />
         ) : (
           <div className="flex h-full items-center justify-center px-8">
             <div className="max-w-sm rounded-[24px] border border-[var(--line)] bg-[var(--panel-strong)] p-8 text-center">

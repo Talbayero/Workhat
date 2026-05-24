@@ -15,8 +15,6 @@ const routeMeta: Record<string, RouteMeta> = {
   inbox: {
     label: "Inbox",
     description: "Manage live conversations, review AI guidance, and keep replies moving.",
-    actionLabel: "Open queue",
-    actionHref: "/inbox",
   },
   contacts: {
     label: "Contacts",
@@ -78,7 +76,7 @@ export function Topbar() {
   const isDetailRoute = isDemo ? pathSegments.length > 2 : pathSegments.length > 1;
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[rgba(10,9,8,0.86)] backdrop-blur-xl">
+    <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[var(--panel)] backdrop-blur-xl">
       <div className="flex items-center justify-between gap-4 px-6 py-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">

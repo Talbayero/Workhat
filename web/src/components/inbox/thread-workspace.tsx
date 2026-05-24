@@ -124,7 +124,7 @@ export function ThreadWorkspace({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [teamLoading, setTeamLoading] = useState(false);
   const [threadError, setThreadError] = useState<string | null>(null);
-  const [replyingToExpanded, setReplyingToExpanded] = useState(false);
+  const [activeMessageExpanded, setActiveMessageExpanded] = useState(false);
 
   // Live AI draft state
   const [liveDraft, setLiveDraft] = useState<LiveDraft | null>(null);
@@ -181,6 +181,20 @@ export function ThreadWorkspace({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [localMessages]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (window.sessionStorage.getItem("workhat.customerDetailsOpen") === "true") {
+        setActivePanel((current) => current ?? "profile");
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    window.sessionStorage.setItem("workhat.customerDetailsOpen", String(activePanel === "profile"));
+  }, [activePanel]);
 
   useEffect(() => {
     if (isDemo) return;
@@ -824,6 +838,18 @@ export function ThreadWorkspace({
 
             {/* Right side: AI confidence + quick Resolve/Reopen */}
             <div className="shrink-0 flex flex-col items-end gap-2">
+              <button
+                type="button"
+                onClick={() => togglePanel("profile")}
+                aria-expanded={activePanel === "profile"}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  activePanel === "profile"
+                    ? "border-[var(--moss)] bg-[rgba(144,50,61,0.12)] text-[var(--foreground)]"
+                    : "border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                Customer details
+              </button>
               <div className="flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2">
                 <span aria-hidden="true" className={`status-dot ${confidenceDot[conversation.aiConfidence]}`} />
                 <span className="text-xs text-[var(--muted)]">
@@ -852,6 +878,41 @@ export function ThreadWorkspace({
             </div>
           </div>
         </div>
+
+        <section className="shrink-0 border-b border-[var(--line)] bg-[rgba(255,255,255,0.012)] px-5 py-3" aria-label="Active customer message">
+          {latestInboundCustomerMessage ? (
+            <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="eyebrow text-[9px] text-[var(--muted)]">Active customer message</p>
+                  <p className="mt-1 truncate text-sm font-semibold">{latestInboundCustomerMessage.sender}</p>
+                  <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                    {conversation.profile.email || "No sender email"} · {conversation.subject} · {latestInboundCustomerMessage.timestamp}
+                  </p>
+                </div>
+                {shouldOfferFullThread(latestInboundCustomerMessage.body) && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveMessageExpanded((value) => !value)}
+                    className="shrink-0 rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-medium text-[var(--muted)] transition-colors hover:border-[var(--moss)] hover:text-[var(--foreground)]"
+                  >
+                    {activeMessageExpanded ? "Collapse" : "Show full message"}
+                  </button>
+                )}
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[var(--muted)]">
+                {getReplyingToBody(latestInboundCustomerMessage.body, activeMessageExpanded)}
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-[18px] border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.07)] px-4 py-3">
+              <p className="text-sm font-medium">No active customer message</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                This conversation has no inbound customer message to answer yet. AI Draft and customer Send remain disabled.
+              </p>
+            </div>
+          )}
+        </section>
 
         {threadError && (
           <div role="alert" className="shrink-0 border-b border-[var(--line)] px-5 py-3">
@@ -1083,45 +1144,6 @@ export function ThreadWorkspace({
 
         {/* Composer */}
         <div className="shrink-0 border-t border-[var(--line)] p-4">
-          {composerMode === "reply" && (
-            <div className="sticky top-0 z-10 mb-3 rounded-[18px] border border-[var(--line-strong)] bg-[var(--panel)] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
-              {latestInboundCustomerMessage ? (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="eyebrow text-[9px] text-[var(--muted)]">Replying to</p>
-                      <p className="mt-1 truncate text-sm font-semibold">
-                        {latestInboundCustomerMessage.sender}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
-                        {conversation.subject} · {latestInboundCustomerMessage.timestamp}
-                      </p>
-                    </div>
-                    {shouldOfferFullThread(latestInboundCustomerMessage.body) && (
-                      <button
-                        type="button"
-                        onClick={() => setReplyingToExpanded((value) => !value)}
-                        className="shrink-0 rounded-full border border-[var(--line)] px-3 py-1 text-[10px] font-medium text-[var(--muted)] transition-colors hover:border-[var(--moss)] hover:text-[var(--foreground)]"
-                      >
-                        {replyingToExpanded ? "Collapse" : "View full thread"}
-                      </button>
-                    )}
-                  </div>
-                  <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[var(--muted)]">
-                    {getReplyingToBody(latestInboundCustomerMessage.body, replyingToExpanded)}
-                  </p>
-                </>
-              ) : (
-                <div className="rounded-[14px] border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.07)] px-3 py-2">
-                  <p className="text-xs font-medium">No latest inbound customer message</p>
-                  <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                    AI Draft and Send stay disabled until this thread has an inbound customer message to answer.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Mode tabs */}
           {!pendingSend && (
             <div className="mb-3 flex gap-1.5">
@@ -1469,19 +1491,19 @@ export function ThreadWorkspace({
           </ErrorBoundary>
         )}
 
-        {/* Customer profile panel */}
+        {/* Customer details panel */}
         {activePanel === "profile" && (
-          <ErrorBoundary title="Profile panel error" inline>
+          <ErrorBoundary title="Customer details panel error" inline>
           <div className="flex h-full w-[320px] flex-col overflow-hidden">
             <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
               <div className="flex items-center justify-between">
                 <p className="eyebrow text-[10px] text-[var(--muted)]">
-                  Customer profile
+                  Customer details
                 </p>
                 <button
                   onClick={() => setActivePanel(null)}
                   className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-                  aria-label="Close customer profile panel"
+                  aria-label="Close customer details panel"
                 >
                   <CloseIcon />
                 </button>
@@ -1499,17 +1521,33 @@ export function ThreadWorkspace({
               <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4 space-y-3">
                 <div>
                   <p className="eyebrow text-[9px] text-[var(--muted)]">Email</p>
-                  <p className="mt-1 text-sm">{conversation.profile.email}</p>
+                  <p className="mt-1 break-words text-sm">{conversation.profile.email || "No email on contact"}</p>
                 </div>
                 <div>
-                  <p className="eyebrow text-[9px] text-[var(--muted)]">Phone</p>
-                  <p className="mt-1 text-sm">{conversation.profile.phone}</p>
+                  <p className="eyebrow text-[9px] text-[var(--muted)]">Company</p>
+                  <p className="mt-1 text-sm">{conversation.companyName || "No company linked"}</p>
                 </div>
                 <div>
-                  <p className="eyebrow text-[9px] text-[var(--muted)]">
-                    Account tier
-                  </p>
-                  <p className="mt-1 text-sm">{conversation.profile.tier}</p>
+                  <p className="eyebrow text-[9px] text-[var(--muted)]">Previous conversations</p>
+                  <p className="mt-1 text-sm">{conversation.previousConversationCount ?? 0}</p>
+                </div>
+                <div>
+                  <p className="eyebrow text-[9px] text-[var(--muted)]">Last activity</p>
+                  <p className="mt-1 text-sm">{conversation.lastSeen}</p>
+                </div>
+                <div>
+                  <p className="eyebrow text-[9px] text-[var(--muted)]">Tags</p>
+                  {conversation.tags.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {conversation.tags.map((tag) => (
+                        <span key={tag} className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-sm text-[var(--muted)]">No tags yet</p>
+                  )}
                 </div>
                 {conversation.contactId ? (
                   <Link

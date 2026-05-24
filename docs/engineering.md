@@ -148,12 +148,15 @@ Queue views should filter by SLA, risk, assignee, status, channel, and intent.
 
 Inbox and thread workspace changes must preserve the Gmail-only MVP path and make the operator state explicit:
 
-- The latest inbound customer message should be visible near the reply composer.
+- The latest inbound customer message should be visible directly under the conversation header, not duplicated above the composer.
 - Customer messages, outbound replies, internal notes, and system/activity events should not share the same visual treatment.
 - Buttons must be either wired, hidden when not applicable, or disabled with visible user-facing reason text.
 - Send remains human-approved and must not trigger when the reply is empty, the conversation is closed, or no inbound customer message exists.
 - AI Draft should be disabled with a reason when no latest inbound customer message exists.
 - Collapsible navigation or queue state may use browser-local persistence only; do not persist layout preference to tenant data unless there is a product requirement.
+- The primary app sidebar should fully hide behind a small keyboard-accessible edge handle.
+- Queue width controls should use understandable presets or a clear draggable resize handle, not arbitrary pixel sliders.
+- Theme switching should be discoverable from both Settings -> Appearance and the app sidebar footer.
 
 ## Theme Standard
 
