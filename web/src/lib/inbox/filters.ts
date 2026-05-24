@@ -1,4 +1,8 @@
 import type { InboxConversation, InboxViewId } from "@/lib/inbox/types";
+import {
+  getConversationEmailClassification,
+  isDefaultOperationalConversation,
+} from "@/lib/inbox/classification";
 
 type ConversationFilterOptions = {
   currentUserId?: string | null;
@@ -7,7 +11,7 @@ type ConversationFilterOptions = {
 };
 
 export const inboxViews: { id: InboxViewId; label: string; count: number }[] = [
-  { id: "all", label: "All conversations", count: 42 },
+  { id: "all", label: "Operational queue", count: 42 },
   { id: "mine", label: "Mine", count: 11 },
   { id: "unassigned", label: "Unassigned", count: 6 },
   { id: "high-risk", label: "High risk", count: 4 },
@@ -15,6 +19,7 @@ export const inboxViews: { id: InboxViewId; label: string; count: number }[] = [
   { id: "sla-breached", label: "SLA breached", count: 0 },
   { id: "ai-review", label: "AI needs review", count: 8 },
   { id: "unclassified", label: "Unclassified", count: 0 },
+  { id: "automated", label: "Automated/system", count: 0 },
 ];
 
 export function filterConversations(
@@ -27,8 +32,11 @@ export function filterConversations(
 
   const filteredByView = (() => {
     switch (view) {
+    case "all":
+      return list.filter(isDefaultOperationalConversation);
     case "mine":
       return list.filter((conversation) => {
+        if (!isDefaultOperationalConversation(conversation)) return false;
         if (options.currentUserId && conversation.assignedUserId) {
           return conversation.assignedUserId === options.currentUserId;
         }
@@ -36,17 +44,19 @@ export function filterConversations(
         return Boolean(currentAgentName && conversation.assignee === currentAgentName);
       });
     case "unassigned":
-      return list.filter((conversation) => !conversation.assignee || conversation.assignee === "");
+      return list.filter((conversation) => isDefaultOperationalConversation(conversation) && (!conversation.assignee || conversation.assignee === ""));
     case "high-risk":
-      return list.filter((conversation) => conversation.riskLevel === "red" || conversation.riskLevel === "yellow");
+      return list.filter((conversation) => isDefaultOperationalConversation(conversation) && (conversation.riskLevel === "red" || conversation.riskLevel === "yellow"));
     case "ai-review":
-      return list.filter((conversation) => conversation.aiConfidence === "red" || conversation.aiConfidence === "yellow");
+      return list.filter((conversation) => isDefaultOperationalConversation(conversation) && (conversation.aiConfidence === "red" || conversation.aiConfidence === "yellow"));
     case "sla-at-risk":
-      return list.filter((conversation) => conversation.sla?.status === "at_risk");
+      return list.filter((conversation) => isDefaultOperationalConversation(conversation) && conversation.sla?.status === "at_risk");
     case "sla-breached":
-      return list.filter((conversation) => conversation.sla?.status === "breached");
+      return list.filter((conversation) => isDefaultOperationalConversation(conversation) && conversation.sla?.status === "breached");
     case "unclassified":
-      return list.filter((conversation) => !conversation.intent || conversation.intent.toLowerCase() === "unclassified" || conversation.intent.trim() === "");
+      return list.filter((conversation) => isDefaultOperationalConversation(conversation) && (!conversation.intent || conversation.intent.toLowerCase() === "unclassified" || conversation.intent.trim() === ""));
+    case "automated":
+      return list.filter((conversation) => !isDefaultOperationalConversation(conversation));
     default:
       return list;
     }
@@ -62,6 +72,7 @@ export function filterConversations(
       conversation.preview,
       conversation.intent,
       conversation.assignee,
+      getConversationEmailClassification(conversation),
       ...conversation.tags,
     ]
       .filter(Boolean)

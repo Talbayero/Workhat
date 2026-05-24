@@ -71,11 +71,17 @@ outbound_enabled = true
 
 10. Click Import latest email and confirm the UI returns scanned/imported/skipped/errors counts.
 11. Confirm at least one imported email appears in `/inbox` as a conversation.
-12. Open the conversation, generate an AI draft, edit it, and send.
-13. Confirm the customer-facing reply is sent through Gmail, not simulated.
-14. Confirm `messages`, `sent_replies`, `edit_analyses`, `inbound_email_events`, workflow events, and audit/log evidence exist for the flow.
-15. Confirm onboarding does not advance past Gmail setup until Gmail is active, an import attempt has completed, and at least one inbox conversation is visible.
-16. In Settings -> Channels, click Run MVP smoke check and confirm it passes Gmail active, import attempted, visible Gmail-imported conversation, AI provider configured, and Gmail outbound available.
+12. Open the conversation and confirm the thread shows a "Replying to" card with the latest inbound customer message.
+13. Confirm internal notes and activity/system events are visually separate from customer messages and outbound replies.
+14. Confirm AI Draft is disabled with a reason if no latest inbound customer message exists.
+15. Confirm Send is disabled with a reason when the reply is empty or the conversation is closed.
+16. Open the automated/system queue filter and confirm system notifications are retained but excluded from the default operational queue.
+17. Open Settings -> Appearance and verify Light, Dark, and System preferences apply and persist after refresh.
+18. Generate an AI draft, edit it, and send.
+19. Confirm the customer-facing reply is sent through Gmail, not simulated.
+20. Confirm `messages`, `sent_replies`, `edit_analyses`, `inbound_email_events`, workflow events, and audit/log evidence exist for the flow.
+21. Confirm onboarding does not advance past Gmail setup until Gmail is active, an import attempt has completed, and at least one inbox conversation is visible.
+22. In Settings -> Channels, click Run MVP smoke check and confirm it passes Gmail active, import attempted, visible Gmail-imported conversation, AI provider configured, and Gmail outbound available.
 
 ## Deployment Readiness Checklist
 

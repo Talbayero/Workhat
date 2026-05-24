@@ -16,6 +16,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { buildAiImprovementInsights } from "@/lib/ai-improvement-engine/insights";
+import { classifyImportedEmail } from "@/lib/inbox/classification";
 import type {
   AiImprovementInsights,
   ImprovementEditRow,
@@ -204,6 +205,13 @@ function dbConvToFrontend(row: DbConversation): InboxConversation {
     preview: row.preview || "No preview available.",
     status: normalizeConversationStatus(row.status),
     channel: "email",
+    emailClassification: classifyImportedEmail({
+      senderName: row.contacts?.full_name ?? null,
+      senderEmail: row.contacts?.email ?? null,
+      subject: row.subject,
+      preview: row.preview,
+      tags: row.tags,
+    }),
     riskLevel: normalizeRiskLevel(row.risk_level, "green"),
     aiConfidence: normalizeRiskLevel(row.ai_confidence, "yellow"),
     assignee: row.assigned_to_name ?? "",
@@ -435,7 +443,9 @@ export async function getConversationById(
   conv.messages = (msgRes.data ?? []).map((m) => ({
     id: m.id,
     sender: m.author_name || (m.sender_type === "customer" ? "Customer" : "Work Hat user"),
-    senderType: m.sender_type as InboxConversation["messages"][number]["senderType"],
+    senderType: m.is_note
+      ? "internal"
+      : (m.sender_type as InboxConversation["messages"][number]["senderType"]),
     timestamp: relativeTime(m.created_at),
     body: m.body_text?.trim() || "No readable message body was imported for this email.",
   }));

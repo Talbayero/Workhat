@@ -46,6 +46,17 @@ The only acceptable self-serve MVP path is:
 
 Do not claim onboarding is complete unless this path works.
 
+## Inbox Experience Standard
+
+The Inbox is the primary Work Hat workspace. A usable conversation must make the current reply target obvious:
+
+- The thread workspace shows a "Replying to" card above the composer with the latest inbound customer message, sender, subject, timestamp, and message body preview.
+- Customer messages, agent replies, internal notes, and activity/system events use distinct visual treatments.
+- Internal notes are team-only and must never look like outbound customer replies.
+- The default operational queue prioritizes `human_customer` and `unknown` imported Gmail conversations.
+- System notifications, auth emails, and newsletters are retained but shown through an automated/system filter instead of cluttering the default queue.
+- AI Draft and Send controls must be disabled with visible reasons when there is no latest inbound customer message, the reply is empty, or the conversation is closed.
+
 ## Modules
 
 | Layer | Module | Purpose |

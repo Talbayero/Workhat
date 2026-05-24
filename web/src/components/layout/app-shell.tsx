@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { ThemeController } from "@/components/theme/theme-controller";
 
 const NO_SIDEBAR_ROUTES = [
   "/login",
@@ -25,11 +26,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     !NO_SIDEBAR_ROUTES.some((route) => pathname.startsWith(route));
 
   if (!showSidebar) {
-    return <>{children}</>;
+    return (
+      <>
+        <ThemeController />
+        {children}
+      </>
+    );
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--background)]">
+      <ThemeController />
       {/* Skip navigation — visible on focus for keyboard users (WCAG 2.4.1) */}
       <a
         href="#main-content"

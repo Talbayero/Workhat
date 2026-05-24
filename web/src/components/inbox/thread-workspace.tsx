@@ -6,6 +6,14 @@ import type { InboxConversation, RiskLevel } from "@/lib/inbox/types";
 import { recordEdit, type EditRecord } from "@/lib/edit-analysis";
 import type { ConfidenceLevel } from "@/ai/types";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import {
+  getAiDraftDisabledReason,
+  getLatestInboundCustomerMessage,
+  getMessagePresentation,
+  getReplyingToBody,
+  getSendDisabledReason,
+  shouldOfferFullThread,
+} from "@/lib/inbox/thread-ui";
 
 type LocalMessage = InboxConversation["messages"][number];
 type ConversationStatus = InboxConversation["status"];
@@ -61,12 +69,18 @@ const confidenceDot: Record<RiskLevel, string> = {
   red: "status-dot-red",
 };
 
-const messageBg: Record<string, string> = {
-  customer: "border-[var(--line)] bg-[var(--panel-strong)]",
-  internal:
-    "border-[rgba(169,146,125,0.2)] bg-[rgba(169,146,125,0.05)]",
-  ai: "border-[rgba(144,50,61,0.25)] bg-[rgba(73,17,28,0.14)]",
-  agent: "border-[var(--line)] bg-[var(--panel-strong)]",
+const messagePresentationStyle: Record<string, string> = {
+  customer_message: "border-[var(--line-strong)] bg-[var(--panel-strong)]",
+  agent_reply: "border-[rgba(120,161,122,0.28)] bg-[rgba(120,161,122,0.07)]",
+  internal_note: "border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.08)]",
+  activity: "border-[var(--line)] bg-[rgba(255,255,255,0.018)]",
+};
+
+const messagePresentationLabel: Record<string, string> = {
+  customer_message: "Customer message",
+  agent_reply: "Agent reply",
+  internal_note: "Internal note",
+  activity: "Activity",
 };
 
 function CloseIcon() {
@@ -110,6 +124,7 @@ export function ThreadWorkspace({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [teamLoading, setTeamLoading] = useState(false);
   const [threadError, setThreadError] = useState<string | null>(null);
+  const [replyingToExpanded, setReplyingToExpanded] = useState(false);
 
   // Live AI draft state
   const [liveDraft, setLiveDraft] = useState<LiveDraft | null>(null);
@@ -237,6 +252,18 @@ export function ThreadWorkspace({
   // Call the real API to generate a draft
   const generateDraft = useCallback(async () => {
     if (draftLoading) return;
+    const latestInboundMessage = getLatestInboundCustomerMessage(localMessages);
+    const disabledReason = getAiDraftDisabledReason({
+      status,
+      latestInboundMessage,
+      draftLoading: false,
+    });
+
+    if (disabledReason) {
+      setDraftError(disabledReason);
+      return;
+    }
+
     setDraftLoading(true);
     setDraftError(null);
     try {
@@ -292,6 +319,8 @@ export function ThreadWorkspace({
     conversation.tags,
     selectedContextId,
     selectedContextOption,
+    localMessages,
+    status,
   ]);
 
   function togglePanel(panel: ActivePanel) {
@@ -300,6 +329,12 @@ export function ThreadWorkspace({
 
   // Open AI panel and auto-generate if no draft yet
   function openAIPanel() {
+    if (aiDraftDisabledReason) {
+      setActivePanel("ai");
+      setDraftError(aiDraftDisabledReason);
+      return;
+    }
+
     setActivePanel("ai");
     void loadContextOptions();
   }
@@ -496,13 +531,23 @@ export function ThreadWorkspace({
   }
 
   function handleSendClick() {
-    if (!replyText.trim()) return;
+    if (sendDisabledReason) {
+      setSendError(sendDisabledReason);
+      return;
+    }
+
     setSendError(null);
     setPendingSend(true);
   }
 
   async function confirmSend() {
     if (sending) return;
+    if (sendDisabledReason) {
+      setSendError(sendDisabledReason);
+      setPendingSend(false);
+      return;
+    }
+
     setSending(true);
     setSendError(null);
 
@@ -617,6 +662,18 @@ export function ThreadWorkspace({
   const panelOpen = activePanel !== null;
 
   const baseDir = isDemo ? "/demo" : "";
+  const latestInboundCustomerMessage = getLatestInboundCustomerMessage(localMessages);
+  const sendDisabledReason = getSendDisabledReason({
+    status,
+    replyText,
+    latestInboundMessage: latestInboundCustomerMessage,
+    mode: composerMode,
+  });
+  const aiDraftDisabledReason = getAiDraftDisabledReason({
+    status,
+    latestInboundMessage: latestInboundCustomerMessage,
+    draftLoading,
+  });
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -738,7 +795,14 @@ export function ThreadWorkspace({
                     <button
                       onClick={handleClaim}
                       disabled={teamLoading || !currentUserId}
-                      className="rounded-full border border-[var(--moss)] px-2.5 py-1 text-[10px] font-medium text-[var(--moss)] transition-colors hover:bg-[var(--moss)] hover:text-white"
+                      title={
+                        teamLoading
+                          ? "Team members are still loading."
+                          : !currentUserId
+                          ? "Your user identity is not available for assignment."
+                          : "Claim this unassigned conversation."
+                      }
+                      className="rounded-full border border-[var(--moss)] px-2.5 py-1 text-[10px] font-medium text-[var(--moss)] transition-colors hover:bg-[var(--moss)] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Claim
                     </button>
@@ -747,7 +811,9 @@ export function ThreadWorkspace({
                         setSelectedAssigneeId("");
                         setEditingAssignee(true);
                       }}
-                      className="rounded-full border border-[var(--line-strong)] px-2.5 py-1 text-[10px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+                      disabled={teamLoading}
+                      title={teamLoading ? "Team members are still loading." : "Assign this conversation to a teammate."}
+                      className="rounded-full border border-[var(--line-strong)] px-2.5 py-1 text-[10px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Assign
                     </button>
@@ -768,6 +834,7 @@ export function ThreadWorkspace({
                 <button
                   onClick={handleResolveClick}
                   disabled={statusUpdating || showClosureCard}
+                  title={statusUpdating ? "Conversation status is updating." : showClosureCard ? "Finish or cancel the resolve form first." : "Resolve this conversation."}
                   className="rounded-full border border-[rgba(120,161,122,0.4)] bg-[rgba(120,161,122,0.08)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[rgba(120,161,122,0.18)] disabled:opacity-50"
                 >
                   ✓ Resolve
@@ -776,6 +843,7 @@ export function ThreadWorkspace({
                 <button
                   onClick={() => handleStatusChange("open")}
                   disabled={statusUpdating}
+                  title={statusUpdating ? "Conversation status is updating." : "Reopen this closed conversation."}
                   className="rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
                 >
                   Reopen
@@ -802,27 +870,45 @@ export function ThreadWorkspace({
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto scroll-soft px-5 py-4 space-y-3">
-          {localMessages.map((message) => (
-            <article
-              key={message.id}
-              className={`rounded-[20px] border px-4 py-3.5 ${
-                messageBg[message.senderType] ?? messageBg.agent
-              }`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{message.sender}</span>
-                  <span className="eyebrow text-[9px] text-[var(--muted)]">
-                    {message.senderType}
+          {localMessages.map((message) => {
+            const presentation = getMessagePresentation(message);
+            const label = messagePresentationLabel[presentation];
+
+            if (presentation === "activity") {
+              return (
+                <div
+                  key={message.id}
+                  className={`rounded-[16px] border px-3 py-2.5 text-xs ${messagePresentationStyle[presentation]}`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="eyebrow text-[9px] text-[var(--muted)]">{label}</span>
+                    <span className="shrink-0 text-[10px] text-[var(--muted)]">{message.timestamp}</span>
+                  </div>
+                  <p className="mt-1.5 leading-5 text-[var(--muted)]">{message.body}</p>
+                </div>
+              );
+            }
+
+            return (
+              <article
+                key={message.id}
+                className={`rounded-[20px] border px-4 py-3.5 ${messagePresentationStyle[presentation]}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{message.sender}</span>
+                    <span className="eyebrow text-[9px] text-[var(--muted)]">
+                      {label}
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-xs text-[var(--muted)]">
+                    {message.timestamp}
                   </span>
                 </div>
-                <span className="shrink-0 text-xs text-[var(--muted)]">
-                  {message.timestamp}
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6">{message.body}</p>
-            </article>
-          ))}
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{message.body}</p>
+              </article>
+            );
+          })}
           {/* Scroll anchor */}
           <div ref={messagesEndRef} />
         </div>
@@ -997,6 +1083,45 @@ export function ThreadWorkspace({
 
         {/* Composer */}
         <div className="shrink-0 border-t border-[var(--line)] p-4">
+          {composerMode === "reply" && (
+            <div className="sticky top-0 z-10 mb-3 rounded-[18px] border border-[var(--line-strong)] bg-[var(--panel)] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+              {latestInboundCustomerMessage ? (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="eyebrow text-[9px] text-[var(--muted)]">Replying to</p>
+                      <p className="mt-1 truncate text-sm font-semibold">
+                        {latestInboundCustomerMessage.sender}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                        {conversation.subject} · {latestInboundCustomerMessage.timestamp}
+                      </p>
+                    </div>
+                    {shouldOfferFullThread(latestInboundCustomerMessage.body) && (
+                      <button
+                        type="button"
+                        onClick={() => setReplyingToExpanded((value) => !value)}
+                        className="shrink-0 rounded-full border border-[var(--line)] px-3 py-1 text-[10px] font-medium text-[var(--muted)] transition-colors hover:border-[var(--moss)] hover:text-[var(--foreground)]"
+                      >
+                        {replyingToExpanded ? "Collapse" : "View full thread"}
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[var(--muted)]">
+                    {getReplyingToBody(latestInboundCustomerMessage.body, replyingToExpanded)}
+                  </p>
+                </>
+              ) : (
+                <div className="rounded-[14px] border border-[rgba(169,146,125,0.3)] bg-[rgba(169,146,125,0.07)] px-3 py-2">
+                  <p className="text-xs font-medium">No latest inbound customer message</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                    AI Draft and Send stay disabled until this thread has an inbound customer message to answer.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Mode tabs */}
           {!pendingSend && (
             <div className="mb-3 flex gap-1.5">
@@ -1073,7 +1198,8 @@ export function ThreadWorkspace({
               <div className="flex items-center gap-2 border-t border-[rgba(169,146,125,0.2)] px-3 py-2.5">
                 <button
                   onClick={handleSendClick}
-                  disabled={!replyText.trim()}
+                  disabled={Boolean(sendDisabledReason)}
+                  title={sendDisabledReason ?? "Post internal note"}
                   className="rounded-full bg-[rgba(169,146,125,0.45)] px-4 py-1.5 text-xs font-medium text-[var(--foreground)] disabled:opacity-35 disabled:cursor-not-allowed transition-opacity"
                 >
                   Post note
@@ -1082,6 +1208,13 @@ export function ThreadWorkspace({
                   Not sent to customer
                 </span>
               </div>
+              {sendDisabledReason && (
+                <div className="border-t border-[rgba(169,146,125,0.2)] px-3 py-2">
+                  <p className="text-[10px] leading-4 text-[var(--muted)]">
+                    Internal note disabled: {sendDisabledReason}
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             /* Reply composer */
@@ -1096,14 +1229,17 @@ export function ThreadWorkspace({
               <div className="flex items-center gap-2 border-t border-[var(--line)] px-3 py-2.5">
                 <button
                   onClick={handleSendClick}
-                  disabled={!replyText.trim()}
+                  disabled={Boolean(sendDisabledReason)}
+                  title={sendDisabledReason ?? "Send customer reply"}
                   className="rounded-full bg-[var(--moss)] px-4 py-1.5 text-xs font-medium text-white disabled:opacity-35 disabled:cursor-not-allowed transition-opacity"
                 >
                   Send
                 </button>
                 <button
                   onClick={openAIPanel}
-                  className={`rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${
+                  disabled={Boolean(aiDraftDisabledReason)}
+                  title={aiDraftDisabledReason ?? "Open AI draft panel"}
+                  className={`rounded-full border px-4 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                     activePanel === "ai"
                       ? "border-[var(--moss)] bg-[rgba(144,50,61,0.12)] text-[var(--foreground)]"
                       : "border-[var(--line-strong)] text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -1118,6 +1254,15 @@ export function ThreadWorkspace({
                   </span>
                 )}
               </div>
+              {(sendDisabledReason || aiDraftDisabledReason) && (
+                <div className="border-t border-[var(--line)] px-3 py-2">
+                  <p className="text-[10px] leading-4 text-[var(--muted)]">
+                    {sendDisabledReason && <>Send disabled: {sendDisabledReason}</>}
+                    {sendDisabledReason && aiDraftDisabledReason && <br />}
+                    {aiDraftDisabledReason && <>AI Draft disabled: {aiDraftDisabledReason}</>}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1200,6 +1345,8 @@ export function ThreadWorkspace({
                   <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">{draftError}</p>
                   <button
                     onClick={generateDraft}
+                    disabled={Boolean(aiDraftDisabledReason)}
+                    title={aiDraftDisabledReason ?? "Retry AI draft generation"}
                     className="mt-3 rounded-full border border-[var(--line-strong)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] hover:text-[var(--moss)]"
                   >
                     Retry
@@ -1226,6 +1373,8 @@ export function ThreadWorkspace({
                   {/* Regenerate */}
                   <button
                     onClick={generateDraft}
+                    disabled={Boolean(aiDraftDisabledReason)}
+                    title={aiDraftDisabledReason ?? "Regenerate draft"}
                     className="w-full rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
                   >
                     Regenerate
@@ -1302,10 +1451,17 @@ export function ThreadWorkspace({
                   <p className="text-xs text-[var(--muted)]">No draft generated yet.</p>
                   <button
                     onClick={generateDraft}
-                    className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white"
+                    disabled={Boolean(aiDraftDisabledReason)}
+                    title={aiDraftDisabledReason ?? "Generate draft"}
+                    className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Generate draft
                   </button>
+                  {aiDraftDisabledReason && (
+                    <p className="max-w-[240px] text-xs leading-5 text-[var(--muted)]">
+                      {aiDraftDisabledReason}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

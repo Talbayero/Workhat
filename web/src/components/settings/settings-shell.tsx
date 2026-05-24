@@ -8,6 +8,12 @@ import {
   normalizeGmailImportResult,
   type GmailImportResultSummary,
 } from "@/lib/email/import-result";
+import {
+  isThemePreference,
+  resolveThemePreference,
+  THEME_STORAGE_KEY,
+  type ThemePreference,
+} from "@/lib/theme/theme";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -153,7 +159,7 @@ type TeamMember = {
   skills?: AgentSkill[];
 };
 
-type SettingsTab = "setup" | "organization" | "team" | "channels" | "sla" | "ai" | "intents" | "billing";
+type SettingsTab = "setup" | "organization" | "team" | "channels" | "sla" | "ai" | "intents" | "appearance" | "billing";
 
 const tabs: { id: SettingsTab; label: string }[] = [
   { id: "setup", label: "Setup wizard" },
@@ -163,6 +169,7 @@ const tabs: { id: SettingsTab; label: string }[] = [
   { id: "sla", label: "SLA policy" },
   { id: "ai", label: "AI settings" },
   { id: "intents", label: "Intents" },
+  { id: "appearance", label: "Appearance" },
   { id: "billing", label: "Billing" },
 ];
 
@@ -2213,6 +2220,88 @@ function SlaTab({
 
 // ── Billing tab ───────────────────────────────────────────────────────────────
 
+function AppearanceTab() {
+  const [preference, setPreference] = useState<ThemePreference>("dark");
+  const [resolved, setResolved] = useState<"light" | "dark">("dark");
+
+  useEffect(() => {
+    const systemQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    const initialPreference = isThemePreference(stored) ? stored : "dark";
+
+    const apply = (nextPreference: ThemePreference) => {
+      const nextResolved = resolveThemePreference(nextPreference, systemQuery.matches);
+      setPreference(nextPreference);
+      setResolved(nextResolved);
+      window.localStorage.setItem(THEME_STORAGE_KEY, nextPreference);
+      document.documentElement.dataset.theme = nextResolved;
+      document.documentElement.dataset.themePreference = nextPreference;
+    };
+
+    apply(initialPreference);
+
+    const handleSystemChange = () => {
+      if (window.localStorage.getItem(THEME_STORAGE_KEY) === "system") {
+        apply("system");
+      }
+    };
+
+    systemQuery.addEventListener("change", handleSystemChange);
+    return () => systemQuery.removeEventListener("change", handleSystemChange);
+  }, []);
+
+  const options: Array<{ id: ThemePreference; label: string; description: string }> = [
+    { id: "light", label: "Light", description: "Warm Work Hat surfaces for daytime use." },
+    { id: "dark", label: "Dark", description: "The original low-glare Work Hat workspace." },
+    { id: "system", label: "System", description: "Follow this device's color scheme." },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <SectionCard>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Appearance</p>
+        <h2 className="mt-2 text-xl font-semibold">Theme preference</h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          Choose how Work Hat renders the inbox and operations workspace. The preference is stored only in this browser.
+        </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          {options.map((option) => {
+            const active = preference === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => {
+                  const nextResolved = resolveThemePreference(
+                    option.id,
+                    window.matchMedia("(prefers-color-scheme: dark)").matches,
+                  );
+                  setPreference(option.id);
+                  setResolved(nextResolved);
+                  window.localStorage.setItem(THEME_STORAGE_KEY, option.id);
+                  document.documentElement.dataset.theme = nextResolved;
+                  document.documentElement.dataset.themePreference = option.id;
+                }}
+                className={`rounded-[18px] border p-4 text-left transition-colors ${
+                  active
+                    ? "border-[var(--moss)] bg-[rgba(144,50,61,0.12)]"
+                    : "border-[var(--line)] bg-[var(--panel-strong)] hover:border-[var(--line-strong)]"
+                }`}
+              >
+                <span className="text-sm font-semibold">{option.label}</span>
+                <span className="mt-2 block text-xs leading-5 text-[var(--muted)]">{option.description}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-4 text-xs text-[var(--muted)]">
+          Current render: <span className="font-medium text-[var(--foreground)]">{resolved}</span>
+        </p>
+      </SectionCard>
+    </div>
+  );
+}
+
 function BillingTab({ org }: { org: OrgRecord | null }) {
   return (
     <div className="space-y-5">
@@ -2236,7 +2325,7 @@ function BillingTab({ org }: { org: OrgRecord | null }) {
 
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
-const VALID_TABS = new Set<SettingsTab>(["setup", "organization", "team", "channels", "sla", "ai", "intents", "billing"]);
+const VALID_TABS = new Set<SettingsTab>(["setup", "organization", "team", "channels", "sla", "ai", "intents", "appearance", "billing"]);
 
 export function SettingsShell({
   org,
@@ -2342,6 +2431,7 @@ export function SettingsShell({
     ),
     ai: <AiTab onDirty={() => setIsDirty(true)} />,
     intents: <IntentsTab canManage={canManageTeam} />,
+    appearance: <AppearanceTab />,
     billing: <BillingTab org={org} />,
   };
 
@@ -2387,7 +2477,7 @@ export function SettingsShell({
         </div>
 
         {/* Save bar — only shown for tabs with editable fields */}
-        {activeTab !== "team" && activeTab !== "billing" && activeTab !== "intents" && (
+        {activeTab !== "team" && activeTab !== "billing" && activeTab !== "intents" && activeTab !== "appearance" && (
           <div className={`shrink-0 border-t border-[var(--line)] px-6 py-4 transition-opacity ${isDirty || saveStatus === "saved" ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
             <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
               <p aria-live="polite" className="text-xs text-[var(--muted)]">

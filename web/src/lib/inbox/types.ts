@@ -1,5 +1,11 @@
 export type RiskLevel = "green" | "yellow" | "red";
 export type SlaStatus = "not_applicable" | "ok" | "at_risk" | "breached";
+export type EmailMessageClassification =
+  | "human_customer"
+  | "system_notification"
+  | "auth_email"
+  | "newsletter"
+  | "unknown";
 
 export type InboxConversation = {
   id: string;
@@ -12,6 +18,7 @@ export type InboxConversation = {
   preview: string;
   status: "open" | "waiting_on_customer" | "waiting_on_internal" | "closed";
   channel: "email";
+  emailClassification?: EmailMessageClassification;
   riskLevel: RiskLevel;
   aiConfidence: RiskLevel;
   assignee: string;
@@ -29,7 +36,7 @@ export type InboxConversation = {
   messages: {
     id: string;
     sender: string;
-    senderType: "customer" | "agent" | "ai" | "internal";
+    senderType: "customer" | "agent" | "ai" | "internal" | "system";
     timestamp: string;
     body: string;
   }[];
@@ -55,5 +62,6 @@ export type InboxViewId =
   | "high-risk"
   | "ai-review"
   | "unclassified"
+  | "automated"
   | "sla-at-risk"
   | "sla-breached";

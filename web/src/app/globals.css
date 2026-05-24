@@ -1,8 +1,12 @@
 @import "tailwindcss";
 
-:root {
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
   --background: #0a0908;
   --foreground: #f2f4f3;
+  --surface: #101012;
+  --surface-muted: #25252a;
   --panel: rgba(16, 16, 18, 0.92);
   --panel-strong: #141416;
   --line: rgba(242, 244, 243, 0.08);
@@ -13,10 +17,37 @@
   --moss-strong: #5e0b15;
   --amber: #a9927d;
   --rose: #49111c;
+  --success: #78a17a;
+  --warning: #a9927d;
+  --danger: #c9606a;
   /* --error-text: accessible red for use as foreground text on dark backgrounds (4.5:1+) */
   --error-text: #e07070;
   --sky: #f2f4f3;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f7f3ee;
+  --foreground: #1c1715;
+  --surface: #ffffff;
+  --surface-muted: #f1ebe4;
+  --panel: #fffaf5;
+  --panel-strong: #f3e7df;
+  --line: #ded3c8;
+  --line-strong: #cbbbac;
+  --muted: #6f625c;
+  --sage: #f1ebe4;
+  --moss: #a13d4b;
+  --moss-strong: #8f3341;
+  --amber: #a06f2b;
+  --rose: #f6dbe0;
+  --success: #3f7a5c;
+  --warning: #a06f2b;
+  --danger: #b43f4d;
+  --error-text: #9f2837;
+  --sky: #1c1715;
+  --shadow: 0 18px 50px rgba(89, 62, 41, 0.14);
 }
 
 @theme inline {
@@ -59,6 +90,14 @@ html {
     linear-gradient(180deg, #111214 0%, #0a0908 100%);
 }
 
+html[data-theme="light"] {
+  background:
+    radial-gradient(circle at top left, rgba(161, 61, 75, 0.12), transparent 25%),
+    radial-gradient(circle at right center, rgba(160, 111, 43, 0.12), transparent 22%),
+    radial-gradient(circle at bottom right, rgba(63, 122, 92, 0.1), transparent 24%),
+    linear-gradient(180deg, #fffaf5 0%, #f7f3ee 100%);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -89,6 +128,12 @@ select {
   box-shadow: var(--shadow);
 }
 
+:root[data-theme="light"] .grain-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 250, 245, 0.96), rgba(243, 231, 223, 0.98)),
+    radial-gradient(circle at top, rgba(161, 61, 75, 0.08), transparent 62%);
+}
+
 .surface-panel {
   background: var(--panel-strong);
   border: 1px solid var(--line);
@@ -96,7 +141,7 @@ select {
 }
 
 .surface-subtle {
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--surface) 42%, transparent);
   border: 1px solid var(--line);
 }
 
@@ -114,16 +159,16 @@ select {
 }
 
 .status-dot-green {
-  background: #78a17a;
+  background: var(--success);
 }
 
 .status-dot-yellow {
-  background: #a9927d;
+  background: var(--warning);
 }
 
 .status-dot-red {
   /* Lightened from #90323d to meet 3:1 non-text contrast on panel-strong (#141416) */
-  background: #c9606a;
+  background: var(--danger);
 }
 
 .scroll-soft {

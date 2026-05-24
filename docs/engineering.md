@@ -144,6 +144,26 @@ SLA computation must be explainable from stored data:
 
 Queue views should filter by SLA, risk, assignee, status, channel, and intent.
 
+## Inbox UI Standard
+
+Inbox and thread workspace changes must preserve the Gmail-only MVP path and make the operator state explicit:
+
+- The latest inbound customer message should be visible near the reply composer.
+- Customer messages, outbound replies, internal notes, and system/activity events should not share the same visual treatment.
+- Buttons must be either wired, hidden when not applicable, or disabled with visible user-facing reason text.
+- Send remains human-approved and must not trigger when the reply is empty, the conversation is closed, or no inbound customer message exists.
+- AI Draft should be disabled with a reason when no latest inbound customer message exists.
+- Collapsible navigation or queue state may use browser-local persistence only; do not persist layout preference to tenant data unless there is a product requirement.
+
+## Theme Standard
+
+The app supports `light`, `dark`, and `system` theme preferences through CSS variables and browser-local preference storage.
+
+- Theme values live in `web/src/app/globals.css`.
+- Theme preference logic lives in `web/src/lib/theme`.
+- Focus states must remain visible in both themes.
+- New components should use Work Hat tokens such as `--background`, `--foreground`, `--panel`, `--panel-strong`, `--line`, `--muted`, `--moss`, `--amber`, `--success`, `--warning`, and `--danger` instead of hard-coded one-off colors.
+
 ## Testing
 
 Required commands before merging material changes:

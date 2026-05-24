@@ -4,6 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  readStoredBoolean,
+  UI_STORAGE_KEYS,
+  writeStoredBoolean,
+} from "@/lib/ui/persistent-state";
 
 // Minimal shape of what we actually use from supabase-js User
 interface AuthUser {
@@ -127,9 +132,22 @@ export function Sidebar() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [openCount, setOpenCount] = useState<number | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
 
   const isDemo = pathname.startsWith("/demo");
   const baseDir = isDemo ? "/demo" : "";
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setCollapsed(readStoredBoolean(window.localStorage, UI_STORAGE_KEYS.sidebarCollapsed, false));
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    writeStoredBoolean(window.localStorage, UI_STORAGE_KEYS.sidebarCollapsed, collapsed);
+  }, [collapsed]);
 
   useEffect(() => {
     if (isDemo) return;
@@ -194,18 +212,43 @@ export function Sidebar() {
   const initials = displayName.slice(0, 1).toUpperCase();
 
   return (
-    <aside aria-label="Main navigation" className="grain-panel flex h-full w-[228px] shrink-0 flex-col border-r border-[var(--line)]">
-      <div className="shrink-0 border-b border-[var(--line)] px-5 py-5">
-        <p className="eyebrow text-[10px] text-[var(--muted)]">Work Hat OS</p>
-        <p className="mt-1 text-sm font-semibold tracking-tight">Support operations</p>
-        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-          Conversation-first CRM for measurable AI improvement.
-        </p>
+    <aside
+      aria-label="Main navigation"
+      data-collapsed={collapsed}
+      className={`grain-panel flex h-full shrink-0 flex-col border-r border-[var(--line)] transition-[width] duration-200 ${
+        collapsed ? "w-[72px]" : "w-[228px]"
+      }`}
+    >
+      <div className={`shrink-0 border-b border-[var(--line)] ${collapsed ? "px-3 py-4" : "px-5 py-5"}`}>
+        <div className="flex items-start justify-between gap-2">
+          <div className={collapsed ? "sr-only" : ""}>
+            <p className="eyebrow text-[10px] text-[var(--muted)]">Work Hat OS</p>
+            <p className="mt-1 text-sm font-semibold tracking-tight">Support operations</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              Conversation-first CRM for measurable AI improvement.
+            </p>
+          </div>
+          {collapsed && (
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[var(--moss)] text-xs font-semibold text-white">
+              WH
+            </div>
+          )}
+          <button
+            type="button"
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            aria-expanded={!collapsed}
+            onClick={() => setCollapsed((value) => !value)}
+            className="rounded-xl border border-[var(--line)] px-2 py-1 text-xs text-[var(--muted)] transition-colors hover:border-[var(--moss)] hover:text-[var(--foreground)]"
+            title={collapsed ? "Expand navigation" : "Collapse navigation"}
+          >
+            {collapsed ? "›" : "‹"}
+          </button>
+        </div>
       </div>
 
-      <nav aria-label="App sections" className="flex flex-1 flex-col overflow-y-auto scroll-soft px-3 py-4">
+      <nav aria-label="App sections" className={`flex flex-1 flex-col overflow-y-auto scroll-soft py-4 ${collapsed ? "px-2" : "px-3"}`}>
         <div>
-          <p className="eyebrow px-3 pb-2 text-[9px] text-[var(--muted)]">Workspace</p>
+          <p className={`eyebrow px-3 pb-2 text-[9px] text-[var(--muted)] ${collapsed ? "sr-only" : ""}`}>Workspace</p>
           <div className="flex flex-col gap-0.5">
             {primaryItems.map((item) => {
               const fullHref = `${baseDir}${item.href}`;
@@ -215,16 +258,21 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={fullHref}
-                  className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors ${
+                  title={collapsed ? item.label : undefined}
+                  className={`relative flex items-center rounded-2xl px-3 py-2.5 text-sm transition-colors ${
+                    collapsed ? "justify-center gap-0" : "gap-3"
+                  } ${
                     isActive
                       ? "bg-[var(--moss)] text-white shadow-[0_0_0_1px_rgba(144,50,61,0.35)]"
                       : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
                   }`}
                 >
                   <span className="shrink-0">{item.icon}</span>
-                  <span className="flex-1">{item.label}</span>
+                  <span className={collapsed ? "sr-only" : "flex-1"}>{item.label}</span>
                   {showBadge && (
                     <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+                      collapsed ? "absolute ml-7 mt-[-18px]" : ""
+                    } ${
                       isActive ? "bg-white/25 text-white" : "bg-[var(--moss)] text-white"
                     }`}>
                       {openCount! > 99 ? "99+" : openCount}
@@ -237,7 +285,7 @@ export function Sidebar() {
         </div>
 
         <div className="mt-6">
-          <p className="eyebrow px-3 pb-2 text-[9px] text-[var(--muted)]">Configure</p>
+          <p className={`eyebrow px-3 pb-2 text-[9px] text-[var(--muted)] ${collapsed ? "sr-only" : ""}`}>Configure</p>
           <div className="flex flex-col gap-0.5">
             {configItems.map((item) => {
               const fullHref = `${baseDir}${item.href}`;
@@ -246,34 +294,39 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={fullHref}
-                  className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors ${
+                  title={collapsed ? item.label : undefined}
+                  className={`flex items-center rounded-2xl px-3 py-2.5 text-sm transition-colors ${
+                    collapsed ? "justify-center gap-0" : "gap-3"
+                  } ${
                     isActive
                       ? "bg-[var(--moss)] text-white shadow-[0_0_0_1px_rgba(144,50,61,0.35)]"
                       : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
                   }`}
                 >
                   <span className="shrink-0">{item.icon}</span>
-                  <span>{item.label}</span>
+                  <span className={collapsed ? "sr-only" : ""}>{item.label}</span>
                 </Link>
               );
             })}
           </div>
         </div>
 
+        {!collapsed && (
         <div className="mt-6 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-3 py-3">
           <p className="eyebrow text-[9px] text-[var(--muted)]">Operating lens</p>
           <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
             Keep the workspace fast, compact, and connected. Surface context where work happens.
           </p>
         </div>
+        )}
       </nav>
 
-      <div className="mt-auto shrink-0 border-t border-[var(--line)] px-4 py-4">
-        <div className="flex items-center gap-2.5">
+      <div className={`mt-auto shrink-0 border-t border-[var(--line)] ${collapsed ? "px-2 py-4" : "px-4 py-4"}`}>
+        <div className={`flex items-center ${collapsed ? "justify-center" : "gap-2.5"}`}>
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--moss)] text-[11px] font-semibold text-white">
             {initials}
           </div>
-          <div className="min-w-0 flex-1">
+          <div className={collapsed ? "sr-only" : "min-w-0 flex-1"}>
             <p className="truncate text-xs font-medium">{displayName}</p>
             <p className="truncate text-[10px] text-[var(--muted)]">{activeUser?.email ?? "Not signed in"}</p>
           </div>
@@ -281,7 +334,7 @@ export function Sidebar() {
           <button
             onClick={handleSignOut}
             title="Sign out"
-            className="shrink-0 rounded-lg p-1 text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)] transition-colors"
+            className={`shrink-0 rounded-lg p-1 text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)] transition-colors ${collapsed ? "sr-only" : ""}`}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <path d="M5.5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />

@@ -105,6 +105,7 @@ Security expectation:
 Gmail message
   -> Gmail adapter
   -> Normalized inbound email
+  -> Deterministic inbox classification
   -> Contact/company resolution
   -> Conversation threading or creation
   -> Message insert
@@ -112,6 +113,8 @@ Gmail message
   -> Workflow event emission
   -> Inbox/queue visibility
 ```
+
+Inbox classification is deterministic and lives in `web/src/lib/inbox/classification.ts`. It labels imported Gmail conversations as `human_customer`, `system_notification`, `auth_email`, `newsletter`, or `unknown` using explainable sender/subject/preview rules. Classification changes visibility defaults only; messages are not deleted, discarded, or hidden from explicit filters.
 
 Reply flow:
 
