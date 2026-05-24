@@ -107,7 +107,7 @@ export function getEmailSetupReadiness(): SetupReadiness {
       status: adminConfigured ? "pass" : "fail",
       message: adminConfigured
         ? "Configured."
-        : "Required for server-side mailbox validation, polling, custom inbound setup, and outbound sending.",
+        : "Required for Gmail OAuth token persistence, import, live sync, and approved reply sending.",
       adminOnly: true,
     },
     check("UPSTASH_REDIS_REST_URL", "Redis URL", "Recommended for production request protection.", false),

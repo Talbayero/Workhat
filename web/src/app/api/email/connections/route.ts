@@ -134,9 +134,11 @@ export async function GET() {
     .from("email_connections")
     .select(
       "id, provider, connection_type, provider_account_email, display_name, status, sync_status, token_expires_at, last_history_id, watch_expires_at, last_sync_at, error_message, provider_metadata, created_at, updated_at"
-      + ", inbound_enabled, outbound_enabled, last_validated_at, last_inbound_sync_at, last_outbound_send_at, last_error_code, last_error_message, diagnostics_json, credential_metadata"
+      + ", inbound_enabled, outbound_enabled, last_validated_at, last_inbound_sync_at, last_outbound_send_at, last_error_code, last_error_message"
     )
     .eq("org_id", appUser.org_id)
+    .eq("provider", "gmail")
+    .eq("connection_type", "oauth")
     .order("created_at", { ascending: false });
 
   if (error) {

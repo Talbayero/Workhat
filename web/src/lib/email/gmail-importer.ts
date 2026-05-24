@@ -1,6 +1,7 @@
 import { decryptSecret, encryptSecret } from "@/lib/email/encryption";
 import {
   fetchGmailMessage,
+  GMAIL_IMPORT_QUERY,
   listGmailHistory,
   listGmailInboxMessages,
   refreshGmailAccessToken,
@@ -20,6 +21,7 @@ export type EmailConnection = {
   refresh_token_ciphertext: string | null;
   token_expires_at: string | null;
   last_history_id: string | null;
+  provider_metadata?: Record<string, unknown> | null;
 };
 
 export type GmailImportResult = {
@@ -28,7 +30,9 @@ export type GmailImportResult = {
   scanned: number;
   latestHistoryId: string | null;
   mode: "full" | "history";
+  errors?: number;
   skipReasons?: Record<string, number>;
+  errorReasons?: Record<string, number>;
 };
 
 function getHeader(message: GmailMessage, name: string) {
@@ -183,6 +187,8 @@ async function importMessage({
     imported: !result.duplicate,
     historyId: message.historyId ?? null,
     skipReason: result.duplicate ? result.skipped ?? "duplicate" : null,
+    conversationId: result.conversationId ?? null,
+    inboundMessageId: result.messageId ?? null,
   };
 }
 
@@ -216,34 +222,96 @@ export async function importRecentGmailInbox({
   db,
   connection,
   maxResults = 10,
+  requestId,
 }: {
   db: SupabaseDb;
   connection: EmailConnection;
   maxResults?: number;
+  requestId?: string;
 }): Promise<GmailImportResult> {
   const accessToken = await getFreshGmailAccessToken(db, connection);
   const channel = await getChannel(db, connection.org_id);
   const list = await listGmailInboxMessages({ accessToken, maxResults });
   let imported = 0;
   let skipped = 0;
+  let errors = 0;
   let latestHistoryId: string | null = null;
   const skipReasons: Record<string, number> = {};
+  const errorReasons: Record<string, number> = {};
+
+  console.info("[gmail/import] import started:", {
+    requestId,
+    orgId: connection.org_id,
+    emailConnectionId: connection.id,
+    mailbox: connection.provider_account_email,
+    query: GMAIL_IMPORT_QUERY,
+    maxResults,
+    mode: "full",
+  });
 
   for (const item of list.messages ?? []) {
-    const result = await importMessage({
-      db,
-      accessToken,
-      channel,
-      messageId: item.id,
-    });
-    latestHistoryId = result.historyId ?? latestHistoryId;
-    if (result.imported) imported += 1;
-    else {
-      skipped += 1;
-      const reason = result.skipReason ?? "skipped";
-      skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+    try {
+      const result = await importMessage({
+        db,
+        accessToken,
+        channel,
+        messageId: item.id,
+      });
+      latestHistoryId = result.historyId ?? latestHistoryId;
+      if (result.imported) {
+        imported += 1;
+        console.info("[gmail/import] message imported:", {
+          requestId,
+          orgId: connection.org_id,
+          emailConnectionId: connection.id,
+          mailbox: connection.provider_account_email,
+          gmailMessageId: item.id,
+          conversationId: result.conversationId,
+          inboundMessageId: result.inboundMessageId,
+        });
+      } else {
+        skipped += 1;
+        const reason = result.skipReason ?? "skipped";
+        skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+        console.info("[gmail/import] message skipped:", {
+          requestId,
+          orgId: connection.org_id,
+          emailConnectionId: connection.id,
+          mailbox: connection.provider_account_email,
+          gmailMessageId: item.id,
+          conversationId: result.conversationId,
+          inboundMessageId: result.inboundMessageId,
+          reason,
+        });
+      }
+    } catch (error) {
+      errors += 1;
+      const reason = error instanceof Error ? error.message.slice(0, 160) : "message_import_failed";
+      errorReasons[reason] = (errorReasons[reason] ?? 0) + 1;
+      console.warn("[gmail/import] message import failed:", {
+        requestId,
+        orgId: connection.org_id,
+        emailConnectionId: connection.id,
+        mailbox: connection.provider_account_email,
+        gmailMessageId: item.id,
+        reason,
+      });
     }
   }
+
+  console.info("[gmail/import] import complete:", {
+    requestId,
+    orgId: connection.org_id,
+    emailConnectionId: connection.id,
+    mailbox: connection.provider_account_email,
+    query: GMAIL_IMPORT_QUERY,
+    scanned: list.messages?.length ?? 0,
+    imported,
+    skipped,
+    errors,
+    skipReasons,
+    errorReasons,
+  });
 
   return {
     imported,
@@ -251,7 +319,9 @@ export async function importRecentGmailInbox({
     scanned: list.messages?.length ?? 0,
     latestHistoryId,
     mode: "full",
+    errors,
     skipReasons,
+    errorReasons,
   };
 }
 
@@ -260,21 +330,25 @@ export async function importGmailHistory({
   connection,
   startHistoryId,
   maxPages = 3,
+  requestId,
 }: {
   db: SupabaseDb;
   connection: EmailConnection;
   startHistoryId: string;
   maxPages?: number;
+  requestId?: string;
 }): Promise<GmailImportResult> {
   const accessToken = await getFreshGmailAccessToken(db, connection);
   const channel = await getChannel(db, connection.org_id);
   let imported = 0;
   let skipped = 0;
+  let errors = 0;
   let scanned = 0;
   let latestHistoryId: string | null = null;
   let pageToken: string | undefined;
   const seen = new Set<string>();
   const skipReasons: Record<string, number> = {};
+  const errorReasons: Record<string, number> = {};
 
   for (let page = 0; page < maxPages; page += 1) {
     const history = await listGmailHistory({ accessToken, startHistoryId, pageToken });
@@ -287,18 +361,52 @@ export async function importGmailHistory({
         seen.add(messageId);
         scanned += 1;
 
-        const result = await importMessage({
-          db,
-          accessToken,
-          channel,
-          messageId,
-        });
-        latestHistoryId = result.historyId ?? latestHistoryId;
-        if (result.imported) imported += 1;
-        else {
-          skipped += 1;
-          const reason = result.skipReason ?? "skipped";
-          skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+        try {
+          const result = await importMessage({
+            db,
+            accessToken,
+            channel,
+            messageId,
+          });
+          latestHistoryId = result.historyId ?? latestHistoryId;
+          if (result.imported) {
+            imported += 1;
+            console.info("[gmail/import] history message imported:", {
+              requestId,
+              orgId: connection.org_id,
+              emailConnectionId: connection.id,
+              mailbox: connection.provider_account_email,
+              gmailMessageId: messageId,
+              conversationId: result.conversationId,
+              inboundMessageId: result.inboundMessageId,
+            });
+          } else {
+            skipped += 1;
+            const reason = result.skipReason ?? "skipped";
+            skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+            console.info("[gmail/import] history message skipped:", {
+              requestId,
+              orgId: connection.org_id,
+              emailConnectionId: connection.id,
+              mailbox: connection.provider_account_email,
+              gmailMessageId: messageId,
+              conversationId: result.conversationId,
+              inboundMessageId: result.inboundMessageId,
+              reason,
+            });
+          }
+        } catch (error) {
+          errors += 1;
+          const reason = error instanceof Error ? error.message.slice(0, 160) : "message_import_failed";
+          errorReasons[reason] = (errorReasons[reason] ?? 0) + 1;
+          console.warn("[gmail/import] history message import failed:", {
+            requestId,
+            orgId: connection.org_id,
+            emailConnectionId: connection.id,
+            mailbox: connection.provider_account_email,
+            gmailMessageId: messageId,
+            reason,
+          });
         }
       }
     }
@@ -307,19 +415,34 @@ export async function importGmailHistory({
     if (!pageToken) break;
   }
 
-  return { imported, skipped, scanned, latestHistoryId, mode: "history", skipReasons };
+  console.info("[gmail/import] history import complete:", {
+    requestId,
+    orgId: connection.org_id,
+    emailConnectionId: connection.id,
+    mailbox: connection.provider_account_email,
+    scanned,
+    imported,
+    skipped,
+    errors,
+    skipReasons,
+    errorReasons,
+  });
+
+  return { imported, skipped, scanned, latestHistoryId, mode: "history", errors, skipReasons, errorReasons };
 }
 
 export async function markGmailSyncSuccess({
   db,
   connectionId,
   result,
+  existingProviderMetadata,
 }: {
   db: SupabaseDb;
   connectionId: string;
   result: GmailImportResult;
+  existingProviderMetadata?: Record<string, unknown> | null;
 }) {
-  const updates: Record<string, string | null> = {
+  const updates: Record<string, unknown> = {
     sync_status: "idle",
     status: "active",
     last_sync_at: new Date().toISOString(),
@@ -331,6 +454,23 @@ export async function markGmailSyncSuccess({
 
   if (result.latestHistoryId) {
     updates.last_history_id = result.latestHistoryId;
+  }
+
+  if (existingProviderMetadata !== undefined) {
+    updates.provider_metadata = {
+      ...(existingProviderMetadata ?? {}),
+      last_import_result: {
+        scanned: result.scanned,
+        imported: result.imported,
+        skipped: result.skipped,
+        errors: result.errors ?? 0,
+        skipReasons: result.skipReasons ?? {},
+        errorReasons: result.errorReasons ?? {},
+        latestHistoryId: result.latestHistoryId,
+        mode: result.mode,
+        updatedAt: new Date().toISOString(),
+      },
+    };
   }
 
   const { error } = await db

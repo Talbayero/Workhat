@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   importRecentGmailInbox,
   markGmailSyncError,
   markGmailSyncSuccess,
   type EmailConnection,
 } from "@/lib/email/gmail-importer";
+import { GMAIL_IMPORT_QUERY } from "@/lib/email/google";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { requireCapability } from "@/lib/auth/capabilities";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { extractContextFromRequest } from "@/lib/request-context";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const requestId = extractContextFromRequest(req).requestId;
   const appUser = await getCurrentAppUser({ label: "gmail/sync" });
   if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const denied = await requireCapability(appUser, "integrations.manage", "gmail/sync");
@@ -26,7 +30,7 @@ export async function POST() {
 
   const { data: connection, error: connectionError } = await db
     .from("email_connections")
-    .select("id, org_id, provider_account_email, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, last_history_id")
+    .select("id, org_id, provider_account_email, access_token_ciphertext, refresh_token_ciphertext, token_expires_at, last_history_id, provider_metadata")
     .eq("org_id", appUser.org_id)
     .eq("provider", "gmail")
     .eq("connection_type", "oauth")
@@ -49,26 +53,61 @@ export async function POST() {
   }
 
   try {
+    console.info("[gmail/sync] import started:", {
+      requestId,
+      orgId: appUser.org_id,
+      connectionId: connection.id,
+      mailbox: connection.provider_account_email,
+      query: GMAIL_IMPORT_QUERY,
+    });
     const result = await importRecentGmailInbox({
       db,
       connection: connection as EmailConnection,
       maxResults: 25,
+      requestId,
     });
-    await markGmailSyncSuccess({ db, connectionId: connection.id, result });
+    await markGmailSyncSuccess({
+      db,
+      connectionId: connection.id,
+      result,
+      existingProviderMetadata: (connection as EmailConnection).provider_metadata ?? null,
+    });
+    console.info("[gmail/sync] import completed:", {
+      requestId,
+      orgId: appUser.org_id,
+      connectionId: connection.id,
+      mailbox: connection.provider_account_email,
+      query: GMAIL_IMPORT_QUERY,
+      scanned: result.scanned,
+      imported: result.imported,
+      skipped: result.skipped,
+      errors: result.errors ?? 0,
+      skipReasons: result.skipReasons ?? {},
+      errorReasons: result.errorReasons ?? {},
+    });
     return NextResponse.json({
       ok: true,
+      requestId,
       imported: result.imported,
       skipped: result.skipped,
       scanned: result.scanned,
+      errors: result.errors ?? 0,
       skipReasons: result.skipReasons ?? {},
+      errorReasons: result.errorReasons ?? {},
       latestHistoryId: result.latestHistoryId,
       mode: result.mode,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gmail sync failed.";
     await markGmailSyncError({ db, connectionId: connection.id, message });
-    console.error("[gmail/sync] sync error:", message);
-    return NextResponse.json({ error: "Gmail sync failed. Please try again." }, { status: 500 });
+    console.error("[gmail/sync] sync error:", {
+      requestId,
+      orgId: appUser.org_id,
+      connectionId: connection.id,
+      mailbox: connection.provider_account_email,
+      message,
+    });
+    return NextResponse.json({ error: "Gmail sync failed. Please try again.", requestId }, { status: 500 });
   }
 }
 

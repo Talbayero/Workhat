@@ -19,6 +19,8 @@ The documentation set is intentionally small for SOC 2 Type 1/2, ISO 27001, and 
 | [engineering.md](./engineering.md) | Engineering conventions, testing, change control, and implementation standards |
 | [security-compliance.md](./security-compliance.md) | Security controls, privacy controls, policies, control matrix, and evidence model |
 | [operations-runbook.md](./operations-runbook.md) | On-call, incident response, Gmail OAuth recovery, and operational checks |
+| [data-access-and-rls.md](./data-access-and-rls.md) | Supabase access model, RLS expectations, and service-role fallback rules |
+| [project-structure.md](./project-structure.md) | Folder boundaries and code placement guardrails |
 | [decisions.md](./decisions.md) | Architecture Decision Records. Append-only decision log |
 
 ## Documentation Rules

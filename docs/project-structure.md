@@ -6,13 +6,13 @@ This document defines the current Work Hat project structure, what belongs in ea
 
 ```text
 docs/
-  architecture/
-    project-structure.md
   architecture.md
+  data-access-and-rls.md
   decisions.md
   engineering.md
   operations-runbook.md
   product.md
+  project-structure.md
   security-compliance.md
 
 supabase/
@@ -142,7 +142,7 @@ Why not `db/` yet:
 Architecture notes, SOPs, product decisions, and operational guidance.
 
 Rules:
-- Architecture decisions go in `docs/architecture*`.
+- Architecture guidance goes in `docs/architecture.md`; decision records go in `docs/decisions.md`.
 - Product and operational policies live here, not in route comments.
 
 ## Where New Files Should Go

@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { EmailConnectionSetup } from "@/components/email/email-connection-setup";
+import {
+  formatGmailImportResult,
+  normalizeGmailImportResult,
+  type GmailImportResultSummary,
+} from "@/lib/email/import-result";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -74,6 +79,13 @@ type EmailDiagnostics = {
 
 type SetupHealth = {
   checks: EmailDiagnosticCheck[];
+  userScopedReadDiagnostics?: {
+    tables: Record<string, {
+      ok: boolean;
+      message: string;
+      count?: number;
+    }>;
+  } | null;
   summary: {
     googleOAuthConfigured: boolean;
     googleRedirectUri: string | null;
@@ -92,11 +104,41 @@ type SetupHealth = {
   };
 };
 
+type MvpSmokeCheck = {
+  ok: boolean;
+  requestId?: string;
+  emailConnectionId: string | null;
+  connectedMailbox: string | null;
+  importRoute: string;
+  importQuery: string;
+  latestImportResult: {
+    scanned?: number;
+    imported?: number;
+    skipped?: number;
+    errors?: number;
+    updatedAt?: string | null;
+  } | null;
+  counts: {
+    inboxVisibleConversations: number;
+    gmailImportedMessages: number;
+    gmailImportedConversations: number;
+    visibleImportedConversations: number;
+  };
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "pass" | "warn" | "fail";
+    message: string;
+  }>;
+};
+
 type MailboxSyncResponse = {
   imported?: number;
   skipped?: number;
   scanned?: number;
+  errors?: number;
   skipReasons?: Record<string, number>;
+  errorReasons?: Record<string, number>;
   error?: string;
 };
 
@@ -156,26 +198,6 @@ function friendlyEmailConnectorMessage(message: string) {
   }
 
   return message;
-}
-
-function formatMailboxSyncNotice(data: MailboxSyncResponse) {
-  const imported = data.imported ?? 0;
-  const scanned = data.scanned ?? 0;
-  const skipped = data.skipped ?? 0;
-  const reasons = Object.entries(data.skipReasons ?? {});
-  const reasonText = reasons.length
-    ? ` Reasons: ${reasons.map(([reason, count]) => `${reason} ${count}`).join(", ")}.`
-    : "";
-
-  if (imported > 0) {
-    return `Mailbox sync imported ${imported} new conversation${imported === 1 ? "" : "s"}. Scanned ${scanned}, skipped ${skipped}.${reasonText}`;
-  }
-
-  if (scanned > 0) {
-    return `Mailbox sync scanned ${scanned} recent message${scanned === 1 ? "" : "s"}, but no new conversations were imported. Skipped ${skipped} already imported or unsupported message${skipped === 1 ? "" : "s"}.${reasonText}`;
-  }
-
-  return "Mailbox sync completed but found no recent messages. Send a new email to the connected Gmail address, wait a few seconds, then import again.";
 }
 
 // ── Shared UI components ───────────────────────────────────────────────────────
@@ -880,19 +902,28 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
+  const [lastImportResult, setLastImportResult] = useState<MailboxSyncResponse | null>(null);
   const [connectionAction, setConnectionAction] = useState<"sync" | "watch" | "disconnect" | null>(null);
   const [diagnostics, setDiagnostics] = useState<EmailDiagnostics | null>(null);
   const [setupHealth, setSetupHealth] = useState<SetupHealth | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const [smokeCheck, setSmokeCheck] = useState<MvpSmokeCheck | null>(null);
+  const [smokeCheckLoading, setSmokeCheckLoading] = useState(false);
+  const [smokeCheckError, setSmokeCheckError] = useState<string | null>(null);
 
   const primaryConnection =
     connections.find((connection) =>
       connection.provider === "gmail" &&
       connection.connection_type === "oauth" &&
       (connection.status === "active" || connection.status === "connected")
-    ) ?? null;
-  const isConnected = Boolean(primaryConnection);
+    ) ??
+    connections.find((connection) =>
+      connection.provider === "gmail" &&
+      connection.connection_type === "oauth"
+    ) ??
+    null;
+  const isActiveGmail = Boolean(primaryConnection && (primaryConnection.status === "active" || primaryConnection.status === "connected"));
 
   useEffect(() => {
     void refreshConnections();
@@ -954,21 +985,43 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
     }
   }
 
+  async function runMvpSmokeCheck() {
+    setSmokeCheckLoading(true);
+    setSmokeCheckError(null);
+    setSmokeCheck(null);
+    try {
+      const response = await fetch("/api/system/mvp-smoke-check", { method: "POST" });
+      const payload = await response.json().catch(() => ({})) as MvpSmokeCheck & { error?: string };
+      if (!response.ok && !payload.checks) {
+        throw new Error(payload.error ?? "MVP smoke check failed.");
+      }
+      setSmokeCheck(payload);
+    } catch (error) {
+      setSmokeCheckError(error instanceof Error ? error.message : "MVP smoke check failed.");
+    } finally {
+      setSmokeCheckLoading(false);
+    }
+  }
+
   async function runConnectionAction(action: "sync" | "watch") {
     setConnectionAction(action);
     setConnectionError(null);
     setConnectionNotice(null);
+    if (action === "sync") setLastImportResult(null);
     try {
-      const res = await fetch(action === "sync" ? "/api/email/mailbox/sync" : "/api/email/gmail/watch", {
+      const res = await fetch(action === "sync" ? "/api/email/gmail/sync" : "/api/email/gmail/watch", {
         method: "POST",
-        headers: action === "sync" ? { "Content-Type": "application/json" } : undefined,
-        body: action === "sync" && primaryConnection?.id ? JSON.stringify({ connectionId: primaryConnection.id }) : undefined,
       });
       const payload = await res.json().catch(() => ({})) as MailboxSyncResponse;
       if (!res.ok) {
         throw new Error(payload.error ?? `Could not ${action === "sync" ? "sync mailbox" : "start Gmail live watch"}.`);
       }
-      setConnectionNotice(action === "sync" ? formatMailboxSyncNotice(payload) : "Live Gmail watch is active.");
+      if (action === "sync") {
+        setLastImportResult(payload);
+        setConnectionNotice(formatGmailImportResult(payload));
+      } else {
+        setConnectionNotice("Live Gmail watch is active.");
+      }
       await refreshConnections();
     } catch (error) {
       setConnectionError(
@@ -991,6 +1044,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
         throw new Error(payload.error ?? "Could not disconnect this mailbox.");
       }
       setConnectionNotice("Mailbox connection has been disconnected. You can reconnect whenever you are ready.");
+      setLastImportResult(null);
       await refreshConnections();
     } catch (error) {
       setConnectionError(
@@ -1065,7 +1119,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-semibold">{primaryConnection.provider_account_email ?? "Gmail account"}</p>
                     <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${
-                      isConnected ? "bg-emerald-400/10 text-emerald-300" : "bg-[rgba(144,50,61,0.16)] text-[var(--muted)]"
+                      isActiveGmail ? "bg-emerald-400/10 text-emerald-300" : "bg-[rgba(144,50,61,0.16)] text-[var(--muted)]"
                     }`}>
                       {primaryConnection.status}
                     </span>
@@ -1083,14 +1137,14 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => runConnectionAction("sync")}
-                    disabled={!canEdit || !isConnected || connectionAction !== null}
+                    disabled={!canEdit || !isActiveGmail || connectionAction !== null}
                     className="rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-45"
                   >
                     {connectionAction === "sync" ? "Importing..." : "Import latest email"}
                   </button>
                   <button
                     onClick={() => runConnectionAction("watch")}
-                    disabled={!canEdit || !isConnected || connectionAction !== null}
+                    disabled={!canEdit || !isActiveGmail || connectionAction !== null}
                     className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-45"
                   >
                     {connectionAction === "watch" ? "Repairing..." : "Repair Gmail live updates"}
@@ -1125,6 +1179,7 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
               {connectionNotice}
             </div>
           )}
+          {lastImportResult && <GmailImportResultPanel result={lastImportResult} />}
           {connectionError && (
             <div className="mt-4 rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs leading-5 text-[rgba(255,210,210,0.9)]">
               {connectionError}
@@ -1149,6 +1204,13 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           >
             {diagnosticsLoading ? "Checking..." : "Recheck"}
           </button>
+          <button
+            onClick={runMvpSmokeCheck}
+            disabled={!canEdit || smokeCheckLoading}
+            className="w-fit rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {smokeCheckLoading ? "Running..." : "Run MVP smoke check"}
+          </button>
         </div>
 
         <div className="mt-4">
@@ -1161,17 +1223,38 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
           {!diagnosticsLoading && diagnostics && (
             <div className="space-y-4">
               {setupHealth && (
-                <div className="grid gap-3 md:grid-cols-3">
-                  <ConnectorMetric label="Gmail OAuth state" value={setupHealth.summary.googleOAuthConfigured ? "Ready" : "Not configured"} />
-                  <ConnectorMetric label="Google OAuth routes available" value={setupHealth.summary.googleOAuthRoutesAvailable ? "Yes" : "No"} />
-                  <ConnectorMetric label="Canonical base URL configured" value={setupHealth.summary.canonicalBaseUrlConfigured ? "Yes" : "No"} />
-                  <ConnectorMetric label="Google redirect URI" value={setupHealth.summary.googleRedirectUri ?? "Set APP_BASE_URL"} />
-                  <ConnectorMetric label="Gmail API expectation" value={setupHealth.summary.gmailApiEnabledExpectation ?? "Enable Gmail API in the Work Hat Google Cloud project"} />
-                  <ConnectorMetric label="Encryption key configured" value={setupHealth.summary.encryptionConfigured ? "Yes" : "No"} />
-                  <ConnectorMetric label="Server database key configured" value={setupHealth.summary.serverDatabaseConfigured ? "Yes" : "No"} />
-                  <ConnectorMetric label="Redis configured" value={setupHealth.summary.redisConfigured ? "Yes" : "No"} />
-                  <ConnectorMetric label="Next action" value={setupHealth.summary.nextAction} />
-                </div>
+                <>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <ConnectorMetric label="Gmail OAuth state" value={setupHealth.summary.googleOAuthConfigured ? "Ready" : "Not configured"} />
+                    <ConnectorMetric label="Google OAuth routes available" value={setupHealth.summary.googleOAuthRoutesAvailable ? "Yes" : "No"} />
+                    <ConnectorMetric label="Canonical base URL configured" value={setupHealth.summary.canonicalBaseUrlConfigured ? "Yes" : "No"} />
+                    <ConnectorMetric label="Google redirect URI" value={setupHealth.summary.googleRedirectUri ?? "Set APP_BASE_URL"} />
+                    <ConnectorMetric label="Gmail API expectation" value={setupHealth.summary.gmailApiEnabledExpectation ?? "Enable Gmail API in the Work Hat Google Cloud project"} />
+                    <ConnectorMetric label="Encryption key configured" value={setupHealth.summary.encryptionConfigured ? "Yes" : "No"} />
+                    <ConnectorMetric label="Server database key configured" value={setupHealth.summary.serverDatabaseConfigured ? "Yes" : "No"} />
+                    <ConnectorMetric label="Redis configured" value={setupHealth.summary.redisConfigured ? "Yes" : "No"} />
+                    <ConnectorMetric label="Next action" value={setupHealth.summary.nextAction} />
+                  </div>
+
+                  {setupHealth.userScopedReadDiagnostics && (
+                    <div className="space-y-2">
+                      <p className="eyebrow text-[8px] text-[var(--muted)]">RLS read diagnostics</p>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {Object.entries(setupHealth.userScopedReadDiagnostics.tables).map(([table, check]) => (
+                          <div key={table} className="rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-sm font-medium">{table}</p>
+                              <DiagnosticPill status={check.ok ? "pass" : "fail"} label={check.ok ? "pass" : "fail"} />
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                              {check.message}{typeof check.count === "number" ? ` Count: ${check.count}.` : ""}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
               <div className="flex flex-wrap gap-2">
                 <DiagnosticPill status="pass" label={`${diagnostics.summary.pass} ready`} />
@@ -1189,6 +1272,48 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                   </div>
                 ))}
               </div>
+              {smokeCheckError && (
+                <div className="rounded-[14px] border border-[rgba(144,50,61,0.4)] bg-[rgba(73,17,28,0.18)] px-4 py-3 text-xs leading-5 text-[rgba(255,210,210,0.9)]">
+                  {smokeCheckError}
+                </div>
+              )}
+              {smokeCheck && (
+                <div className="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="eyebrow text-[8px] text-[var(--muted)]">MVP smoke check</p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                        Request id: {smokeCheck.requestId ?? "not available"}. Review each check below independently. No customer reply was sent.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <ConnectorMetric label="Gmail mailbox" value={smokeCheck.connectedMailbox ?? "Not connected"} />
+                    <ConnectorMetric label="Import route" value={smokeCheck.importRoute} />
+                    <ConnectorMetric label="Visible inbox conversations" value={String(smokeCheck.counts.inboxVisibleConversations)} />
+                    <ConnectorMetric label="Visible Gmail imports" value={String(smokeCheck.counts.visibleImportedConversations)} />
+                  </div>
+                  {smokeCheck.latestImportResult && (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                      <ConnectorMetric label="Last scanned" value={String(smokeCheck.latestImportResult.scanned ?? 0)} />
+                      <ConnectorMetric label="Last imported" value={String(smokeCheck.latestImportResult.imported ?? 0)} />
+                      <ConnectorMetric label="Last skipped" value={String(smokeCheck.latestImportResult.skipped ?? 0)} />
+                      <ConnectorMetric label="Last errors" value={String(smokeCheck.latestImportResult.errors ?? 0)} />
+                    </div>
+                  )}
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    {smokeCheck.checks.map((check) => (
+                      <div key={check.key} className="rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm font-medium">{check.label}</p>
+                          <DiagnosticPill status={check.status} label={check.status} />
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{check.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1213,6 +1338,37 @@ function ConnectorMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-3 py-3">
       <p className="eyebrow text-[8px] text-[var(--muted)]">{label}</p>
       <p className="mt-1 break-words text-xs text-[var(--foreground)]">{value}</p>
+    </div>
+  );
+}
+
+function GmailImportResultPanel({ result }: { result: GmailImportResultSummary }) {
+  const normalized = normalizeGmailImportResult(result);
+  const skipReasons = Object.entries(normalized.skipReasons);
+  const errorReasons = Object.entries(normalized.errorReasons);
+
+  return (
+    <div className="mt-4 rounded-[14px] border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-xs text-emerald-100">
+      <p className="font-medium">{formatGmailImportResult(result)}</p>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <ConnectorMetric label="Scanned" value={String(normalized.scanned)} />
+        <ConnectorMetric label="Imported" value={String(normalized.imported)} />
+        <ConnectorMetric label="Skipped" value={String(normalized.skipped)} />
+        <ConnectorMetric label="Errors" value={String(normalized.errors)} />
+      </div>
+      {(skipReasons.length > 0 || errorReasons.length > 0) && (
+        <div className="mt-3 space-y-1 text-[var(--muted)]">
+          {skipReasons.length > 0 && (
+            <p>Skipped: {skipReasons.map(([reason, count]) => `${reason} ${count}`).join(", ")}</p>
+          )}
+          {errorReasons.length > 0 && (
+            <p>Errors: {errorReasons.map(([reason, count]) => `${reason} ${count}`).join(", ")}</p>
+          )}
+        </div>
+      )}
+      <Link href="/inbox" className="mt-3 inline-flex text-xs font-medium text-emerald-200 underline underline-offset-4">
+        Open Inbox or refresh Inbox to review imported conversations.
+      </Link>
     </div>
   );
 }

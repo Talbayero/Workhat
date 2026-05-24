@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { EmailConnectionSetup } from "@/components/email/email-connection-setup";
+import { formatGmailImportResult } from "@/lib/email/import-result";
 
 // ── Shared form state (lifted to parent) ──────────────────────────────────────
 
@@ -46,7 +47,9 @@ type GmailSyncResponse = {
   imported?: number;
   skipped?: number;
   scanned?: number;
+  errors?: number;
   skipReasons?: Record<string, number>;
+  errorReasons?: Record<string, number>;
   error?: string;
 };
 
@@ -79,26 +82,6 @@ function friendlyEmailConnectorMessage(message: string) {
   }
 
   return message;
-}
-
-function formatGmailSyncResult(data: GmailSyncResponse) {
-  const imported = data.imported ?? 0;
-  const scanned = data.scanned ?? 0;
-  const skipped = data.skipped ?? 0;
-  const reasons = Object.entries(data.skipReasons ?? {});
-  const reasonText = reasons.length
-    ? ` Reasons: ${reasons.map(([reason, count]) => `${reason} ${count}`).join(", ")}.`
-    : "";
-
-  if (imported > 0) {
-    return `Imported ${imported} new Gmail conversation${imported === 1 ? "" : "s"}. Scanned ${scanned}, skipped ${skipped}.${reasonText} Open Inbox to review synced messages.`;
-  }
-
-  if (scanned > 0) {
-    return `Gmail sync scanned ${scanned} recent message${scanned === 1 ? "" : "s"}, but there were no new conversations to import. Skipped ${skipped} already imported or unsupported message${skipped === 1 ? "" : "s"}.${reasonText}`;
-  }
-
-  return "Gmail sync completed but found no recent mailbox messages. Send a new email to the connected Gmail address, wait a few seconds, then import again.";
 }
 
 // ── Reusable input components ─────────────────────────────────────────────────
@@ -166,8 +149,14 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
   const [syncing, setSyncing] = useState(false);
   const [watching, setWatching] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [conversationCount, setConversationCount] = useState(0);
 
-  const gmailConnection = connections.find((connection) => connection.provider === "gmail" && (connection.status === "active" || connection.status === "connected"));
+  const gmailConnection = connections.find((connection) =>
+    connection.provider === "gmail" &&
+    connection.connection_type === "oauth" &&
+    (connection.status === "active" || connection.status === "connected")
+  );
+  const gmailImportAttempted = Boolean(gmailConnection?.last_inbound_sync_at || gmailConnection?.last_sync_at);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -189,11 +178,13 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
 
   useEffect(() => {
     void loadConnections();
+    // Initial connection state is loaded once when the Gmail setup step mounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    onReadyChange(Boolean(gmailConnection));
-  }, [gmailConnection, onReadyChange]);
+    onReadyChange(Boolean(gmailConnection && gmailImportAttempted && conversationCount > 0));
+  }, [gmailConnection, gmailImportAttempted, conversationCount, onReadyChange]);
 
   async function loadConnections() {
     setLoadingConnections(true);
@@ -206,6 +197,7 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
       }
       const data = await response.json() as { connections?: EmailConnection[] };
       setConnections(data.connections ?? []);
+      await loadConversationCount();
     } catch (error) {
       setConnectionError(
         friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Unable to load email connections.")
@@ -213,6 +205,16 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
     } finally {
       setLoadingConnections(false);
     }
+  }
+
+  async function loadConversationCount() {
+    const response = await fetch("/api/conversations/count");
+    if (!response.ok) {
+      setConversationCount(0);
+      return;
+    }
+    const data = await response.json().catch(() => ({})) as { open?: number };
+    setConversationCount(data.open ?? 0);
   }
 
   async function syncGmail() {
@@ -226,8 +228,9 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
 
       if (!response.ok) throw new Error(data.error ?? "Gmail sync failed.");
 
-      setSyncResult(formatGmailSyncResult(data));
+      setSyncResult(formatGmailImportResult(data));
       await loadConnections();
+      await loadConversationCount();
     } catch (error) {
       setConnectionError(
         friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Gmail sync failed.")
@@ -339,7 +342,11 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
           <div className="mt-4 rounded-[14px] border border-[var(--line)] bg-[var(--background)] px-4 py-3 text-xs">
             <p className="font-medium">{gmailConnection.provider_account_email}</p>
             <p className="mt-1 text-[var(--muted)]">
-              Ready for Gmail imports and approved replies
+              {gmailImportAttempted
+                ? conversationCount > 0
+                  ? "Ready for Gmail imports and approved replies"
+                  : "Import completed, but no inbox conversations are visible yet. Send a test email to this Gmail account and import again."
+                : "Connected. Import latest email before continuing"}
               {gmailConnection.sync_status ? ` · Sync: ${gmailConnection.sync_status}` : ""}
               {(gmailConnection.last_inbound_sync_at || gmailConnection.last_sync_at) ? ` · Last sync ${new Date(gmailConnection.last_inbound_sync_at || gmailConnection.last_sync_at || "").toLocaleString()}` : ""}
               {gmailConnection.watch_expires_at ? ` · Live updates active until ${new Date(gmailConnection.watch_expires_at).toLocaleDateString()}` : ""}
@@ -658,7 +665,7 @@ export default function OnboardingPage() {
       }
 
       if (currentStep === 1 && !gmailReady) {
-        setError("Connect Gmail OAuth and import the latest email before continuing.");
+        setError("Connect Gmail OAuth, import the latest email, and confirm at least one inbox conversation before continuing.");
         return;
       }
 

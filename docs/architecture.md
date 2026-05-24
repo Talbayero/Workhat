@@ -269,8 +269,8 @@ These records are in scope for confidentiality, privacy, retention, and deletion
 | App routes | `web/src/app/` |
 | Auth helpers | `web/src/lib/auth/` |
 | Supabase clients | `web/src/lib/supabase/` |
-| Email connectors | `web/src/lib/email-connector/` |
-| AI | `web/src/lib/ai/` |
+| Email connectors | `web/src/lib/email/` |
+| AI | `web/src/ai/` |
 | Workflow | `web/src/lib/workflow-engine/` |
 | SLA | `web/src/lib/sla/` |
 | Audit/security | `web/src/lib/security/` |

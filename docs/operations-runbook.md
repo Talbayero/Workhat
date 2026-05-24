@@ -42,6 +42,57 @@ The core path is healthy only if:
 
 Redis request protection should be configured before broader customer rollout. If Redis is missing, authenticated app APIs continue so setup is not blocked, but admin setup health must show Redis as incomplete and public abuse-prone routes may fail closed.
 
+## Manual MVP Verification Checklist
+
+Run this before claiming a deployment is ready for customer onboarding:
+
+1. Open `/login` in a clean browser session.
+2. Create a new Work Hat account with a real email address.
+3. Confirm login works and the forgot-password flow sends a reset email.
+4. Create a workspace from `/onboarding`.
+5. Confirm the onboarding email step shows only Gmail OAuth and no IMAP, SMTP, app password, mailbox password, custom inbound, or non-Gmail provider choices.
+6. Start Gmail OAuth from onboarding and confirm Google receives this exact redirect URI:
+
+```text
+https://work-hat.com/api/oauth/google/callback
+```
+
+7. Complete Google consent and confirm Work Hat returns to onboarding with a visible success or error alert.
+8. In Settings -> Channels, confirm the connected mailbox section shows the Work Hat login identity separately from the connected Gmail mailbox identity.
+9. Confirm the active `email_connections` row is:
+
+```text
+provider = gmail
+connection_type = oauth
+status = active
+inbound_enabled = true
+outbound_enabled = true
+```
+
+10. Click Import latest email and confirm the UI returns scanned/imported/skipped/errors counts.
+11. Confirm at least one imported email appears in `/inbox` as a conversation.
+12. Open the conversation, generate an AI draft, edit it, and send.
+13. Confirm the customer-facing reply is sent through Gmail, not simulated.
+14. Confirm `messages`, `sent_replies`, `edit_analyses`, `inbound_email_events`, workflow events, and audit/log evidence exist for the flow.
+15. Confirm onboarding does not advance past Gmail setup until Gmail is active, an import attempt has completed, and at least one inbox conversation is visible.
+16. In Settings -> Channels, click Run MVP smoke check and confirm it passes Gmail active, import attempted, visible Gmail-imported conversation, AI provider configured, and Gmail outbound available.
+
+## Deployment Readiness Checklist
+
+Production-like readiness requires:
+
+- `APP_BASE_URL=https://work-hat.com`
+- `NEXT_PUBLIC_APP_URL=https://work-hat.com`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `EMAIL_TOKEN_ENCRYPTION_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+- Applied Supabase migrations through the latest file in `supabase/migrations/`
+- Settings -> Channels -> Admin setup health shows Google OAuth, token encryption, service role, Redis, and RLS read diagnostics as passing or intentionally warned
+- `/api/email/gmail/diagnostics` shows user-scoped reads passing and no RLS repair required
+
 ## Gmail OAuth Troubleshooting
 
 Check admin setup health:
@@ -84,7 +135,30 @@ Manual import:
 POST /api/email/gmail/sync
 ```
 
-Manual import returns `imported`, `scanned`, and `skipped`. The Gmail importer searches recent mail matching `newer_than:30d {in:inbox to:me}` so a self-test addressed to the connected mailbox is eligible even when Gmail labeling differs from ordinary inbound mail.
+Manual import returns `scanned`, `imported`, `skipped`, `errors`, `skipReasons`, and `errorReasons`. The Gmail importer searches recent mail matching `newer_than:30d {in:inbox to:me}` so a self-test addressed to the connected mailbox is eligible even when Gmail labeling differs from ordinary inbound mail.
+
+If `scanned = 0`, the UI must show: "No recent eligible Gmail messages found. Send a test email to this mailbox, wait a few seconds, then import again."
+
+If `scanned > 0` and `imported = 0`, the UI must show: "Messages were found but skipped, likely because they were already imported."
+
+Imported Gmail messages must flow through inbound processing so contacts, companies, conversations, messages, SLA refresh, inbound email events, workflow events, and audit/log evidence stay aligned.
+
+MVP smoke check:
+
+```text
+POST /api/system/mvp-smoke-check
+```
+
+This admin-only endpoint does not send customer email. Use the returned `requestId` to correlate server logs with Gmail import logs.
+
+Smoke-check item meanings:
+
+- Active Gmail OAuth connection: pass means the workspace has an active or connected Gmail OAuth `email_connections` row; fail means the user must connect Gmail again.
+- Latest Gmail import attempted: pass means `last_inbound_sync_at`, `last_sync_at`, or a stored import summary exists; fail means an admin must run Import latest email.
+- Latest import summary available: pass means `provider_metadata.last_import_result` contains the safe count-only summary from the latest import; fail means the import route should be run again so operators can inspect scanned/imported/skipped/errors.
+- Gmail-imported conversation visible through Inbox loader: pass means at least one inbound Gmail message maps to a conversation returned by the Inbox loader; fail means imports are not visible to the user and the inbox read path needs investigation.
+- OpenAI configured: pass means `OPENAI_API_KEY` exists for AI draft generation; fail means AI drafts cannot run.
+- Gmail outbound available: pass means the active Gmail OAuth connection has outbound enabled and server-side token material exists; fail means approved replies cannot be sent through Gmail.
 
 Live watch:
 

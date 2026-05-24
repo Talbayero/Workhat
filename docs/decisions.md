@@ -795,4 +795,30 @@ The smallest useful step is to let operators define reusable operational guidanc
 - New writes require narrow capabilities: `context.read`, `context.edit`, and `context.publish`.
 - Future context-gap analytics, test panels, and change-request workflows remain separate follow-on work instead of being bundled into V1.
 
+---
+
+## ADR-030 — MVP Completion Requires Gmail Import Evidence
+
+**Date:** 2026-05
+**Status:** Accepted
+
+### Decision
+
+Work Hat onboarding is not considered complete when Gmail OAuth is merely connected; the user must also run the Gmail import path and have at least one visible inbox conversation before advancing.
+
+### Context
+
+The MVP truth is a full operational loop: account, workspace, Gmail OAuth, active Gmail connection, latest email import, inbox conversation, AI draft, human edit/send, and edit-analysis/audit evidence. Treating an active OAuth row as enough can hide broken import, RLS, or inbox-read states until after onboarding.
+
+### Rationale
+
+Import evidence plus a visible conversation is the first proof that the connected mailbox can produce Work Hat conversations. Gating onboarding on that proof keeps the product honest without adding new surface area or requiring non-Gmail setup methods.
+
+### Consequences
+
+- Onboarding can show connected Gmail as successful but must still require an import attempt and at least one visible inbox conversation before continuing.
+- Settings and onboarding should call the Gmail-specific import path for the MVP.
+- Errored or disconnected Gmail OAuth rows should remain visible to admins/managers so they can disconnect and reconnect cleanly.
+- Non-Gmail connection records may remain as isolated future compatibility code, but they must not appear as MVP-ready setup choices.
+
 *Last updated: April 2026*
