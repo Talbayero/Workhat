@@ -155,8 +155,9 @@ Inbox and thread workspace changes must preserve the Gmail-only MVP path and mak
 - AI Draft should be disabled with a reason when no latest inbound customer message exists.
 - Collapsible navigation or queue state may use browser-local persistence only; do not persist layout preference to tenant data unless there is a product requirement.
 - The primary app sidebar should fully hide behind a small keyboard-accessible edge handle.
-- Queue width controls should use understandable presets or a clear draggable resize handle, not arbitrary pixel sliders.
-- Theme switching should be discoverable from both Settings -> Appearance and the app sidebar footer.
+- Queue width controls should use a clear draggable resize handle with keyboard support, min/max bounds, and no raw pixel display.
+- Theme switching should be discoverable from both Settings -> Appearance and the app sidebar footer; the sidebar control should stay compact.
+- Inbox and thread layouts should avoid horizontal overflow at common browser zoom levels and collapse secondary panels before crushing the composer.
 
 ## Theme Standard
 

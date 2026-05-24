@@ -76,7 +76,7 @@ outbound_enabled = true
 14. Confirm AI Draft is disabled with a reason if no latest inbound customer message exists.
 15. Confirm Send is disabled with a reason when the reply is empty or the conversation is closed.
 16. Collapse and reopen the app sidebar and Inbox queue, then refresh to confirm the browser-local state persists.
-17. Confirm queue width presets switch between Compact, Comfortable, and Wide without using a raw pixel slider.
+17. Confirm the queue splitter resizes by drag and by keyboard arrows, clamps to a usable width, and restores the previous width after collapse/reopen.
 18. Open the automated/system queue filter and confirm system notifications are retained but excluded from the default operational queue; when hidden, the operational queue should show a hidden-count badge.
 19. Open Settings -> Appearance and the sidebar footer theme switcher, then verify Light, Dark, and System preferences apply and persist after refresh.
 20. Generate an AI draft, edit it, and send.

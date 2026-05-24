@@ -1,27 +1,22 @@
-export const QUEUE_WIDTH_PRESETS = {
-  compact: {
-    label: "Compact",
-    width: 280,
-    description: "More room for the thread.",
-  },
-  comfortable: {
-    label: "Comfortable",
-    width: 340,
-    description: "Balanced queue and thread.",
-  },
-  wide: {
-    label: "Wide",
-    width: 400,
-    description: "More room for queue scanning.",
-  },
-} as const;
+export const QUEUE_MIN_WIDTH = 260;
+export const QUEUE_MAX_WIDTH = 460;
+export const QUEUE_DEFAULT_WIDTH = 340;
+export const QUEUE_KEYBOARD_STEP = 20;
+export const MIN_THREAD_WIDTH = 560;
 
-export type QueueWidthPreset = keyof typeof QUEUE_WIDTH_PRESETS;
+export function clampQueueWidth(width: number) {
+  if (!Number.isFinite(width)) return QUEUE_DEFAULT_WIDTH;
+  return Math.min(QUEUE_MAX_WIDTH, Math.max(QUEUE_MIN_WIDTH, Math.round(width)));
+}
 
-export const QUEUE_WIDTH_PRESET_VALUES = Object.keys(QUEUE_WIDTH_PRESETS) as QueueWidthPreset[];
+export function resizeQueueWidth(currentWidth: number, direction: "decrease" | "increase") {
+  const delta = direction === "increase" ? QUEUE_KEYBOARD_STEP : -QUEUE_KEYBOARD_STEP;
+  return clampQueueWidth(currentWidth + delta);
+}
 
-export function getQueueWidthForPreset(preset: QueueWidthPreset) {
-  return QUEUE_WIDTH_PRESETS[preset].width;
+export function shouldAutoCollapseQueue(viewportWidth: number, queueWidth: number) {
+  if (!Number.isFinite(viewportWidth)) return false;
+  return viewportWidth < clampQueueWidth(queueWidth) + MIN_THREAD_WIDTH;
 }
 
 export function shouldShowOpenQueue(queueCollapsed: boolean) {

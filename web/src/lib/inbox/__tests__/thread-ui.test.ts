@@ -37,7 +37,7 @@ describe("thread workspace helpers", () => {
     const longBody = "A".repeat(600);
 
     expect(shouldOfferFullThread(longBody)).toBe(true);
-    expect(getReplyingToBody(longBody, false)).toHaveLength(523);
+    expect(getReplyingToBody(longBody, false)).toHaveLength(363);
     expect(getReplyingToBody(longBody, true)).toBe(longBody);
   });
 

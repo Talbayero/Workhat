@@ -690,14 +690,14 @@ export function ThreadWorkspace({
   });
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="relative flex h-full min-w-0 overflow-hidden">
       {/* ── Main thread column ── */}
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 
         {/* Thread header */}
-        <div className="shrink-0 border-b border-[var(--line)] px-5 py-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
+        <div className="shrink-0 border-b border-[var(--line)] px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-[220px] flex-1">
               {/* Clicking customer name opens profile panel */}
               <button
                 onClick={() => togglePanel("profile")}
@@ -837,7 +837,7 @@ export function ThreadWorkspace({
             </div>
 
             {/* Right side: AI confidence + quick Resolve/Reopen */}
-            <div className="shrink-0 flex flex-col items-end gap-2">
+            <div className="flex shrink-0 flex-row flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => togglePanel("profile")}
@@ -850,7 +850,7 @@ export function ThreadWorkspace({
               >
                 Customer details
               </button>
-              <div className="flex items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2">
+              <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-1.5">
                 <span aria-hidden="true" className={`status-dot ${confidenceDot[conversation.aiConfidence]}`} />
                 <span className="text-xs text-[var(--muted)]">
                   {confidenceLabel[conversation.aiConfidence]}
@@ -879,15 +879,18 @@ export function ThreadWorkspace({
           </div>
         </div>
 
-        <section className="shrink-0 border-b border-[var(--line)] bg-[rgba(255,255,255,0.012)] px-5 py-3" aria-label="Active customer message">
+        <section className="shrink-0 border-b border-[var(--line)] bg-[rgba(255,255,255,0.012)] px-4 py-2.5 sm:px-5" aria-label="Active customer message">
           {latestInboundCustomerMessage ? (
-            <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-              <div className="flex items-start justify-between gap-4">
+            <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] px-3.5 py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="eyebrow text-[9px] text-[var(--muted)]">Active customer message</p>
-                  <p className="mt-1 truncate text-sm font-semibold">{latestInboundCustomerMessage.sender}</p>
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="truncate text-sm font-semibold">{latestInboundCustomerMessage.sender}</p>
+                    <span className="truncate text-xs text-[var(--muted)]">{conversation.profile.email || "No sender email"}</span>
+                  </div>
                   <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
-                    {conversation.profile.email || "No sender email"} · {conversation.subject} · {latestInboundCustomerMessage.timestamp}
+                    {conversation.subject} · {latestInboundCustomerMessage.timestamp}
                   </p>
                 </div>
                 {shouldOfferFullThread(latestInboundCustomerMessage.body) && (
@@ -1217,7 +1220,7 @@ export function ThreadWorkspace({
                 rows={3}
                 className="w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm leading-6 text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none"
               />
-              <div className="flex items-center gap-2 border-t border-[rgba(169,146,125,0.2)] px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2 border-t border-[rgba(169,146,125,0.2)] px-3 py-2.5">
                 <button
                   onClick={handleSendClick}
                   disabled={Boolean(sendDisabledReason)}
@@ -1248,7 +1251,7 @@ export function ThreadWorkspace({
                 rows={3}
                 className="w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm leading-6 text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none"
               />
-              <div className="flex items-center gap-2 border-t border-[var(--line)] px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2 border-t border-[var(--line)] px-3 py-2.5">
                 <button
                   onClick={handleSendClick}
                   disabled={Boolean(sendDisabledReason)}
@@ -1290,17 +1293,26 @@ export function ThreadWorkspace({
         </div>
       </div>
 
+      {panelOpen && (
+        <button
+          type="button"
+          aria-label="Close side panel"
+          onClick={() => setActivePanel(null)}
+          className="fixed inset-0 z-30 hidden bg-black/35 max-xl:block"
+        />
+      )}
+
       {/* ── Slide-in panel ── */}
-      {/* Width transitions from 0 to 320px. overflow-hidden clips content during animation. */}
+      {/* Inline on wide screens; overlay on constrained widths so the thread stays usable. */}
       <div
-        className={`shrink-0 border-l border-[var(--line)] overflow-hidden transition-all duration-200 ease-in-out ${
-          panelOpen ? "w-[320px]" : "w-0"
+        className={`shrink-0 overflow-hidden border-l border-[var(--line)] bg-[var(--panel)] transition-all duration-200 ease-in-out max-xl:fixed max-xl:inset-y-0 max-xl:right-0 max-xl:z-40 max-xl:shadow-[0_24px_80px_rgba(0,0,0,0.42)] ${
+          panelOpen ? "w-[320px] max-xl:w-[min(360px,calc(100vw-24px))]" : "w-0 max-xl:w-0"
         }`}
       >
         {/* AI Draft panel */}
         {activePanel === "ai" && (
           <ErrorBoundary title="AI Draft panel error" inline>
-          <div className="flex h-full w-[320px] flex-col overflow-hidden">
+          <div className="flex h-full w-[320px] max-xl:w-[min(360px,calc(100vw-24px))] flex-col overflow-hidden">
             {/* Panel header */}
               <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
                 <div className="flex items-center justify-between">
@@ -1494,7 +1506,7 @@ export function ThreadWorkspace({
         {/* Customer details panel */}
         {activePanel === "profile" && (
           <ErrorBoundary title="Customer details panel error" inline>
-          <div className="flex h-full w-[320px] flex-col overflow-hidden">
+          <div className="flex h-full w-[320px] max-xl:w-[min(360px,calc(100vw-24px))] flex-col overflow-hidden">
             <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
               <div className="flex items-center justify-between">
                 <p className="eyebrow text-[10px] text-[var(--muted)]">
@@ -1564,9 +1576,9 @@ export function ThreadWorkspace({
               </div>
 
               {/* Notes */}
-              {conversation.profile.notes.length > 0 && (
-                <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
-                  <p className="eyebrow text-[9px] text-[var(--muted)]">Notes</p>
+              <div className="rounded-[16px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
+                <p className="eyebrow text-[9px] text-[var(--muted)]">Notes</p>
+                {conversation.profile.notes.length > 0 ? (
                   <ul className="mt-2 space-y-2">
                     {conversation.profile.notes.map((note) => (
                       <li key={note} className="flex gap-2 text-sm leading-5">
@@ -1575,8 +1587,10 @@ export function ThreadWorkspace({
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--muted)]">No customer notes yet</p>
+                )}
+              </div>
 
               {/* Open issues */}
               {conversation.profile.openIssues.length > 0 && (

@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import { NewConversationButton } from "@/components/inbox/new-conversation-button";
 import { ThreadWorkspace } from "@/components/inbox/thread-workspace";
@@ -16,17 +22,19 @@ import {
 import type { InboxConversation, InboxViewId, RiskLevel } from "@/lib/inbox/types";
 import {
   readStoredBoolean,
-  readStoredString,
+  readStoredNumber,
   UI_STORAGE_KEYS,
   writeStoredBoolean,
-  writeStoredString,
+  writeStoredNumber,
 } from "@/lib/ui/persistent-state";
 import {
-  getQueueWidthForPreset,
-  QUEUE_WIDTH_PRESETS,
-  QUEUE_WIDTH_PRESET_VALUES,
+  clampQueueWidth,
+  QUEUE_DEFAULT_WIDTH,
+  QUEUE_MAX_WIDTH,
+  QUEUE_MIN_WIDTH,
+  resizeQueueWidth,
+  shouldAutoCollapseQueue,
   shouldShowOpenQueue,
-  type QueueWidthPreset,
 } from "@/lib/inbox/layout";
 
 type InboxLayoutClientProps = {
@@ -67,17 +75,24 @@ export function InboxLayoutClient({
   isDemo,
 }: InboxLayoutClientProps) {
   const [queueCollapsed, setQueueCollapsed] = useState(false);
-  const [queuePreset, setQueuePreset] = useState<QueueWidthPreset>("comfortable");
+  const [queueWidth, setQueueWidth] = useState(QUEUE_DEFAULT_WIDTH);
+  const [autoQueueCollapsed, setAutoQueueCollapsed] = useState(false);
+  const [isResizingQueue, setIsResizingQueue] = useState(false);
   const [layoutHydrated, setLayoutHydrated] = useState(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(QUEUE_DEFAULT_WIDTH);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       setQueueCollapsed(readStoredBoolean(window.localStorage, UI_STORAGE_KEYS.inboxQueueCollapsed, false));
-      setQueuePreset(readStoredString(
+      setQueueWidth(readStoredNumber(
         window.localStorage,
-        UI_STORAGE_KEYS.inboxQueueWidthPreset,
-        QUEUE_WIDTH_PRESET_VALUES,
-        "comfortable",
+        UI_STORAGE_KEYS.inboxQueueWidth,
+        {
+          fallback: QUEUE_DEFAULT_WIDTH,
+          min: QUEUE_MIN_WIDTH,
+          max: QUEUE_MAX_WIDTH,
+        },
       ));
       setLayoutHydrated(true);
     });
@@ -92,10 +107,20 @@ export function InboxLayoutClient({
 
   useEffect(() => {
     if (!layoutHydrated) return;
-    writeStoredString(window.localStorage, UI_STORAGE_KEYS.inboxQueueWidthPreset, queuePreset);
-  }, [layoutHydrated, queuePreset]);
+    writeStoredNumber(window.localStorage, UI_STORAGE_KEYS.inboxQueueWidth, queueWidth);
+  }, [layoutHydrated, queueWidth]);
 
-  const queueWidth = getQueueWidthForPreset(queuePreset);
+  useEffect(() => {
+    const syncAutoCollapse = () => {
+      setAutoQueueCollapsed(shouldAutoCollapseQueue(window.innerWidth, queueWidth));
+    };
+
+    syncAutoCollapse();
+    window.addEventListener("resize", syncAutoCollapse);
+    return () => window.removeEventListener("resize", syncAutoCollapse);
+  }, [queueWidth]);
+
+  const displayedQueueCollapsed = queueCollapsed || autoQueueCollapsed;
   const hiddenAutomatedCount = allConversations.filter((conversation) => !isDefaultOperationalConversation(conversation)).length;
   const selectedWithContext = selected ? {
     ...selected,
@@ -111,34 +136,77 @@ export function InboxLayoutClient({
     return `${path}?${params.toString()}`;
   };
 
+  const startQueueResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    setIsResizingQueue(true);
+    resizeStartXRef.current = event.clientX;
+    resizeStartWidthRef.current = queueWidth;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      setQueueWidth(clampQueueWidth(resizeStartWidthRef.current + moveEvent.clientX - resizeStartXRef.current));
+    };
+
+    const handlePointerUp = () => {
+      setIsResizingQueue(false);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  };
+
+  const handleQueueResizeKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    setQueueWidth((currentWidth) => resizeQueueWidth(
+      currentWidth,
+      event.key === "ArrowRight" ? "increase" : "decrease",
+    ));
+  };
+
   return (
-    <div className="flex h-full overflow-hidden">
-      {shouldShowOpenQueue(queueCollapsed) ? (
+    <div className="flex h-full min-w-0 overflow-hidden">
+      {displayedQueueCollapsed ? (
         <aside aria-label="Collapsed conversation list" className="flex h-full w-[54px] shrink-0 flex-col items-center border-r border-[var(--line)] bg-[var(--panel)] px-2 py-3">
-          <button
-            type="button"
-            onClick={() => setQueueCollapsed(false)}
-            aria-label="Open queue"
-            className="rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-2 py-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)]"
-            style={{ writingMode: "vertical-rl" }}
-            title="Open queue"
-          >
-            Open queue
-          </button>
+          {shouldShowOpenQueue(queueCollapsed) && !autoQueueCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setQueueCollapsed(false)}
+              aria-label="Open queue"
+              className="rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-2 py-3 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)]"
+              style={{ writingMode: "vertical-rl" }}
+              title="Open queue"
+            >
+              Open queue
+            </button>
+          ) : (
+            <div
+              className="rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-2 py-3 text-xs font-medium text-[var(--muted)]"
+              style={{ writingMode: "vertical-rl" }}
+              title="Queue is hidden to preserve thread space."
+            >
+              Queue hidden
+            </div>
+          )}
         </aside>
       ) : (
         <aside
           aria-label="Conversation list"
-          className="flex h-full shrink-0 flex-col border-r border-[var(--line)] bg-[rgba(255,255,255,0.015)]"
-          style={{ width: queueWidth }}
+          className="flex h-full min-w-0 shrink-0 flex-col border-r border-[var(--line)] bg-[rgba(255,255,255,0.015)]"
+          style={{
+            width: queueWidth,
+            minWidth: QUEUE_MIN_WIDTH,
+            maxWidth: QUEUE_MAX_WIDTH,
+          }}
         >
           <div className="shrink-0 border-b border-[var(--line)] px-4 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="eyebrow text-[9px] text-[var(--muted)]">Queue</p>
                 <h2 className="mt-1 text-base font-semibold">Conversations</h2>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                 <span className="rounded-full bg-[var(--sage)] px-2.5 py-1 text-[11px] font-medium">
                   {filtered.length} {activeView === "all" ? "active" : "filtered"}
                 </span>
@@ -162,28 +230,6 @@ export function InboxLayoutClient({
             <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
               The default queue prioritizes customer and unknown Gmail conversations. Automated mail stays available in its own filter.
             </p>
-            <div className="mt-3 grid grid-cols-3 gap-1 rounded-[14px] border border-[var(--line)] bg-[var(--panel-strong)] p-1">
-              {QUEUE_WIDTH_PRESET_VALUES.map((preset) => {
-                const option = QUEUE_WIDTH_PRESETS[preset];
-                const isActive = queuePreset === preset;
-                return (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setQueuePreset(preset)}
-                    aria-pressed={isActive}
-                    className={`rounded-[11px] px-2 py-1.5 text-[10px] font-medium transition-colors ${
-                      isActive
-                        ? "bg-[var(--moss)] text-white"
-                        : "text-[var(--muted)] hover:bg-[var(--sage)] hover:text-[var(--foreground)]"
-                    }`}
-                    title={option.description}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
             <div className="mt-3 flex flex-col gap-0.5">
               {inboxViews.map((view) => {
                 const isActive = view.id === activeView;
@@ -310,6 +356,26 @@ export function InboxLayoutClient({
             })}
           </div>
         </aside>
+      )}
+
+      {!displayedQueueCollapsed && (
+        <button
+          type="button"
+          role="separator"
+          aria-label="Resize conversation queue"
+          aria-orientation="vertical"
+          aria-valuemin={QUEUE_MIN_WIDTH}
+          aria-valuemax={QUEUE_MAX_WIDTH}
+          aria-valuenow={queueWidth}
+          onPointerDown={startQueueResize}
+          onKeyDown={handleQueueResizeKeyDown}
+          className={`group relative z-10 h-full w-2 shrink-0 cursor-col-resize border-r border-[var(--line)] bg-transparent outline-none transition-colors hover:bg-[rgba(169,146,125,0.12)] focus-visible:bg-[rgba(144,50,61,0.16)] focus-visible:ring-2 focus-visible:ring-[var(--moss)] focus-visible:ring-offset-0 ${
+            isResizingQueue ? "bg-[rgba(144,50,61,0.14)]" : ""
+          }`}
+          title="Resize conversation queue"
+        >
+          <span className="absolute left-1/2 top-1/2 h-12 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--line-strong)] opacity-70 transition-opacity group-hover:opacity-100" />
+        </button>
       )}
 
       <div className="min-w-0 flex-1 overflow-hidden">

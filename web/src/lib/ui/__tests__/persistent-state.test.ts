@@ -1,10 +1,8 @@
 import {
   readStoredBoolean,
   readStoredNumber,
-  readStoredString,
   writeStoredBoolean,
   writeStoredNumber,
-  writeStoredString,
 } from "@/lib/ui/persistent-state";
 
 function createMemoryStorage() {
@@ -36,15 +34,16 @@ describe("persistent UI state helpers", () => {
     expect(readStoredNumber(storage, "width", { fallback: 320, min: 260, max: 420 })).toBe(260);
   });
 
-  it("persists allowed string values only", () => {
+  it("keeps queue width independent from collapsed state so reopen restores width", () => {
     const storage = createMemoryStorage();
 
-    writeStoredString(storage, "preset", "wide");
-    expect(readStoredString(storage, "preset", ["compact", "comfortable", "wide"] as const, "comfortable"))
-      .toBe("wide");
+    writeStoredNumber(storage, "queue-width", 410);
+    writeStoredBoolean(storage, "queue-collapsed", true);
 
-    writeStoredString(storage, "preset", "surprising");
-    expect(readStoredString(storage, "preset", ["compact", "comfortable", "wide"] as const, "comfortable"))
-      .toBe("comfortable");
+    expect(readStoredBoolean(storage, "queue-collapsed", false)).toBe(true);
+    expect(readStoredNumber(storage, "queue-width", { fallback: 340, min: 260, max: 460 })).toBe(410);
+
+    writeStoredBoolean(storage, "queue-collapsed", false);
+    expect(readStoredNumber(storage, "queue-width", { fallback: 340, min: 260, max: 460 })).toBe(410);
   });
 });

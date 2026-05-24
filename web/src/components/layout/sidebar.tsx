@@ -339,6 +339,7 @@ export function Sidebar() {
             <p className="truncate text-xs font-medium">{displayName}</p>
             <p className="truncate text-[10px] text-[var(--muted)]">{activeUser?.email ?? "Not signed in"}</p>
           </div>
+          <ThemeSwitcher variant="sidebar" />
           {/* Sign out */}
           <button
             onClick={handleSignOut}
@@ -351,7 +352,6 @@ export function Sidebar() {
             </svg>
           </button>
         </div>
-        <ThemeSwitcher variant="sidebar" />
       </div>
     </aside>
   );

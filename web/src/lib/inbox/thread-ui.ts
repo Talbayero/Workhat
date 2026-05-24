@@ -33,13 +33,13 @@ export function getMessagePresentation(message: ThreadMessage): MessagePresentat
   return "internal_note";
 }
 
-export function getReplyingToBody(body: string, expanded: boolean, maxLength = 520) {
+export function getReplyingToBody(body: string, expanded: boolean, maxLength = 360) {
   const normalized = body.trim();
   if (expanded || normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength).trimEnd()}...`;
 }
 
-export function shouldOfferFullThread(body: string, maxLength = 520) {
+export function shouldOfferFullThread(body: string, maxLength = 360) {
   return body.trim().length > maxLength;
 }
 

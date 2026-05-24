@@ -58,6 +58,7 @@ The Inbox is the primary Work Hat workspace. A usable conversation must make the
 - The default operational queue prioritizes `human_customer` and `unknown` imported Gmail conversations.
 - System notifications, auth emails, and newsletters are retained but shown through an automated/system filter instead of cluttering the default queue.
 - If automated/system mail is hidden from the default queue, the Inbox should show a small count so users know those messages still exist.
+- The conversation queue is resizable with a quiet splitter, can be collapsed, and should automatically yield space to the thread on narrow or high-zoom layouts.
 - AI Draft and Send controls must be disabled with visible reasons when there is no latest inbound customer message, the reply is empty, or the conversation is closed.
 
 ## Modules
