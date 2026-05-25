@@ -28,6 +28,8 @@ import type { ConversationContext, MessageContext, KnowledgeSnippet } from "@/ai
 import { assignPromptVersion, linkPromptAssignmentToDraft } from "@/ai/prompts/experiments";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
 import { resolveDraftContextSelection } from "@/lib/context/context-objects";
+import { AISettingsError, mapAISettingsError, resolveOrgAIConfig, type ResolvedAIConfig } from "@/lib/ai-settings";
+import { extractContextFromRequest } from "@/lib/request-context";
 
 // ── Request validation ────────────────────────────────────────────────────────
 
@@ -310,7 +312,8 @@ async function persistDraft(
   userId: string,
   orgId: string,
   result: Awaited<ReturnType<typeof generateDraft>>,
-  selectedContext: ConversationContext["selectedContext"]
+  selectedContext: ConversationContext["selectedContext"],
+  aiConfig: ResolvedAIConfig
 ): Promise<string | null> {
   const { data, error } = await supabase
     .from("ai_drafts")
@@ -327,6 +330,7 @@ async function persistDraft(
       recommended_tags: result.recommendedTags,
       provider: result.provider,
       model: result.model,
+      ai_mode: aiConfig.aiMode,
       prompt_version: result.promptVersion,
       context_object_id: selectedContext?.id ?? null,
       context_object_version_id: selectedContext?.versionId ?? null,
@@ -401,7 +405,10 @@ async function emitUsageEvent(
   orgId: string,
   userId: string,
   conversationId: string,
-  latencyMs: number,
+  aiDraftId: string | null,
+  result: Awaited<ReturnType<typeof generateDraft>>,
+  aiConfig: ResolvedAIConfig,
+  requestId: string,
   promptExperiment?: {
     experimentId: string | null;
     assignmentId: string | null;
@@ -417,7 +424,19 @@ async function emitUsageEvent(
     units: 1,
     metadata_json: {
       conversation_id: conversationId,
-      latency_ms: latencyMs,
+      ai_draft_id: aiDraftId,
+      feature: "draft_generation",
+      provider: result.provider,
+      model: result.model,
+      ai_mode: aiConfig.aiMode,
+      provider_source: aiConfig.source,
+      prompt_version: result.promptVersion,
+      input_tokens: result.requestTokens ?? 0,
+      output_tokens: result.responseTokens ?? 0,
+      total_tokens: (result.requestTokens ?? 0) + (result.responseTokens ?? 0),
+      estimated_cost: null,
+      request_id: requestId,
+      latency_ms: result.latencyMs,
       ...(promptExperiment ? { prompt_experiment: promptExperiment } : {}),
     },
   });
@@ -425,13 +444,76 @@ async function emitUsageEvent(
   if (error) throw error;
 }
 
+function mapDraftGenerationFailure(error: unknown) {
+  if (error instanceof AISettingsError) {
+    const mapped = mapAISettingsError(error);
+    return { status: mapped.status, body: mapped.body };
+  }
+
+  const message = error instanceof Error ? error.message : "AI generation failed";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("quota") || normalized.includes("insufficient_quota") || normalized.includes(" 429")) {
+    return {
+      status: 402,
+      body: {
+        code: "ai_provider_quota_exceeded",
+        error: "The configured OpenAI account has no available quota.",
+        hint: "Check the OpenAI account billing or switch AI setup in Settings -> AI.",
+      },
+    };
+  }
+
+  if (normalized.includes("invalid_api_key") || normalized.includes("incorrect api key") || normalized.includes(" 401")) {
+    return {
+      status: 401,
+      body: {
+        code: "ai_provider_invalid_key",
+        error: "OpenAI rejected the configured API key.",
+        hint: "Update the API key in Settings -> AI.",
+      },
+    };
+  }
+
+  if (normalized.includes("model") && (normalized.includes("not found") || normalized.includes("does not exist") || normalized.includes("unavailable"))) {
+    return {
+      status: 422,
+      body: {
+        code: "ai_model_unavailable",
+        error: "The selected OpenAI model is not available.",
+        hint: "Choose a supported model in Settings -> AI.",
+      },
+    };
+  }
+
+  if (normalized.includes("timeout") || normalized.includes("aborted") || normalized.includes("circuit")) {
+    return {
+      status: 504,
+      body: {
+        code: "ai_provider_timeout",
+        error: "OpenAI did not respond in time.",
+        hint: "Try again in a moment.",
+      },
+    };
+  }
+
+  return {
+    status: 502,
+    body: {
+      code: "ai_generation_failed",
+      error: "AI draft generation failed. Please try again.",
+    },
+  };
+}
+
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const requestId = extractContextFromRequest(req).requestId ?? "req_unknown";
   const supabase = await createClient();
 
   const appUser = await getCurrentAppUser({ label: "ai/draft" });
-  if (!appUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!appUser) return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401 });
   const denied = await requireCapability(appUser, "ai.generate", "ai/draft");
   if (denied) return denied;
 
@@ -440,12 +522,12 @@ export async function POST(req: NextRequest) {
   try {
     body = validateBody(await req.json());
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body", requestId }, { status: 400 });
   }
 
   if (!body) {
     return NextResponse.json(
-      { error: "conversationId is required" },
+      { error: "conversationId is required", requestId },
       { status: 422 }
     );
   }
@@ -463,15 +545,23 @@ export async function POST(req: NextRequest) {
 
     if (sourceMessageError) {
       console.error("[ai/draft] source message lookup failed:", sourceMessageError.message);
-      return NextResponse.json({ error: "Unable to verify the source message." }, { status: 500 });
+      return NextResponse.json({ error: "Unable to verify the source message.", requestId }, { status: 500 });
     }
 
     if (!sourceMessage) {
       return NextResponse.json(
-        { error: "Source message not found for this conversation." },
+        { error: "Source message not found for this conversation.", requestId },
         { status: 400 }
       );
     }
+  }
+
+  let aiConfig: ResolvedAIConfig;
+  try {
+    aiConfig = await resolveOrgAIConfig(supabase, appUser.org_id);
+  } catch (error) {
+    const mapped = mapAISettingsError(error);
+    return NextResponse.json({ ...mapped.body, requestId }, { status: mapped.status });
   }
 
   // Check AI action quota before touching OpenAI
@@ -484,6 +574,7 @@ export async function POST(req: NextRequest) {
         used: quota.used,
         limit: quota.limit,
         plan: quota.plan,
+        requestId,
       },
       { status: 402 }
     );
@@ -499,7 +590,7 @@ export async function POST(req: NextRequest) {
 
   if (contextObjectId && !selectedContext) {
     return NextResponse.json(
-      { error: "Selected context is not available for this workspace." },
+      { error: "Selected context is not available for this workspace.", requestId },
       { status: 404 }
     );
   }
@@ -510,7 +601,7 @@ export async function POST(req: NextRequest) {
     context = await assembleContext(supabase, conversationId, appUser.org_id, selectedContext);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load conversation";
-    return NextResponse.json({ error: message }, { status: 404 });
+    return NextResponse.json({ error: message, requestId }, { status: 404 });
   }
 
   const promptAssignment = await assignPromptVersion({
@@ -524,15 +615,28 @@ export async function POST(req: NextRequest) {
   try {
     result = await generateDraft({
       context,
+      provider: aiConfig.provider,
+      model: aiConfig.model,
+      apiKey: aiConfig.apiKey,
+      aiMode: aiConfig.aiMode,
       promptVersion: promptAssignment.promptVersion || PROMPT_VERSION,
       promptConfig: promptAssignment.promptConfig,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "AI generation failed";
-    console.error("[ai/draft] generation error:", message);
+    console.error("[ai/draft] generation error:", {
+      requestId,
+      orgId: appUser.org_id,
+      conversationId,
+      provider: aiConfig.provider,
+      model: aiConfig.model,
+      aiMode: aiConfig.aiMode,
+      message,
+    });
+    const mapped = mapDraftGenerationFailure(err);
     return NextResponse.json(
-      { error: "AI draft generation failed. Please try again." },
-      { status: 502 }
+      { ...mapped.body, requestId },
+      { status: mapped.status }
     );
   }
 
@@ -544,7 +648,8 @@ export async function POST(req: NextRequest) {
     appUser.id,
     appUser.org_id,
     result,
-    selectedContext
+    selectedContext,
+    aiConfig
   );
 
   await linkPromptAssignmentToDraft({
@@ -573,7 +678,10 @@ export async function POST(req: NextRequest) {
         appUser.org_id,
         appUser.id,
         conversationId,
-        result.latencyMs,
+        draftId,
+        result,
+        aiConfig,
+        requestId,
         {
           experimentId: promptAssignment.experimentId,
           assignmentId: promptAssignment.assignmentId,
@@ -605,6 +713,7 @@ export async function POST(req: NextRequest) {
         recommendedTags: result.recommendedTags,
         provider: result.provider,
         model: result.model,
+        aiMode: aiConfig.aiMode,
         promptVersion: result.promptVersion,
         contextObjectId: selectedContext?.id ?? null,
         contextObjectVersionId: selectedContext?.versionId ?? null,
@@ -630,6 +739,7 @@ export async function POST(req: NextRequest) {
       recommendedTags: result.recommendedTags,
       provider: result.provider,
       model: result.model,
+      aiMode: aiConfig.aiMode,
       promptVersion: result.promptVersion,
       selectedContext: selectedContext
         ? {

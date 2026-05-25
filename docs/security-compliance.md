@@ -68,6 +68,7 @@ The active policy set is consolidated here. Separate generated DOCX policy draft
 | Edit analysis | Human changes to AI output | Improvement analytics | Org scoping, traceability |
 | Audit logs | Actor, action, IP/user agent where captured | Security evidence | Immutable append-only pattern |
 | Gmail tokens | OAuth tokens | Mail import/send | Encrypted storage |
+| Customer AI provider keys | OpenAI API keys supplied by workspace admins | Customer-managed AI drafting | Encrypted storage, server-only access, key hints only in UI |
 
 ## Public Privacy Surfaces
 
@@ -123,9 +124,13 @@ Work Hat uses AI to draft replies and analyze edits. Controls:
 
 - AI does not send customer replies automatically.
 - Human edit and approval are mandatory.
+- OpenAI is the only implemented AI provider in V1.
+- Customers may use Work Hat-managed OpenAI, bring their own encrypted OpenAI key, or disable AI drafting.
 - Drafts store prompt version.
+- Drafts store provider, model, and AI mode used.
 - Prompt experiments use deterministic assignment and audit rows.
 - AI improvement recommendations must be traceable to edit patterns and source examples.
+- Customer-managed OpenAI keys are restricted secrets encrypted at rest with `AI_PROVIDER_KEY_ENCRYPTION_KEY`; raw keys and ciphertext are not returned to clients.
 - Customer data sent to AI providers must follow vendor/privacy review requirements.
 
 ## Audit Evidence

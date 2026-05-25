@@ -165,7 +165,7 @@ Smoke-check item meanings:
 - Latest Gmail import attempted: pass means `last_inbound_sync_at`, `last_sync_at`, or a stored import summary exists; fail means an admin must run Import latest email.
 - Latest import summary available: pass means `provider_metadata.last_import_result` contains the safe count-only summary from the latest import; fail means the import route should be run again so operators can inspect scanned/imported/skipped/errors.
 - Gmail-imported conversation visible through Inbox loader: pass means at least one inbound Gmail message maps to a conversation returned by the Inbox loader; fail means imports are not visible to the user and the inbox read path needs investigation.
-- OpenAI configured: pass means `OPENAI_API_KEY` exists for AI draft generation; fail means AI drafts cannot run.
+- AI draft provider configured: pass means the workspace can generate drafts through Work Hat-managed OpenAI or a saved customer-managed OpenAI key; fail means AI is disabled or provider setup is incomplete.
 - Gmail outbound available: pass means the active Gmail OAuth connection has outbound enabled and server-side token material exists; fail means approved replies cannot be sent through Gmail.
 
 Live watch:
@@ -197,7 +197,9 @@ Check:
 - User has `ai.generate`.
 - Conversation belongs to org.
 - Prompt version is non-null.
-- OpenAI provider env is configured.
+- Settings -> AI drafting is set to either Work Hat-managed OpenAI or Bring your own OpenAI key.
+- Work Hat-managed mode requires platform `OPENAI_API_KEY`.
+- BYOK mode requires a validated encrypted OpenAI key and `AI_PROVIDER_KEY_ENCRYPTION_KEY`.
 - Circuit breaker state.
 - Knowledge retrieval is not failing.
 
@@ -205,6 +207,8 @@ Expected evidence:
 
 - `ai_drafts` row.
 - Prompt version.
+- Provider, model, and AI mode on the draft.
+- `usage_events.metadata_json` includes `feature = draft_generation`, provider, model, AI mode, token counts, and request ID.
 - Audit/workflow event where applicable.
 - Edit analysis after final reply is sent.
 

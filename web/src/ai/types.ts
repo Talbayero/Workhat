@@ -4,6 +4,7 @@
  */
 
 import type { ContextDefinition, ContextKnowledgeSummary } from "@/lib/context/types";
+import type { AIMode } from "@/lib/ai-settings/constants";
 
 export type ConfidenceLevel = "green" | "yellow" | "red";
 
@@ -25,6 +26,7 @@ export type AIDraftResult = AIDraftOutput & {
   id: string | null;
   provider: string;
   model: string;
+  aiMode: AIMode;
   promptVersion: string;
   requestTokens: number | null;
   responseTokens: number | null;
@@ -104,4 +106,6 @@ export type GenerateDraftOptions = {
   model?: string;
   promptVersion?: string;
   promptConfig?: PromptConfig;
+  apiKey?: string;
+  aiMode?: AIMode;
 };

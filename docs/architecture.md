@@ -9,7 +9,7 @@ Work Hat is a Next.js App Router application backed by Supabase. The architectur
 | Web/API | Next.js App Router, TypeScript | Route handlers stay thin and call `lib/` domain services |
 | Auth | Supabase Auth | Password signup/login/reset, server-side `getUser()` session validation |
 | Database | Supabase Postgres | Org-scoped tables, migrations, RLS direction, audit/evidence records |
-| AI | OpenAI through provider abstraction | Draft generation with prompt version persistence |
+| AI | OpenAI through provider abstraction | Work Hat-managed or customer-managed OpenAI draft generation with prompt version persistence |
 | Email MVP | Gmail OAuth | Work Hat-owned OAuth app; canonical callback: `https://work-hat.com/api/oauth/google/callback` |
 | Rate limiting | Upstash Redis where configured | Request protection and abuse controls |
 | Hosting | Vercel | Serverless route handlers and cron-compatible endpoints |
@@ -177,13 +177,28 @@ Connection readiness requires an `email_connections` row with:
 
 ## AI Architecture
 
-AI drafting is provider-abstracted under `lib/ai/`.
+AI drafting is provider-abstracted under `web/src/ai/` and resolved through server-only org AI settings under `web/src/lib/ai-settings/`.
+
+V1 provider support:
+
+| Provider | Status | Notes |
+|---|---|---|
+| OpenAI | Supported | Work Hat-managed platform key or customer-managed encrypted API key |
+| Anthropic, Gemini, Azure OpenAI, other providers | Not implemented / hidden | Do not expose until a provider adapter, tests, and security review exist |
+
+Org AI modes:
+
+- `work_hat_managed`: use Work Hat platform OpenAI configuration included in plan.
+- `byo`: use the org's encrypted OpenAI API key.
+- `disabled`: block AI draft generation for the workspace.
 
 Rules:
 
 - Every draft must store a non-null `prompt_version`.
+- Every draft must store provider, model, and AI mode used.
 - Draft generation requires `ai.generate`.
 - AI output is a suggestion, not an autonomous send.
+- Customer-managed AI keys are restricted secrets and are encrypted at rest with `AI_PROVIDER_KEY_ENCRYPTION_KEY`.
 - Human edits are preserved for improvement analytics.
 - Prompt experiments must have deterministic assignment and auditability.
 

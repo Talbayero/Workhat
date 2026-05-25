@@ -71,6 +71,22 @@ jest.mock("@/lib/context/context-objects", () => ({
   resolveDraftContextSelection: jest.fn(async () => null),
 }));
 
+jest.mock("@/lib/ai-settings", () => ({
+  resolveOrgAIConfig: jest.fn(async () => ({
+    aiMode: "work_hat_managed",
+    provider: "openai",
+    model: "gpt-4o",
+    apiKey: "platform-openai-key",
+    source: "platform",
+    keyHint: null,
+  })),
+  mapAISettingsError: jest.fn((error: unknown) => ({
+    status: 500,
+    body: { code: "ai_settings_failed", error: error instanceof Error ? error.message : "AI settings failed." },
+  })),
+  AISettingsError: class AISettingsError extends Error {},
+}));
+
 jest.mock("@/ai/workflows/edit-analysis", () => ({
   runEditAnalysis: jest.fn(),
 }));
@@ -486,9 +502,32 @@ describe("Gmail-only MVP path proof", () => {
     expect(draftJson.draft).toEqual(expect.objectContaining({
       id: "draft-1",
       draftText: "Thanks for reaching out. I can help with your account.",
+      provider: "openai",
+      model: "gpt-4o",
+      aiMode: "work_hat_managed",
       promptVersion: "workhat-draft-v1",
     }));
-    expect(db.rows.ai_drafts).toHaveLength(1);
+    expect(db.rows.ai_drafts).toContainEqual(expect.objectContaining({
+      id: "draft-1",
+      provider: "openai",
+      model: "gpt-4o",
+      ai_mode: "work_hat_managed",
+      prompt_version: "workhat-draft-v1",
+    }));
+    expect(db.rows.usage_events).toContainEqual(expect.objectContaining({
+      event_type: "ai_draft_generated",
+      metadata_json: expect.objectContaining({
+        feature: "draft_generation",
+        provider: "openai",
+        model: "gpt-4o",
+        ai_mode: "work_hat_managed",
+        prompt_version: "workhat-draft-v1",
+        input_tokens: 100,
+        output_tokens: 40,
+        total_tokens: 140,
+        request_id: "req-mvp",
+      }),
+    }));
 
     const finalHumanReply = "Thanks for reaching out. I checked your account and can help.";
     const replyResponse = await sendReply(req("https://work-hat.com/api/conversations/conversation-1/reply", {

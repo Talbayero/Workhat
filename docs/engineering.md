@@ -70,9 +70,14 @@ Draft generation must:
 
 - Require `ai.generate`.
 - Store prompt version.
+- Resolve org AI setup through server-only `web/src/lib/ai-settings`.
+- Support only implemented providers. V1 exposes OpenAI only.
+- Store provider, model, and AI mode on `ai_drafts`.
+- Use `AI_PROVIDER_KEY_ENCRYPTION_KEY` for customer-managed AI API keys.
 - Preserve conversation and knowledge context.
 - Avoid auto-send.
 - Store AI draft output for later comparison.
+- Return user-safe provider errors for disabled AI, missing configuration, invalid key, quota, timeout, and unavailable model.
 
 Edit analysis must:
 

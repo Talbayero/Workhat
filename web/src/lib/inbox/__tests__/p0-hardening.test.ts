@@ -47,10 +47,12 @@ describe("P0 MVP hardening guardrails", () => {
     expect(settings).not.toContain("Delete organization");
   });
 
-  it("does not expose fake-persisted AI settings", () => {
+  it("exposes only real persisted AI settings", () => {
     const settings = source("src/components/settings/settings-shell.tsx");
 
-    expect(settings).not.toContain('{ id: "ai"');
+    expect(settings).toContain('{ id: "ai", label: "AI drafting" }');
+    expect(settings).toContain("/api/settings/ai");
+    expect(settings).toContain("/api/settings/ai/test");
     expect(settings).not.toContain("function AiTab");
     expect(settings).not.toContain("Generate drafts automatically");
   });

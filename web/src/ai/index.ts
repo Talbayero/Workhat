@@ -27,6 +27,8 @@ export async function generateDraft(
     model = OPENAI_DEFAULT_MODEL,
     promptVersion = PROMPT_VERSION,
     promptConfig = {},
+    apiKey,
+    aiMode = "work_hat_managed",
   } = options;
 
   const start = Date.now();
@@ -34,7 +36,7 @@ export async function generateDraft(
   let callResult: Awaited<ReturnType<typeof callOpenAIDraft>>;
 
   if (provider === "openai") {
-    callResult = await callOpenAIDraft(context, model, promptConfig);
+    callResult = await callOpenAIDraft(context, model, promptConfig, apiKey);
   } else {
     throw new Error(`Unknown AI provider: ${provider}`);
   }
@@ -46,6 +48,7 @@ export async function generateDraft(
     ...callResult.output,
     provider,
     model,
+    aiMode,
     promptVersion,
     requestTokens: callResult.requestTokens,
     responseTokens: callResult.responseTokens,

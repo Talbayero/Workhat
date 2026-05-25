@@ -2,6 +2,7 @@ import { getConversations } from "@/lib/data/inbox";
 import { GMAIL_IMPORT_QUERY } from "@/lib/email/google";
 import type { GmailImportResultSummary } from "@/lib/email/import-result";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { getSafeOrgAISettings } from "@/lib/ai-settings";
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -211,12 +212,29 @@ export async function runGmailMvpSmokeCheck({
       : inboxError || messageLinkError || "No Gmail-imported conversations are visible through the Inbox loader yet."
   ));
 
-  const aiConfigured = Boolean(process.env.OPENAI_API_KEY);
+  let aiConfigured = false;
+  let aiMessage = "AI draft provider is not configured.";
+  try {
+    const aiSettings = await getSafeOrgAISettings(db, orgId);
+    aiConfigured =
+      aiSettings.aiMode !== "disabled" &&
+      (
+        (aiSettings.aiMode === "work_hat_managed" && aiSettings.platformManagedAvailable) ||
+        (aiSettings.aiMode === "byo" && aiSettings.credential?.status === "active")
+      );
+    aiMessage = aiConfigured
+      ? `AI drafting is configured with ${aiSettings.aiMode === "byo" ? "customer-managed OpenAI" : "Work Hat-managed OpenAI"}.`
+      : aiSettings.aiMode === "disabled"
+        ? "AI drafting is disabled for this workspace."
+        : "AI drafting is not configured for the selected mode.";
+  } catch (error) {
+    aiMessage = error instanceof Error ? error.message : "AI draft provider check failed.";
+  }
   checks.push(check(
-    "openai_configured",
-    "OpenAI configured",
+    "ai_draft_provider_configured",
+    "AI draft provider configured",
     aiConfigured ? "pass" : "fail",
-    aiConfigured ? "OPENAI_API_KEY is configured for AI drafts." : "OPENAI_API_KEY is missing, so AI draft generation cannot run."
+    aiMessage
   ));
 
   const outboundAvailable = Boolean(

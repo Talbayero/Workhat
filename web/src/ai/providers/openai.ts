@@ -44,9 +44,10 @@ type CallResult = {
 export async function callOpenAIDraft(
   ctx: ConversationContext,
   model = OPENAI_DEFAULT_MODEL,
-  promptConfig: PromptConfig = {}
+  promptConfig: PromptConfig = {},
+  apiKeyOverride?: string
 ): Promise<CallResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = apiKeyOverride ?? process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not set");
   }

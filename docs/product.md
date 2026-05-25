@@ -98,6 +98,7 @@ Work Hat should optimize for operational outcomes, not vanity metrics:
 
 - Gmail OAuth is the only self-serve email channel for the MVP.
 - Customers do not configure Google Cloud, OAuth client credentials, redirect URIs, Vercel environment variables, or provider infrastructure.
+- AI drafting V1 supports only OpenAI: Work Hat-managed OpenAI, customer-managed OpenAI key, or disabled AI drafting.
 - IMAP/SMTP, app password, mailbox password, custom inbound, SMS, and chat are not allowed in the MVP setup path.
 - Human approval is mandatory for customer replies.
 - AI recommendations must remain explainable and traceable.

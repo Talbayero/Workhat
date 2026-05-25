@@ -9,6 +9,7 @@ import {
   type GmailImportResultSummary,
 } from "@/lib/email/import-result";
 import { ThemeSwitcher } from "@/components/theme/theme-switcher";
+import { SUPPORTED_OPENAI_MODELS, type AIMode } from "@/lib/ai-settings/constants";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -143,6 +144,27 @@ type MailboxSyncResponse = {
   error?: string;
 };
 
+type SafeAISettings = {
+  aiMode: AIMode;
+  defaultProvider: "openai";
+  defaultModel: string;
+  status: "active" | "error" | "disabled" | "not_configured";
+  lastValidatedAt: string | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  platformManagedAvailable: boolean;
+  supportedProviders: Array<{ provider: "openai"; label: string; supported: true }>;
+  supportedModels: string[];
+  credential: {
+    provider: "openai";
+    keyHint: string;
+    status: "active" | "error" | "disabled";
+    lastValidatedAt: string | null;
+    lastErrorCode: string | null;
+    lastErrorMessage: string | null;
+  } | null;
+};
+
 type AgentSkill = { name: string; priority: number };
 
 type TeamMember = {
@@ -154,13 +176,14 @@ type TeamMember = {
   skills?: AgentSkill[];
 };
 
-type SettingsTab = "setup" | "organization" | "team" | "channels" | "sla" | "intents" | "appearance" | "billing";
+type SettingsTab = "setup" | "organization" | "team" | "channels" | "ai" | "sla" | "intents" | "appearance" | "billing";
 
 const tabs: { id: SettingsTab; label: string }[] = [
   { id: "setup", label: "Setup wizard" },
   { id: "organization", label: "Organization" },
   { id: "team", label: "Team members" },
   { id: "channels", label: "Channels" },
+  { id: "ai", label: "AI drafting" },
   { id: "sla", label: "SLA policy" },
   { id: "intents", label: "Intents" },
   { id: "appearance", label: "Appearance" },
@@ -2181,9 +2204,282 @@ function BillingTab({ org }: { org: OrgRecord | null }) {
   );
 }
 
+// ── AI drafting tab ──────────────────────────────────────────────────────────
+
+function AiSettingsTab({ canEdit }: { canEdit: boolean }) {
+  const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<SafeAISettings | null>(null);
+  const [mode, setMode] = useState<AIMode>("work_hat_managed");
+  const [model, setModel] = useState<string>(SUPPORTED_OPENAI_MODELS[0]);
+  const [apiKey, setApiKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings/ai");
+      const payload = await res.json().catch(() => ({})) as { settings?: SafeAISettings; error?: string; hint?: string };
+      if (!res.ok || !payload.settings) {
+        throw new Error([payload.error, payload.hint].filter(Boolean).join(" ") || "Unable to load AI settings.");
+      }
+      setSettings(payload.settings);
+      setMode(payload.settings.aiMode);
+      setModel(payload.settings.defaultModel);
+      setApiKey("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load AI settings.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function testKey() {
+    setTesting(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings/ai/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "openai", model, apiKey }),
+      });
+      const payload = await res.json().catch(() => ({})) as { error?: string; hint?: string };
+      if (!res.ok) {
+        throw new Error([payload.error, payload.hint].filter(Boolean).join(" ") || "OpenAI key test failed.");
+      }
+      setNotice("OpenAI key validated. Save changes to use it for this workspace.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "OpenAI key test failed.");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function save() {
+    setSaving(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings/ai", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aiMode: mode,
+          defaultProvider: "openai",
+          defaultModel: model,
+          apiKey: mode === "byo" && apiKey.trim() ? apiKey.trim() : undefined,
+        }),
+      });
+      const payload = await res.json().catch(() => ({})) as { settings?: SafeAISettings; error?: string; hint?: string };
+      if (!res.ok || !payload.settings) {
+        throw new Error([payload.error, payload.hint].filter(Boolean).join(" ") || "Unable to save AI settings.");
+      }
+      setSettings(payload.settings);
+      setMode(payload.settings.aiMode);
+      setModel(payload.settings.defaultModel);
+      setApiKey("");
+      setNotice("AI drafting settings saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save AI settings.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function revokeKey() {
+    setSaving(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings/ai", { method: "DELETE" });
+      const payload = await res.json().catch(() => ({})) as { settings?: SafeAISettings; error?: string; hint?: string };
+      if (!res.ok || !payload.settings) {
+        throw new Error([payload.error, payload.hint].filter(Boolean).join(" ") || "Unable to revoke OpenAI key.");
+      }
+      setSettings(payload.settings);
+      setMode(payload.settings.aiMode);
+      setModel(payload.settings.defaultModel);
+      setApiKey("");
+      setNotice("Stored OpenAI key revoked. Work Hat-managed AI is selected.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to revoke OpenAI key.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const disabled = !canEdit || saving || testing || loading;
+  const hasSavedKey = Boolean(settings?.credential?.keyHint && settings.credential.status === "active");
+  const canSaveByok = mode !== "byo" || apiKey.trim().length > 0 || hasSavedKey;
+
+  return (
+    <div className="space-y-5">
+      <SectionCard>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">AI draft behavior</p>
+        <h2 className="mt-2 text-xl font-semibold">Choose how drafts are generated</h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          OpenAI is the only supported provider in Work Hat V1. AI drafts are suggestions only; humans still approve every customer reply.
+        </p>
+
+        {loading ? (
+          <p className="mt-5 text-sm text-[var(--muted)]">Loading AI settings...</p>
+        ) : (
+          <div className="mt-5 grid gap-3">
+            {([
+              {
+                id: "work_hat_managed" as AIMode,
+                title: "Included in Work Hat plan",
+                description: "Use Work Hat-managed OpenAI configuration. No customer API key is required.",
+              },
+              {
+                id: "byo" as AIMode,
+                title: "Bring your own OpenAI API key",
+                description: "Store an encrypted workspace OpenAI key and use it for draft generation.",
+              },
+              {
+                id: "disabled" as AIMode,
+                title: "Disable AI drafting",
+                description: "Hide draft generation for this workspace while preserving Gmail and inbox workflows.",
+              },
+            ]).map((option) => (
+              <label
+                key={option.id}
+                className={`cursor-pointer rounded-[16px] border p-4 transition-colors ${
+                  mode === option.id
+                    ? "border-[var(--moss)] bg-[rgba(120,161,122,0.10)]"
+                    : "border-[var(--line)] bg-[var(--panel)] hover:border-[var(--line-strong)]"
+                } ${!canEdit ? "cursor-not-allowed opacity-70" : ""}`}
+              >
+                <span className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    name="ai-mode"
+                    value={option.id}
+                    checked={mode === option.id}
+                    disabled={!canEdit}
+                    onChange={() => setMode(option.id)}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold">{option.title}</span>
+                    <span className="mt-1 block text-xs leading-5 text-[var(--muted)]">{option.description}</span>
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Provider</p>
+        <div className="mt-4 space-y-4">
+          <FieldRow label="Provider" description="Only implemented providers are selectable.">
+            <select
+              value="openai"
+              disabled
+              className="w-64 rounded-[14px] border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--foreground)] opacity-80"
+            >
+              <option value="openai">OpenAI</option>
+            </select>
+          </FieldRow>
+
+          <FieldRow label="Draft model" description="V1 exposes only models supported by the current OpenAI adapter.">
+            <select
+              value={model}
+              disabled={disabled || mode === "disabled"}
+              onChange={(e) => setModel(e.currentTarget.value)}
+              className="w-64 rounded-[14px] border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
+            >
+              {SUPPORTED_OPENAI_MODELS.map((modelOption) => (
+                <option key={modelOption} value={modelOption}>{modelOption}</option>
+              ))}
+            </select>
+          </FieldRow>
+
+          {mode === "byo" && (
+            <>
+              <FieldRow
+                label="OpenAI API key"
+                description={settings?.credential?.keyHint ? `Saved key: ${settings.credential.keyHint}` : "Keys are encrypted at rest and never shown again after save."}
+              >
+                <input
+                  type="password"
+                  value={apiKey}
+                  disabled={disabled}
+                  onChange={(e) => setApiKey(e.currentTarget.value)}
+                  placeholder={settings?.credential?.keyHint ? "Leave blank to keep saved key" : "sk-..."}
+                  autoComplete="off"
+                  className="w-64 rounded-[14px] border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] disabled:opacity-60"
+                />
+              </FieldRow>
+
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  onClick={testKey}
+                  disabled={disabled || !apiKey.trim()}
+                  className="rounded-full border border-[var(--line-strong)] px-4 py-2 text-xs font-medium text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {testing ? "Testing..." : "Test connection"}
+                </button>
+                {settings?.credential && (
+                  <button
+                    onClick={revokeKey}
+                    disabled={disabled}
+                    className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[var(--error-text)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Revoke saved key
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </SectionCard>
+
+      <SectionCard>
+        <p className="eyebrow text-[9px] text-[var(--muted)]">Status</p>
+        <div className="mt-3 grid gap-2 text-sm">
+          <p>Status: <span className="font-medium capitalize">{settings?.status?.replace(/_/g, " ") ?? "not configured"}</span></p>
+          <p className="text-xs text-[var(--muted)]">
+            Work Hat-managed AI: {settings?.platformManagedAvailable ? "configured" : "not configured"}
+          </p>
+          {settings?.lastValidatedAt && (
+            <p className="text-xs text-[var(--muted)]">Last validated: {new Date(settings.lastValidatedAt).toLocaleString()}</p>
+          )}
+          {settings?.lastErrorMessage && (
+            <p className="text-xs text-[var(--error-text)]">{settings.lastErrorMessage}</p>
+          )}
+          {notice && <p className="text-xs text-[var(--moss)]">{notice}</p>}
+          {error && <p className="text-xs text-[var(--error-text)]">{error}</p>}
+          {!canEdit && <p className="text-xs text-[var(--muted)]">You need AI configuration or settings permission to change this.</p>}
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            onClick={save}
+            disabled={disabled || !canSaveByok}
+            className="rounded-full bg-[var(--moss)] px-5 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {saving ? "Saving..." : "Save AI settings"}
+          </button>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
-const VALID_TABS = new Set<SettingsTab>(["setup", "organization", "team", "channels", "sla", "intents", "appearance", "billing"]);
+const VALID_TABS = new Set<SettingsTab>(["setup", "organization", "team", "channels", "ai", "sla", "intents", "appearance", "billing"]);
 
 export function SettingsShell({
   org,
@@ -2222,6 +2518,7 @@ export function SettingsShell({
 
   const isAdmin = callerRole === "admin";
   const canManageTeam = isAdmin || callerRole === "manager";
+  const canConfigureAi = isAdmin || callerRole === "manager";
 
   async function handleSave() {
     setSaveStatus("saving");
@@ -2279,6 +2576,7 @@ export function SettingsShell({
       />
     ),
     channels: <ChannelsTab channel={channel} canEdit={isAdmin} onDirty={() => setIsDirty(true)} />,
+    ai: <AiSettingsTab canEdit={canConfigureAi} />,
     sla: (
       <SlaTab
         policy={slaPolicy}
@@ -2334,7 +2632,7 @@ export function SettingsShell({
         </div>
 
         {/* Save bar — only shown for tabs with editable fields */}
-        {activeTab !== "team" && activeTab !== "billing" && activeTab !== "intents" && activeTab !== "appearance" && (
+        {activeTab !== "team" && activeTab !== "billing" && activeTab !== "intents" && activeTab !== "appearance" && activeTab !== "ai" && (
           <div className={`shrink-0 border-t border-[var(--line)] px-6 py-4 transition-opacity ${isDirty || saveStatus === "saved" ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
             <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
               <p aria-live="polite" className="text-xs text-[var(--muted)]">
