@@ -154,7 +154,7 @@ type TeamMember = {
   skills?: AgentSkill[];
 };
 
-type SettingsTab = "setup" | "organization" | "team" | "channels" | "sla" | "ai" | "intents" | "appearance" | "billing";
+type SettingsTab = "setup" | "organization" | "team" | "channels" | "sla" | "intents" | "appearance" | "billing";
 
 const tabs: { id: SettingsTab; label: string }[] = [
   { id: "setup", label: "Setup wizard" },
@@ -162,7 +162,6 @@ const tabs: { id: SettingsTab; label: string }[] = [
   { id: "team", label: "Team members" },
   { id: "channels", label: "Channels" },
   { id: "sla", label: "SLA policy" },
-  { id: "ai", label: "AI settings" },
   { id: "intents", label: "Intents" },
   { id: "appearance", label: "Appearance" },
   { id: "billing", label: "Billing" },
@@ -239,20 +238,6 @@ function TextInput({ value, onChange, placeholder, disabled }: {
       disabled={disabled}
       className="w-64 rounded-[14px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--moss)] transition-colors disabled:opacity-50"
     />
-  );
-}
-
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={`relative h-6 w-10 shrink-0 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--moss)] ${checked ? "bg-[var(--moss)]" : "bg-[var(--sage)]"}`}
-      aria-checked={checked}
-      role="switch"
-    >
-      <span className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${checked ? "translate-x-4" : "translate-x-0"}`} />
-    </button>
   );
 }
 
@@ -615,22 +600,6 @@ function OrgTab({
         </SectionCard>
       )}
 
-      {canEdit && (
-        <SectionCard>
-          <p className="eyebrow text-[9px] text-[var(--muted)]">Danger zone</p>
-          <div className="mt-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Delete organization</p>
-              <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                Permanently removes all data, agents, and conversation history.
-              </p>
-            </div>
-            <button className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[var(--moss)] transition-colors hover:bg-[rgba(144,50,61,0.12)]">
-              Delete org
-            </button>
-          </div>
-        </SectionCard>
-      )}
     </div>
   );
 }
@@ -1145,13 +1114,6 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
                     {connectionAction === "sync" ? "Importing..." : "Import latest email"}
                   </button>
                   <button
-                    onClick={() => runConnectionAction("watch")}
-                    disabled={!canEdit || !isActiveGmail || connectionAction !== null}
-                    className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-45"
-                  >
-                    {connectionAction === "watch" ? "Repairing..." : "Repair Gmail live updates"}
-                  </button>
-                  <button
                     onClick={disconnectConnection}
                     disabled={!canEdit || connectionAction !== null}
                     className="rounded-full border border-[rgba(144,50,61,0.45)] px-4 py-2 text-xs font-medium text-[rgba(255,190,190,0.9)] transition-colors hover:border-[rgba(144,50,61,0.75)] disabled:opacity-45"
@@ -1199,20 +1161,31 @@ function ChannelsTab({ channel, canEdit, onDirty }: { channel: ChannelRecord | n
               These admin-only checks confirm whether self-serve mailbox setup is ready for users before they reach onboarding.
             </p>
           </div>
-          <button
-            onClick={refreshDiagnostics}
-            disabled={diagnosticsLoading}
-            className="w-fit rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-50"
-          >
-            {diagnosticsLoading ? "Checking..." : "Recheck"}
-          </button>
-          <button
-            onClick={runMvpSmokeCheck}
-            disabled={!canEdit || smokeCheckLoading}
-            className="w-fit rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {smokeCheckLoading ? "Running..." : "Run MVP smoke check"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={refreshDiagnostics}
+              disabled={diagnosticsLoading}
+              className="w-fit rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-50"
+            >
+              {diagnosticsLoading ? "Checking..." : "Recheck"}
+            </button>
+            <button
+              onClick={runMvpSmokeCheck}
+              disabled={!canEdit || smokeCheckLoading}
+              className="w-fit rounded-full bg-[var(--moss)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {smokeCheckLoading ? "Running..." : "Run MVP smoke check"}
+            </button>
+            {canEdit && primaryConnection && isActiveGmail && (
+              <button
+                onClick={() => runConnectionAction("watch")}
+                disabled={connectionAction !== null}
+                className="w-fit rounded-full border border-[var(--line)] px-4 py-2 text-xs font-medium transition-colors hover:border-[var(--line-strong)] disabled:opacity-45"
+              >
+                {connectionAction === "watch" ? "Repairing..." : "Repair Gmail live updates"}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-4">
@@ -1387,49 +1360,6 @@ function DiagnosticPill({ status, label }: { status: EmailDiagnosticCheck["statu
     <span className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-[10px] font-medium capitalize ${className}`}>
       {label}
     </span>
-  );
-}
-
-// ── AI tab ────────────────────────────────────────────────────────────────────
-
-function AiTab({ onDirty }: { onDirty: () => void }) {
-  const [autoDraft, setAutoDraft] = useState(true);
-  const [showAgents, setShowAgents] = useState(true);
-  const [requireConfirm, setRequireConfirm] = useState(true);
-  const [showAnalyzer, setShowAnalyzer] = useState(false);
-  const [model, setModel] = useState("gpt-4o");
-
-  const toggle = (setter: (v: boolean) => void) => (v: boolean) => { setter(v); onDirty(); };
-
-  return (
-    <div className="space-y-5">
-      <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Draft generation</p>
-        <div className="mt-1 divide-y divide-[var(--line)]">
-          <FieldRow label="Generate drafts automatically" description="AI prepares a draft for every new inbound message.">
-            <Toggle checked={autoDraft} onChange={toggle(setAutoDraft)} />
-          </FieldRow>
-          <FieldRow label="Show drafts to agents" description="Agents see the draft before deciding to use it.">
-            <Toggle checked={showAgents} onChange={toggle(setShowAgents)} />
-          </FieldRow>
-          <FieldRow label="Require confirmation before send" description="No AI reply goes out without explicit agent approval.">
-            <Toggle checked={requireConfirm} onChange={toggle(setRequireConfirm)} />
-          </FieldRow>
-          <FieldRow label="Show edit analyzer to agents" description="Agents see edit type and intensity after sending.">
-            <Toggle checked={showAnalyzer} onChange={toggle(setShowAnalyzer)} />
-          </FieldRow>
-        </div>
-      </SectionCard>
-
-      <SectionCard>
-        <p className="eyebrow text-[9px] text-[var(--muted)]">Model</p>
-        <div className="mt-1 divide-y divide-[var(--line)]">
-          <FieldRow label="Draft model" description="Used for reply generation.">
-            <TextInput value={model} onChange={(v) => { setModel(v); onDirty(); }} />
-          </FieldRow>
-        </div>
-      </SectionCard>
-    </div>
   );
 }
 
@@ -2253,7 +2183,7 @@ function BillingTab({ org }: { org: OrgRecord | null }) {
 
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
-const VALID_TABS = new Set<SettingsTab>(["setup", "organization", "team", "channels", "sla", "ai", "intents", "appearance", "billing"]);
+const VALID_TABS = new Set<SettingsTab>(["setup", "organization", "team", "channels", "sla", "intents", "appearance", "billing"]);
 
 export function SettingsShell({
   org,
@@ -2357,7 +2287,6 @@ export function SettingsShell({
         onSaveFields={(f) => setSaveFields((prev) => ({ ...prev, ...f }))}
       />
     ),
-    ai: <AiTab onDirty={() => setIsDirty(true)} />,
     intents: <IntentsTab canManage={canManageTeam} />,
     appearance: <AppearanceTab />,
     billing: <BillingTab org={org} />,

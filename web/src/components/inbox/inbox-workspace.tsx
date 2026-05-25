@@ -7,6 +7,7 @@ import {
 import type { InboxConversation, InboxViewId } from "@/lib/inbox/types";
 import { getCurrentAppUser } from "@/lib/auth/app-user";
 import { getConversations, getConversationById, getOrgIntentColors } from "@/lib/data/inbox";
+import { shouldShowManualConversationControl } from "@/lib/inbox/manual-conversation";
 import { InboxLayoutClient } from "./inbox-layout-client";
 
 type InboxWorkspaceProps = {
@@ -27,7 +28,7 @@ export async function InboxWorkspace({
     isDemo && staticConversations ? Promise.resolve(staticConversations) : getConversations(),
     isDemo ? Promise.resolve({} as Record<string, string>) : getOrgIntentColors(),
     isDemo
-      ? Promise.resolve({ id: null, full_name: "Marcos" })
+      ? Promise.resolve({ id: null, full_name: "Marcos", role: "admin" })
       : getCurrentAppUser<{ id: string; org_id: string; role: string; full_name?: string }>({
           label: "inbox/workspace",
           select: "id, org_id, role, full_name",
@@ -39,6 +40,10 @@ export async function InboxWorkspace({
     currentAgentName: currentUser?.full_name ?? null,
     searchQuery,
   };
+  const canCreateManualConversation = shouldShowManualConversationControl({
+    isDemo,
+    callerRole: currentUser?.role ?? null,
+  });
 
   console.info("[inbox] InboxWorkspace loaded conversations:", {
     activeView,
@@ -90,6 +95,7 @@ export async function InboxWorkspace({
       intentColors={intentColors}
       baseDir={baseDir}
       isDemo={isDemo}
+      canCreateManualConversation={canCreateManualConversation}
     />
   );
 }

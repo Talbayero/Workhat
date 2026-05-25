@@ -21,6 +21,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createOptionalAdminClient } from "@/lib/supabase/admin";
 import { runEditAnalysis } from "@/ai/workflows/edit-analysis";
 import { sendConversationReply } from "@/lib/email/outbound";
+import { isGmailOutboundError } from "@/lib/email/gmail-sender";
+import { extractContextFromRequest } from "@/lib/request-context";
 import { refreshConversationSla } from "@/lib/sla/refresh";
 import { emitWorkflowEvent } from "@/lib/workflow-engine";
 
@@ -30,12 +32,12 @@ type ReplyPayload = {
 };
 
 type OutboundResult = {
+  connectionId: string;
   provider: string;
   providerMessageId: string;
   providerThreadId: string;
   rfcMessageId: string;
   sentFrom: string;
-  simulated?: boolean;
 };
 
 const MAX_REPLY_LENGTH = 50_000;
@@ -52,6 +54,56 @@ function validateBody(raw: unknown): ReplyPayload | null {
         ? obj.aiDraftId.trim()
         : null,
   };
+}
+
+function mapSendFailure(error: unknown) {
+  if (isGmailOutboundError(error)) {
+    if (error.code === "gmail_token_refresh_failed") {
+      return {
+        status: 401,
+        code: error.code,
+        error: "Gmail connection needs to be reconnected before sending.",
+        hint: "Reconnect Gmail in Settings -> Channels, then try sending again.",
+      };
+    }
+
+    if (error.code === "gmail_api_rejected") {
+      return {
+        status: 502,
+        code: error.code,
+        error: "Gmail rejected the send.",
+        hint: "Check that the connected Gmail mailbox is active and has permission to send mail, then try again.",
+      };
+    }
+
+    if (error.code === "gmail_missing_recipient") {
+      return {
+        status: 422,
+        code: error.code,
+        error: "This conversation does not have a customer email address to reply to.",
+      };
+    }
+
+    if (error.code === "conversation_not_found") {
+      return {
+        status: 404,
+        code: error.code,
+        error: "Conversation not found for this workspace.",
+      };
+    }
+  }
+
+  return {
+    status: 502,
+    code: "gmail_send_failed",
+    error: "Unable to send this reply through Gmail.",
+    hint: "Try again. If the issue persists, reconnect Gmail in Settings -> Channels.",
+  };
+}
+
+function sendFailureJson(error: unknown, requestId: string) {
+  const { status, ...body } = mapSendFailure(error);
+  return NextResponse.json({ ...body, requestId }, { status });
 }
 
 // ── Edit analysis (fire-and-forget) ──────────────────────────────────────────
@@ -136,9 +188,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> }
 ) {
+  const requestId = extractContextFromRequest(req).requestId ?? "req_unknown";
   const { conversationId } = await params;
   if (!conversationId?.trim()) {
-    return NextResponse.json({ error: "conversationId is required." }, { status: 400 });
+    return NextResponse.json({ error: "conversationId is required.", requestId }, { status: 400 });
   }
 
   const appUser = await getCurrentAppUser<{
@@ -149,7 +202,7 @@ export async function POST(
     email?: string;
   }>({ label: "reply", select: "id, org_id, role, full_name, email" });
   if (!appUser) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401 });
   }
   const denied = await requireCapability(appUser, "conversations.reply", "reply");
   if (denied) return denied;
@@ -162,28 +215,45 @@ export async function POST(
   try {
     payload = validateBody(await req.json());
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body", requestId }, { status: 400 });
   }
   if (!payload) {
-    return NextResponse.json({ error: "body is required" }, { status: 422 });
+    return NextResponse.json({
+      error: "Write a reply before sending.",
+      code: "empty_reply",
+      requestId,
+    }, { status: 422 });
   }
 
   const { body, aiDraftId } = payload;
 
   const { data: conversation, error: conversationError } = await supabase
     .from("conversations")
-    .select("id")
+    .select("id, status")
     .eq("id", conversationId)
     .eq("org_id", orgId)
     .maybeSingle();
 
   if (conversationError) {
-    console.error("[reply] conversation lookup failed:", conversationError.message);
-    return NextResponse.json({ error: "Unable to verify this conversation." }, { status: 500 });
+    console.error("[reply] conversation lookup failed:", {
+      requestId,
+      orgId,
+      conversationId,
+      message: conversationError.message,
+    });
+    return NextResponse.json({ error: "Unable to verify this conversation.", requestId }, { status: 500 });
   }
 
   if (!conversation) {
-    return NextResponse.json({ error: "Conversation not found for this workspace." }, { status: 404 });
+    return NextResponse.json({ error: "Conversation not found for this workspace.", requestId }, { status: 404 });
+  }
+
+  if ((conversation as { status?: string | null }).status === "closed") {
+    return NextResponse.json({
+      error: "Conversation is closed. Reopen it before sending a reply.",
+      code: "conversation_closed",
+      requestId,
+    }, { status: 409 });
   }
 
   if (aiDraftId) {
@@ -196,13 +266,19 @@ export async function POST(
       .maybeSingle();
 
     if (aiDraftError) {
-      console.error("[reply] ai draft lookup failed:", aiDraftError.message);
-      return NextResponse.json({ error: "Unable to verify the AI draft." }, { status: 500 });
+      console.error("[reply] ai draft lookup failed:", {
+        requestId,
+        orgId,
+        conversationId,
+        aiDraftId,
+        message: aiDraftError.message,
+      });
+      return NextResponse.json({ error: "Unable to verify the AI draft.", requestId }, { status: 500 });
     }
 
     if (!aiDraft) {
       return NextResponse.json(
-        { error: "AI draft not found for this conversation." },
+        { error: "AI draft not found for this conversation.", requestId },
         { status: 400 }
       );
     }
@@ -210,9 +286,9 @@ export async function POST(
 
   const adminState = createOptionalAdminClient();
   if (!adminState.client) {
-    console.error("[reply] admin client unavailable:", adminState.reason);
+    console.error("[reply] admin client unavailable:", { requestId, reason: adminState.reason });
     return NextResponse.json(
-      { error: "Reply sending is temporarily unavailable. Please try again." },
+      { error: "Reply sending is temporarily unavailable. Please try again.", requestId },
       { status: 503 }
     );
   }
@@ -220,24 +296,50 @@ export async function POST(
 
   let outbound: OutboundResult | null;
   try {
+    console.info("[reply] Gmail send attempt:", {
+      requestId,
+      orgId,
+      conversationId,
+      userId,
+    });
     outbound = await sendConversationReply({
       db: admin,
       orgId,
       conversationId,
       body,
+      requestId,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Mailbox send failed.";
-    console.error("[reply] mailbox send failed:", message);
-    return NextResponse.json({ error: `Unable to send this reply through the connected mailbox. ${message}` }, { status: 502 });
+    const response = mapSendFailure(error);
+    console.error("[reply] Gmail send failed:", {
+      requestId,
+      orgId,
+      conversationId,
+      userId,
+      code: response.code,
+      message,
+    });
+    return sendFailureJson(error, requestId);
   }
 
   if (!outbound) {
     return NextResponse.json({
       error: "Connect Gmail OAuth before sending customer replies.",
+      code: "gmail_connection_missing",
       hint: "Use onboarding or Settings -> Channels to activate Gmail OAuth. The MVP does not support simulated sends or non-Gmail mailbox sending.",
+      requestId,
     }, { status: 400 });
   }
+
+  console.info("[reply] Gmail send accepted:", {
+    requestId,
+    orgId,
+    conversationId,
+    emailConnectionId: outbound.connectionId,
+    gmailMessageId: outbound.providerMessageId,
+    gmailThreadId: outbound.providerThreadId,
+  });
 
   // 1. Insert outbound message after the provider accepted the send.
   const { data: message, error: msgErr } = await supabase
@@ -258,16 +360,22 @@ export async function POST(
         provider_thread_id: outbound.providerThreadId,
         rfc_message_id: outbound.rfcMessageId,
         sent_from: outbound.sentFrom,
-        simulated_send: Boolean(outbound.simulated),
       },
     })
     .select("id")
     .single();
 
   if (msgErr || !message) {
-    console.error("[reply] message insert failed:", msgErr?.message);
+    console.error("[reply] message insert failed:", {
+      requestId,
+      orgId,
+      conversationId,
+      emailConnectionId: outbound.connectionId,
+      gmailMessageId: outbound.providerMessageId,
+      message: msgErr?.message,
+    });
     return NextResponse.json(
-      { error: "Failed to persist message" },
+      { error: "Gmail sent the reply, but Work Hat could not save the outbound message. Contact support with this request ID.", requestId },
       { status: 500 }
     );
   }
@@ -290,8 +398,19 @@ export async function POST(
     .single();
 
   if (replyErr || !sentReply) {
-    console.error("[reply] sent_reply insert failed:", replyErr?.message);
-    // Non-fatal — message is already persisted
+    console.error("[reply] sent_reply insert failed:", {
+      requestId,
+      orgId,
+      conversationId,
+      messageId,
+      emailConnectionId: outbound.connectionId,
+      gmailMessageId: outbound.providerMessageId,
+      message: replyErr?.message,
+    });
+    return NextResponse.json(
+      { error: "Gmail sent the reply, but Work Hat could not record the sent reply. Contact support with this request ID.", requestId },
+      { status: 500 }
+    );
   }
 
   const sentReplyId = sentReply ? (sentReply as { id: string }).id : null;
@@ -304,8 +423,24 @@ export async function POST(
     .eq("org_id", orgId);
 
   if (conversationUpdateError) {
-    console.warn("[reply] conversation timestamp update failed:", conversationUpdateError.message);
+    console.warn("[reply] conversation timestamp update failed:", {
+      requestId,
+      orgId,
+      conversationId,
+      message: conversationUpdateError.message,
+    });
   }
+
+  console.info("[reply] reply persisted:", {
+    requestId,
+    orgId,
+    conversationId,
+    emailConnectionId: outbound.connectionId,
+    gmailMessageId: outbound.providerMessageId,
+    gmailThreadId: outbound.providerThreadId,
+    messageId,
+    sentReplyId,
+  });
 
   // 4. Emit usage event
   after(async () => {
@@ -319,11 +454,18 @@ export async function POST(
         metadata_json: {
           conversation_id: conversationId,
           has_ai_draft: Boolean(aiDraftId),
-          simulated_send: Boolean(outbound.simulated),
+          provider: outbound.provider,
         },
       });
 
-    if (usageError) console.warn("[reply] usage event failed:", usageError.message);
+    if (usageError) {
+      console.warn("[reply] usage event failed:", {
+        requestId,
+        orgId,
+        conversationId,
+        message: usageError.message,
+      });
+    }
   });
 
   // 5. Trigger edit analysis if a draft was linked.
@@ -366,13 +508,16 @@ export async function POST(
         sentReplyId,
         aiDraftId: aiDraftId ?? null,
         provider: outbound.provider,
-        simulated: Boolean(outbound.simulated),
+        emailConnectionId: outbound.connectionId,
+        gmailMessageId: outbound.providerMessageId,
+        gmailThreadId: outbound.providerThreadId,
       },
     });
   });
 
   return NextResponse.json({
     ok: true,
+    requestId,
     conversationId,
     messageId,
     sentReplyId,

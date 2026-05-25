@@ -145,12 +145,14 @@ export function createGmailAdapter({ db }: MailboxAdapterContext): MailboxAdapte
       };
     },
 
-    async sendOutbound(_connection, input: OutboundMessageInput): Promise<OutboundSendResult> {
+    async sendOutbound(connection, input: OutboundMessageInput): Promise<OutboundSendResult> {
       const result = await sendConversationReplyWithGmail({
         db,
         orgId: input.orgId,
         conversationId: input.conversationId,
         body: input.body,
+        connection: toGmailConnection(connection),
+        requestId: input.requestId,
       });
       if (!result) throw new Error("No active Gmail OAuth mailbox is available for this workspace.");
       return result;

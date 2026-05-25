@@ -441,6 +441,7 @@ export function createImapSmtpAdapter({ db }: MailboxAdapterContext): MailboxAda
         .eq("org_id", connection.org_id);
 
       return {
+        connectionId: connection.id,
         provider: connection.provider,
         providerMessageId: sent.messageId || rfcMessageId,
         providerThreadId: String(input.conversationId),

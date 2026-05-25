@@ -64,18 +64,17 @@ declare
   v_auth_user_id uuid := auth.uid();
   v_email text := coalesce(auth.jwt() ->> 'email', '');
   v_org_name text := nullif(trim(p_org_name), '');
-  v_support_email text := coalesce(nullif(trim(p_support_email), ''), '');
-  v_timezone text := coalesce(nullif(trim(p_timezone), ''), 'America/New_York');
   v_user_id uuid;
   v_user_role text;
   v_org_id uuid;
   v_slug_base text;
   v_slug text;
   v_suffix integer := 1;
-  v_inbound_address text;
-  v_channel_id uuid;
   v_created boolean := false;
 begin
+  perform p_support_email;
+  perform p_timezone;
+
   if v_auth_user_id is null then
     raise exception 'Unauthorized'
       using errcode = '28000';
@@ -141,49 +140,6 @@ begin
   select slug into v_slug
   from public.organizations
   where id = v_org_id;
-
-  v_inbound_address := 'inbound+' || v_slug || '@work-hat.com';
-
-  select id into v_channel_id
-  from public.channels
-  where org_id = v_org_id
-    and type = 'email'
-  limit 1;
-
-  if v_channel_id is null then
-    insert into public.channels (
-      org_id,
-      type,
-      provider,
-      status,
-      inbound_address,
-      config_json
-    )
-    values (
-      v_org_id,
-      'email',
-      'postmark',
-      'active',
-      v_inbound_address,
-      jsonb_build_object(
-        'support_email', v_support_email,
-        'from_name', v_org_name,
-        'timezone', v_timezone,
-        'inbound_address', v_inbound_address
-      )
-    );
-  else
-    update public.channels
-      set inbound_address = v_inbound_address,
-          config_json = coalesce(config_json, '{}'::jsonb) ||
-            jsonb_build_object(
-              'support_email', v_support_email,
-              'from_name', v_org_name,
-              'timezone', v_timezone,
-              'inbound_address', v_inbound_address
-            )
-    where id = v_channel_id;
-  end if;
 
   return jsonb_build_object(
     'org', jsonb_build_object(

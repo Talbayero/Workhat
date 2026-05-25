@@ -147,7 +147,6 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [urlMessage, setUrlMessage] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [watching, setWatching] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [conversationCount, setConversationCount] = useState(0);
 
@@ -240,33 +239,6 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
     }
   }
 
-  async function enableGmailWatch() {
-    setWatching(true);
-    setSyncResult(null);
-    setConnectionError(null);
-
-    try {
-      const response = await fetch("/api/email/gmail/watch", { method: "POST" });
-      const data = await response.json().catch(() => ({})) as {
-        expiration?: string;
-        error?: string;
-      };
-
-      if (!response.ok) throw new Error(data.error ?? "Failed to enable Gmail live watch.");
-
-      setSyncResult(
-        `Live Gmail watch enabled${data.expiration ? ` until ${new Date(data.expiration).toLocaleString()}` : ""}.`
-      );
-      await loadConnections();
-    } catch (error) {
-      setConnectionError(
-        friendlyEmailConnectorMessage(error instanceof Error ? error.message : "Failed to enable Gmail live watch.")
-      );
-    } finally {
-      setWatching(false);
-    }
-  }
-
   return (
     <div className="space-y-4 mt-5">
       <div className="rounded-[18px] border border-[var(--line)] bg-[var(--panel-strong)] p-4">
@@ -321,14 +293,6 @@ function StepInbox({ onReadyChange }: { onReadyChange: (ready: boolean) => void 
                 className="rounded-full bg-[var(--moss)] px-5 py-2.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {syncing ? "Importing..." : "Import latest email"}
-              </button>
-              <button
-                type="button"
-                onClick={enableGmailWatch}
-                disabled={watching}
-                className="rounded-full border border-[var(--line-strong)] px-5 py-2.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:border-[var(--moss)] disabled:opacity-50"
-              >
-                {watching ? "Repairing..." : "Repair Gmail live updates"}
               </button>
             </div>
           ) : (

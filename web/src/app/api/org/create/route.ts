@@ -1,7 +1,8 @@
 /**
  * POST /api/org/create
  *
- * Called at Step 1 of onboarding. Creates org + user + channel.
+ * Called at Step 1 of onboarding. Creates the workspace org and first admin user.
+ * Gmail OAuth creates the active email channel later in the MVP setup flow.
  *
  * Tries the authenticated bootstrap RPC first because it is the safest way to
  * create the first org for a newly signed-in user. Falls back to a verified
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Prefer the authenticated bootstrap RPC. It is idempotent and runs as
-    // SECURITY DEFINER, so it can create or repair the user's org/channel while
+    // SECURITY DEFINER, so it can create or repair the user's org while
     // still requiring a real authenticated Supabase user.
     const rpcAttempt = await tryBootstrapRpc(supabase, body);
     if (rpcAttempt.data) {
@@ -146,36 +147,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (existingUser) {
-      // User/org already exists — update org name and ensure channel exists
+      // User/org already exists — update org name. Gmail OAuth owns mailbox setup.
       const orgId = (existingUser as { org_id: string }).org_id;
-      const slug = slugify(body.orgName) || "org";
-      const inboundAddress = `inbound+${slug}@work-hat.com`;
 
       await db.from("organizations").update({ name: body.orgName }).eq("id", orgId);
-
-      // Ensure channel exists
-      const { data: existingChannel } = await db
-        .from("channels")
-        .select("id")
-        .eq("org_id", orgId)
-        .eq("type", "email")
-        .single();
-
-      if (!existingChannel) {
-        await db.from("channels").insert({
-          org_id: orgId,
-          type: "email",
-          provider: "postmark",
-          status: "active",
-          inbound_address: inboundAddress,
-          config_json: {
-            support_email: body.supportEmail ?? "",
-            from_name: body.orgName,
-            timezone: body.timezone ?? "America/New_York",
-            inbound_address: inboundAddress,
-          },
-        });
-      }
 
       const { data: org } = await db
         .from("organizations")
@@ -254,27 +229,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         error: "Failed to create user record. Please try again.",
       }, { status: 500 });
-    }
-
-    // 3. Create default email channel
-    const inboundAddress = `inbound+${slug}@work-hat.com`;
-    const { error: channelErr } = await db.from("channels").insert({
-      org_id: orgId,
-      type: "email",
-      provider: "postmark",
-      status: "active",
-      inbound_address: inboundAddress,
-      config_json: {
-        support_email: body.supportEmail ?? "",
-        from_name: body.orgName,
-        timezone: body.timezone ?? "America/New_York",
-        inbound_address: inboundAddress,
-      },
-    });
-
-    if (channelErr) {
-      console.error("[org/create] channel insert failed:", channelErr.message);
-      // Non-fatal — org and user exist
     }
 
     return NextResponse.json({

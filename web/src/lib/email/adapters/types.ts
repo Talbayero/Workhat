@@ -114,15 +114,16 @@ export type OutboundMessageInput = {
   orgId: string;
   conversationId: string;
   body: string;
+  requestId?: string;
 };
 
 export type OutboundSendResult = {
+  connectionId: string;
   provider: string;
   providerMessageId: string;
   providerThreadId: string;
   rfcMessageId: string;
   sentFrom: string;
-  simulated?: boolean;
 };
 
 export type MailboxAdapterContext = {

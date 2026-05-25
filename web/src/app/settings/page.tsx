@@ -19,7 +19,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   let teamData: unknown[] = [];
   let mailboxReady = false;
   let knowledgeEntryCount = 0;
-  let callerRole = "admin";
+  let callerRole = "agent";
   let callerId = "";
 
   if (user) {

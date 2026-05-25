@@ -29,14 +29,16 @@ export async function sendConversationReply({
   orgId,
   conversationId,
   body,
+  requestId,
 }: {
   db: Db;
   orgId: string;
   conversationId: string;
   body: string;
+  requestId?: string;
 }): Promise<OutboundSendResult | null> {
   const connection = await getActiveOutboundConnection(db, orgId);
   if (!connection) return null;
-  return sendOutboundForConnection({ db }, connection, { orgId, conversationId, body });
+  return sendOutboundForConnection({ db }, connection, { orgId, conversationId, body, requestId });
 }
 

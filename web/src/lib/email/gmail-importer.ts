@@ -115,7 +115,8 @@ export async function getFreshGmailAccessToken(db: SupabaseDb, connection: Email
       status: "active",
       error_message: null,
     })
-    .eq("id", connection.id);
+    .eq("id", connection.id)
+    .eq("org_id", connection.org_id);
 
   if (updateError) {
     throw new Error(updateError.message);

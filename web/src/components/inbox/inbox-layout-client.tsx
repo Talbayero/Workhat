@@ -47,6 +47,7 @@ type InboxLayoutClientProps = {
   intentColors: Record<string, string>;
   baseDir: string;
   isDemo: boolean;
+  canCreateManualConversation: boolean;
 };
 
 const riskDot: Record<RiskLevel, string> = {
@@ -73,6 +74,7 @@ export function InboxLayoutClient({
   intentColors,
   baseDir,
   isDemo,
+  canCreateManualConversation,
 }: InboxLayoutClientProps) {
   const [queueCollapsed, setQueueCollapsed] = useState(false);
   const [queueWidth, setQueueWidth] = useState(QUEUE_DEFAULT_WIDTH);
@@ -128,6 +130,7 @@ export function InboxLayoutClient({
       ? allConversations.filter((conversation) => conversation.contactId === selected.contactId && conversation.id !== selected.id).length
       : 0,
   } satisfies InboxConversation : null;
+  const manualConversationControl = canCreateManualConversation ? <NewConversationButton /> : null;
 
   const buildInboxHref = (viewId: InboxViewId, conversationId?: string) => {
     const params = new URLSearchParams({ view: viewId });
@@ -224,7 +227,7 @@ export function InboxLayoutClient({
                 >
                   Collapse
                 </button>
-                <NewConversationButton />
+                {manualConversationControl}
               </div>
             </div>
             <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
@@ -276,12 +279,12 @@ export function InboxLayoutClient({
                   {activeView === "all"
                     ? allConversations.some((conversation) => !isDefaultOperationalConversation(conversation))
                       ? "No operational customer conversations match this queue. Check Automated/system for imported system emails."
-                      : "No conversations yet. Import recent Gmail messages or create one to test the AI draft flow."
+                      : "No conversations yet. Import recent Gmail messages to start the AI draft flow."
                     : "No conversations match this filter."}
                 </p>
-                {activeView === "all" && (
+                {activeView === "all" && manualConversationControl && (
                   <div className="mt-4">
-                    <NewConversationButton />
+                    {manualConversationControl}
                   </div>
                 )}
               </div>
@@ -390,12 +393,12 @@ export function InboxLayoutClient({
               </h2>
               <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
                 {allConversations.length === 0
-                  ? "Import recent Gmail messages or create a conversation to test the full AI draft, edit, and analysis flow."
+                  ? "Import recent Gmail messages to test the full AI draft, edit, and analysis flow."
                   : "Choose a thread from the list to open it in the workspace."}
               </p>
               {allConversations.length === 0 && (
                 <div className="mt-5 flex flex-col items-center gap-3">
-                  <NewConversationButton />
+                  {manualConversationControl}
                   <Link
                     href="/settings?tab=channels"
                     className="text-xs text-[var(--muted)] underline decoration-[var(--line-strong)] underline-offset-4 transition-colors hover:text-[var(--foreground)]"
