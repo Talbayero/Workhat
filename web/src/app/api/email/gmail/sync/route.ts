@@ -12,6 +12,31 @@ import { requireCapability } from "@/lib/auth/capabilities";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractContextFromRequest } from "@/lib/request-context";
 
+function mapGmailSyncFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : "Gmail sync failed.";
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("refresh") ||
+    normalized.includes("invalid_grant") ||
+    normalized.includes("missing a refresh token")
+  ) {
+    return {
+      status: 401,
+      code: "gmail_token_refresh_failed",
+      error: "Gmail connection needs to be reconnected before importing mail.",
+      hint: "Reconnect Gmail in Settings -> Channels, then import latest email again.",
+    };
+  }
+
+  return {
+    status: 502,
+    code: "gmail_sync_failed",
+    error: "Gmail import failed. Please try again.",
+    hint: "If this continues, reconnect Gmail in Settings -> Channels.",
+  };
+}
+
 export async function POST(req: NextRequest) {
   const requestId = extractContextFromRequest(req).requestId;
   const appUser = await getCurrentAppUser({ label: "gmail/sync" });
@@ -39,7 +64,11 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (connectionError || !connection) {
-    return NextResponse.json({ error: "Connect Gmail before syncing." }, { status: 400 });
+    return NextResponse.json({
+      error: "No active Gmail OAuth connection is available. Connect Gmail in Settings -> Channels, then import latest email.",
+      code: "gmail_connection_missing",
+      requestId,
+    }, { status: 400 });
   }
 
   const { error: statusError } = await db
@@ -100,14 +129,16 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gmail sync failed.";
     await markGmailSyncError({ db, connectionId: connection.id, message });
+    const failure = mapGmailSyncFailure(error);
     console.error("[gmail/sync] sync error:", {
       requestId,
       orgId: appUser.org_id,
       connectionId: connection.id,
       mailbox: connection.provider_account_email,
       message,
+      code: failure.code,
     });
-    return NextResponse.json({ error: "Gmail sync failed. Please try again.", requestId }, { status: 500 });
+    return NextResponse.json({ ...failure, requestId }, { status: failure.status });
   }
 }
 
